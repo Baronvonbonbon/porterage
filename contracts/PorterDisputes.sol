@@ -48,6 +48,18 @@ contract PorterDisputes is Ownable2Step, ReentrancyGuard, PorterUpgradable {
 
     uint96 public disputeBond; // 0 during bootstrap; raise to deter griefing
 
+    /// Evidence committed at event time (docs/PLAN.md §4.5). Bulletin gives a
+    /// photo about 14 days of availability, but not integrity: a party could
+    /// upload something new when a dispute starts. So each party commits the
+    /// BLAKE2b-256 key of its sealed evidence while the order is live, once,
+    /// and the arbiter checks that the bytes it is shown hash to a key
+    /// committed before the dispute existed.
+    struct Evidence {
+        bytes32 key;
+        uint64 at;
+    }
+    mapping(uint256 => mapping(address => Evidence)) public evidenceOf; // orderId → party → evidence
+
     event DisputeOpened(
         uint256 indexed disputeId,
         uint256 indexed orderId,
@@ -62,6 +74,7 @@ contract PorterDisputes is Ownable2Step, ReentrancyGuard, PorterUpgradable {
         bool openerWins,
         uint256 driverSlashed
     );
+    event EvidenceCommitted(uint256 indexed orderId, address indexed party, bytes32 key);
     event ArbiterSet(address arbiter);
     event DisputeBondSet(uint96 bond);
 
@@ -107,6 +120,28 @@ contract PorterDisputes is Ownable2Step, ReentrancyGuard, PorterUpgradable {
     function setDisputeBond(uint96 bond) external onlyOwner {
         disputeBond = bond;
         emit DisputeBondSet(bond);
+    }
+
+    // ---- evidence ----
+
+    /// @notice Commit the key of your evidence for a live order (Assigned or
+    ///         PickedUp). The customer commits as itself; a driver commits as
+    ///         itself or through its session key, recorded under the driver.
+    ///         One commitment per party per order: a key can't be swapped later.
+    function commitEvidence(uint256 orderId, bytes32 key) external whenNotPaused {
+        require(key != bytes32(0), "zero-key");
+        IPorterOrders.Status st = orders.statusOf(orderId);
+        require(st == IPorterOrders.Status.Assigned || st == IPorterOrders.Status.PickedUp, "bad-status");
+        (address customer, address driver, ) = orders.partiesOf(orderId);
+        address party;
+        if (msg.sender == customer) party = customer;
+        else if (drivers.actsFor(msg.sender, driver)) party = driver;
+        else revert("not-party");
+        Evidence storage e = evidenceOf[orderId][party];
+        require(e.key == bytes32(0), "already-committed");
+        e.key = key;
+        e.at = uint64(block.timestamp);
+        emit EvidenceCommitted(orderId, party, key);
     }
 
     // ---- dispute lifecycle ----

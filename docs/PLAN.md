@@ -142,9 +142,11 @@ sequenceDiagram
    a fresh salt and shows it as a QR. The driver scans and signs it. The customer proves proximity on
    the phone and submits `confirmDropoffZK`, which pays the driver. The drop location never reaches
    the driver in the clear, and nothing reaches the chain.
-5. **Photo.** The driver's delivery photo is sealed (AES-GCM), stored on Bulletin through preimage
-   submit, and its BLAKE2b key goes into the dropoff attestation, committed before any dispute can
-   exist.
+5. **Photo.** The driver's delivery photo is sealed (AES-GCM) and stored on Bulletin through
+   preimage submit. The driver's session key commits its BLAKE2b key on-chain at once
+   (`PorterDisputes.commitEvidence`), before any dispute can exist. It can't go in the dropoff
+   attestation: that only reaches the chain when the order settles, and a dispute is opened
+   instead of settling. Each party gets one commitment per order, and it can't be swapped.
 6. **Rating** follows a delivered order, from the customer's burner.
 
 When the WebView gains geolocation, a real fix is added to both attestations as evidence. The UI

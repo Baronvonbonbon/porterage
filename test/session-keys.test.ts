@@ -19,8 +19,8 @@ import { poseidon2, poseidon3 } from "poseidon-lite";
 //   - without the driver registry wired into settlement, they don't count
 //   - rotating the key retires the old one at once; clearing it retires both
 //   - a key serves one driver, is never a driver itself, and never the driver
-//   - the session key can send the driver's day-to-day calls (abandon), and a
-//     stranger can't
+//   - the session key can send the driver's day-to-day calls (abandon, evidence),
+//     and a stranger can't
 
 const PAS = (n: string | number) => ethers.parseEther(String(n));
 const b32 = (x: bigint) => "0x" + x.toString(16).padStart(64, "0");
@@ -82,7 +82,7 @@ async function prove(orderId: bigint, dropCommit: string, dropSalt: bigint, drvS
 describe("session keys", function () {
   this.timeout(240_000);
 
-  let orders: any, settlement: any, venues: any, drivers: any;
+  let orders: any, settlement: any, venues: any, drivers: any, disputes: any;
   let deployer: HardhatEthersSigner, treasury: HardhatEthersSigner, driver: HardhatEthersSigner,
       venueOp: HardhatEthersSigner, venueSigner: HardhatEthersSigner, stranger: HardhatEthersSigner,
       otherDriver: HardhatEthersSigner;
@@ -130,7 +130,7 @@ describe("session keys", function () {
     venues = await (await ethers.getContractFactory("PorterVenues")).deploy(pause.target);
     orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target);
     settlement = await (await ethers.getContractFactory("PorterSettlement")).deploy(pause.target);
-    const disputes = await (await ethers.getContractFactory("PorterDisputes")).deploy(pause.target);
+    disputes = await (await ethers.getContractFactory("PorterDisputes")).deploy(pause.target);
     const verifier = await (await ethers.getContractFactory("PorterLocationVerifier")).deploy();
     const vk = JSON.parse(readFileSync(join(__dirname, "fixtures", "zk-proximity.json"), "utf8")).vkCalldata;
     await verifier.setVerifyingKey(vk.alpha1, vk.beta2, vk.gamma2, vk.delta2, vk.IC0, vk.IC1, vk.IC2, vk.IC3, vk.IC4, vk.IC5);
@@ -222,5 +222,39 @@ describe("session keys", function () {
     await drivers.connect(otherDriver).registerWithSessionKey("ipfs://other", theirs.address);
     const { orderId } = await assignedOrder();
     await expect(settlement.confirmPickup(...(await pickupAtts(orderId, theirs)))).to.be.revertedWith("bad-signature");
+  });
+  describe("evidence committed at event time", () => {
+    const photo = ethers.keccak256(ethers.toUtf8Bytes("sealed delivery photo"));
+
+    it("the session key commits the driver's evidence, recorded under the driver", async () => {
+      const { orderId } = await assignedOrder();
+      await settlement.confirmPickup(...(await pickupAtts(orderId, sessionKey)));
+      await expect(disputes.connect(sessionKey).commitEvidence(orderId, photo))
+        .to.emit(disputes, "EvidenceCommitted").withArgs(orderId, driver.address, photo);
+      const e = await disputes.evidenceOf(orderId, driver.address);
+      expect(e.key).to.equal(photo);
+      expect(e[1]).to.equal(await time.latest()); // e.at is ethers Result.at(), not the field
+    });
+
+    it("a committed key can't be swapped later, by either key", async () => {
+      const { orderId } = await assignedOrder();
+      await disputes.connect(sessionKey).commitEvidence(orderId, photo);
+      const other = ethers.keccak256(ethers.toUtf8Bytes("a different photo"));
+      await expect(disputes.connect(sessionKey).commitEvidence(orderId, other)).to.be.revertedWith("already-committed");
+      await expect(disputes.connect(driver).commitEvidence(orderId, other)).to.be.revertedWith("already-committed");
+    });
+
+    it("the customer commits its own; strangers and settled orders are refused", async () => {
+      const { orderId, dropSalt, dropCommit } = await assignedOrder();
+      await expect(disputes.connect(stranger).commitEvidence(orderId, photo)).to.be.revertedWith("not-party");
+      await disputes.connect(customer).commitEvidence(orderId, photo);
+      expect((await disputes.evidenceOf(orderId, customer.address)).key).to.equal(photo);
+
+      await settlement.confirmPickup(...(await pickupAtts(orderId, sessionKey)));
+      const { proof, pub, driverCommit } = await prove(orderId, dropCommit, dropSalt, rand());
+      const att = { orderId, phase: 2, actor: driver.address, posCommit: driverCommit, timestamp: await time.latest() };
+      await settlement.confirmDropoffZK(att, await sessionKey.signTypedData(domain, DRIVER_COMMIT_TYPES, att), proof, pub);
+      await expect(disputes.connect(sessionKey).commitEvidence(orderId, photo)).to.be.revertedWith("bad-status");
+    });
   });
 });
