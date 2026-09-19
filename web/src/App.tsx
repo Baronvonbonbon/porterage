@@ -3,6 +3,7 @@ import { inHost } from "./host";
 import { deployed } from "./contracts";
 import { Driver } from "./views/Driver";
 import { Soon } from "./views/Soon";
+import { Wallet } from "./views/Wallet";
 
 type Role = "customer" | "driver" | "venue";
 const ROLE_KEY = "porterage.role";
@@ -73,10 +74,12 @@ export function App() {
 
       {role === "driver" && <Driver />}
       {role === "customer" && (
-        <Soon title="Ordering">
-          Customers order from a fresh private account each time, funded through Kusama Shield. That arrives with
-          the money phase of the plan.
-        </Soon>
+        <>
+          <Wallet />
+          <Soon title="Ordering">
+            Ordering from a fresh account funded out of your private balance arrives next.
+          </Soon>
+        </>
       )}
       {role === "venue" && (
         <Soon title="Selling">

@@ -23,6 +23,7 @@ export const LABEL = {
   session: (epoch: number) => `porterage:session:${epoch}`,
   burner: (n: number) => `porterage:burner:${n}`,
   notes: "porterage:notes",
+  note: (n: number) => `porterage:note:${n}`,
 } as const;
 
 let source: Promise<KeySource> | null = null;

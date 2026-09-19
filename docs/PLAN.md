@@ -58,6 +58,8 @@ truapi 0.13.1), 2026-09-19, unless dated otherwise. The details and code live in
 | Host local storage | Works up to 4 MiB a record | 8 MiB kills the page |
 | Screen Wake Lock | Works | Timers stop while the phone is locked |
 | Host PGAS gas | **Needs personhood** | See §5.5 |
+| Contract events from host accounts | **Invisible to the Ethereum RPC** | A Substrate `Revive.call` shows no transaction and no `eth_getLogs` entry (Paseo, 2026-09-19). Its events are in `System.Events`, which the Substrate RPC serves for old blocks too. Anything that scans contract logs must fill these gaps (`web/src/shield/pool.ts`) |
+| Historical contract reads | Work | The Paseo Ethereum RPC honours `blockTag` for `eth_call` and `eth_getCode` at any depth tested. A light client such as pine-rpc can't: it keeps no history |
 | Groth16 on the phone | **Not measured** | 420–645 ms on desktop for the same circuit. Measured first (Phase 0) |
 
 ---
@@ -323,7 +325,10 @@ Each phase ends with something that runs on a phone.
 
 ### Phase 3 — Money
 
-- [ ] Kusama Shield deposit of PAS from the host account.
+- [x] Kusama Shield deposit of PAS from the host account: ladder notes, one tap for all of them
+      (`Utility.batch_all`), note secrets derived from `deriveEntropy`, bookkeeping encrypted in host
+      local storage. Verified live from node on 2026-09-19 (leaves 372–373 reach the live root);
+      not yet from the phone.
 - [ ] Swaps into PAS before shielding, and from PAS into the escrow token at the burner, for each
       accepted token; drop any token without a PAS pair.
 - [ ] The funding market: request format, the submitter loop, fees.

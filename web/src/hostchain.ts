@@ -51,9 +51,13 @@ export interface HostAccount {
 }
 
 let client: PolkadotClient | null = null;
-function chain() {
+/** The Substrate client for Paseo Asset Hub, shared by everything in the app. */
+export function substrate(): PolkadotClient {
   client ??= createClient(getWsProvider(CHAIN.wss));
-  return client.getUnsafeApi();
+  return client;
+}
+function chain() {
+  return substrate().getUnsafeApi();
 }
 
 let account: Promise<HostAccount> | null = null;
@@ -130,6 +134,45 @@ export async function hostCall(dest: string, data: string, value = 0n): Promise<
   });
   const r = await withTimeout(
     tx.signAndSubmit(me.signer, { customSignedExtensions: HUB_EXTENSIONS }),
+    TX_MS,
+    "transaction",
+  );
+  if (!r.ok) throw new Error(`the transaction failed: ${JSON.stringify(r.dispatchError, big)}`);
+  return { block: r.block.number };
+}
+
+export interface CallSpec {
+  dest: string;
+  data: string;
+  /** Planck (10 decimals). The contract sees it as wei: planck × 10^8. */
+  value?: bigint;
+}
+
+/**
+ * Several contract calls as one transaction (Utility.batch_all): one tap, and
+ * all or nothing. Each call is dry-run on its own first, so a revert is caught
+ * before the user is asked.
+ */
+export async function hostBatch(calls: CallSpec[]): Promise<{ block: number }> {
+  if (calls.length === 1) return hostCall(calls[0].dest, calls[0].data, calls[0].value ?? 0n);
+  const me = await hostAccount();
+  const api = chain();
+  const inner = [];
+  for (const c of calls) {
+    const value = c.value ?? 0n;
+    const plan = await dryRun(me.address, c.dest, c.data, value);
+    inner.push(
+      api.tx.Revive.call({
+        dest: c.dest,
+        value,
+        weight_limit: plan.weight,
+        storage_deposit_limit: plan.depositLimit,
+        data: getBytes(c.data),
+      }).decodedCall,
+    );
+  }
+  const r = await withTimeout(
+    api.tx.Utility.batch_all({ calls: inner }).signAndSubmit(me.signer, { customSignedExtensions: HUB_EXTENSIONS }),
     TX_MS,
     "transaction",
   );

@@ -26,3 +26,4 @@ signed. Registering an unowned label needs `--register` and the label typed back
 | 2026-09-19 | Contracts on Paseo Asset Hub | Deployer `0x4B38b09Fb2c7B5310f4f7D51d359Fc63a344c420`, about 9 PAS. Addresses in `deployed-addresses.json`. |
 | 2026-09-19 | Registered `porterage.dot` | Owner: the name key, `5GVobt2azMJ3PjZxtc935wJJL3aDEM9cQoSU3C8d12ZrxVtu` / `0xc05764d1eea94660ec073ab288f5cd0bf5d85061`. 11 PAS paid. Funded with 20 PAS from sonde's deploy key. |
 | 2026-09-19 | Published | `bafybeihmklscserz4j6pwpbwhhooktramdsfqopwuz62x5qtjjcmwodo6y`. The first run registered the name, but its contenthash step timed out after 300 s; the re-run set it. |
+| 2026-09-19 | Published the private balance screen | `bafybeiewfiinn276mrigc22j53c3ubqhhh4umwplluvf67djozvs5hin5e` |

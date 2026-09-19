@@ -19,3 +19,9 @@ export const CHAIN = {
 
 /** Contract addresses, written by the deploy script. Empty until the contracts are deployed. */
 export { default as DEPLOYED } from "./deployed.json";
+
+/**
+ * Kusama Shield's pool on Paseo Asset Hub: native PAS and assets in one tree.
+ * FARE ran deposits and withdrawals through it on 2026-07-24; 370 notes by 2026-09-19.
+ */
+export const SHIELD_POOL = "0x7d5a496bD61b631025A828d9049f6A68e007e0dC";
