@@ -111,6 +111,8 @@ const MATRIX: Entry[] = [
   { c: "settlement", fn: "configure", args: [A1, A1], allow: ["owner"] },
   { c: "settlement", fn: "setLocationVerifier", args: [A1], allow: ["owner"] },
   { c: "settlement", fn: "setDrivers", args: [A1], allow: ["owner"] },
+  { c: "drivers", fn: "setPersonhood", args: [A1], allow: ["owner"] },
+  { c: "venues", fn: "setPersonhood", args: [A1], allow: ["owner"] },
   { c: "settlement", fn: "setGeoParams", args: [100, 100, 300, 60], allow: ["owner"] },
 
   // ── PorterDisputes ────────────────────────────────────────────────────────

@@ -48,6 +48,8 @@ contract PorterVenues is Ownable2Step, PorterUpgradable {
     mapping(address => uint64[]) public venuesByOperator;
     mapping(address => bool) public authorized; // settlement contract
     IPorterPauseRegistry public pauseRegistry;
+    /// Personhood gate (docs/PLAN.md §3.4). Ships off: address(0) gates nobody.
+    IPorterPersonhood public personhood;
 
     event VenueRegistered(
         uint64 indexed venueId,
@@ -61,6 +63,7 @@ contract PorterVenues is Ownable2Step, PorterUpgradable {
     event VenueMetadataUpdated(uint64 indexed venueId, string metadataURI);
     event PickupRecorded(uint64 indexed venueId, uint32 totalPickups);
     event AuthorizedSet(address indexed account, bool enabled);
+    event PersonhoodSet(address indexed personhood);
 
     constructor(address _pauseRegistry) Ownable(msg.sender) {
         pauseRegistry = IPorterPauseRegistry(_pauseRegistry);
@@ -74,6 +77,17 @@ contract PorterVenues is Ownable2Step, PorterUpgradable {
     modifier onlyOperator(uint64 venueId) {
         require(venues[venueId].operator == msg.sender, "not-operator");
         _;
+    }
+
+    /// @notice Turn the personhood gate on (an adapter address) or off (zero).
+    ///         Applies to new registrations only.
+    function setPersonhood(address _personhood) external onlyOwner {
+        personhood = IPorterPersonhood(_personhood);
+        emit PersonhoodSet(_personhood);
+    }
+
+    function _requirePerson(address account) internal view {
+        if (address(personhood) != address(0)) require(personhood.isPerson(account), "not-a-person");
     }
 
     function setAuthorized(address account, bool enabled) external onlyOwner {
@@ -124,6 +138,7 @@ contract PorterVenues is Ownable2Step, PorterUpgradable {
         string calldata metadataURI
     ) external whenNotPaused whenNotFrozen returns (uint64 venueId) {
         GeoLib.requireValid(lat, lon);
+        _requirePerson(msg.sender);
         venueId = nextVenueId++;
         venues[venueId] = Venue({
             operator: msg.sender,

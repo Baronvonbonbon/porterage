@@ -51,6 +51,9 @@ contract PorterDrivers is Ownable2Step, PaseoSafeSender, PorterUpgradable {
     mapping(address => address) public sessionKeyOf; // driver → key
     mapping(address => address) public driverOfSessionKey; // key → driver
 
+    /// Personhood gate (docs/PLAN.md §3.4). Ships off: address(0) gates nobody.
+    IPorterPersonhood public personhood;
+
     uint96 public minStake; // 0 = registration alone qualifies
     uint64 public unbondingSeconds = 3 days;
 
@@ -65,6 +68,7 @@ contract PorterDrivers is Ownable2Step, PaseoSafeSender, PorterUpgradable {
     event MinStakeSet(uint96 minStake);
     event UnbondingSet(uint64 unbondingSeconds);
     event SessionKeySet(address indexed driver, address indexed key);
+    event PersonhoodSet(address indexed personhood);
 
     constructor(address _pauseRegistry) Ownable(msg.sender) {
         pauseRegistry = IPorterPauseRegistry(_pauseRegistry);
@@ -118,6 +122,17 @@ contract PorterDrivers is Ownable2Step, PaseoSafeSender, PorterUpgradable {
         }
     }
 
+    /// @notice Turn the personhood gate on (an adapter address) or off (zero).
+    ///         Applies to new registrations only.
+    function setPersonhood(address _personhood) external onlyOwner {
+        personhood = IPorterPersonhood(_personhood);
+        emit PersonhoodSet(_personhood);
+    }
+
+    function _requirePerson(address account) internal view {
+        if (address(personhood) != address(0)) require(personhood.isPerson(account), "not-a-person");
+    }
+
     function setAuthorized(address account, bool enabled) external onlyOwner {
         require(account != address(0), "zero-addr");
         authorized[account] = enabled;
@@ -145,6 +160,7 @@ contract PorterDrivers is Ownable2Step, PaseoSafeSender, PorterUpgradable {
     function register(string calldata metadataURI) external payable whenNotPaused whenNotFrozen {
         Driver storage d = drivers[msg.sender];
         require(!d.registered, "already-registered");
+        _requirePerson(msg.sender);
         d.registered = true;
         d.stake = uint96(msg.value);
         d.metadataURI = metadataURI;
@@ -161,6 +177,7 @@ contract PorterDrivers is Ownable2Step, PaseoSafeSender, PorterUpgradable {
     {
         Driver storage d = drivers[msg.sender];
         require(!d.registered, "already-registered");
+        _requirePerson(msg.sender);
         d.registered = true;
         d.stake = uint96(msg.value);
         d.metadataURI = metadataURI;

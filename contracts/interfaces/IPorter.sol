@@ -27,6 +27,12 @@ interface IPorterLocationVerifier {
         returns (bool);
 }
 
+/// Sybil gate for drivers and venues (docs/PLAN.md §3.4). Governance points it
+/// at an adapter over Asset Hub's personhood precompile. Unset, nobody is gated.
+interface IPorterPersonhood {
+    function isPerson(address account) external view returns (bool);
+}
+
 interface IPorterPauseRegistry {
     function isPaused(uint8 category) external view returns (bool);
 }

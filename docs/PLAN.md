@@ -93,10 +93,13 @@ immediately.
 
 - `msg.sender` for drivers and venues is the mapped host account. Registration adds `mapAccount`
   to onboarding, and pays its deposit (FARE's spike S5).
-- `FareDrivers` and `FareVenues` merge into one `Registry`, with `sessionKey`, `rotateSessionKey`
-  and an epoch that invalidates old signatures.
-- `Settlement` recovers the signer of each EIP-712 attestation and checks it against the party's
-  **current session key**, rather than against an address.
+- `PorterDrivers` gains session keys (`registerWithSessionKey`, `setSessionKey`, `actsFor`). A key
+  serves one driver; setting a new one retires the old at once. `PorterVenues` already had one:
+  the venue's hot `signer`.
+- `PorterSettlement` accepts a driver attestation signed by the driver **or its current session
+  key** (`setDrivers` wires the registry in). `actor` still names the driver.
+- **Session keys never touch money.** Withdrawals and payout notes stay host-signed. A leaked
+  session key that could create a payout note could make one only the attacker can spend.
 - `FareForwarder` (EIP-2771) is removed. Nothing is meta-forwarded any more: burners pay their own
   gas (§5.4), and hosts pay their own.
 
@@ -220,10 +223,11 @@ contracts' chain, the app uses it for host-signed transactions automatically.
 
 ### 5.6 Payouts
 
-Drivers and venues are paid through `Vault` pull payments into a **batched, delayed shielded
-payout** (FARE privacy phase 1): balances are sealed into denomination buckets and deposited into
-the pool in batches, so a payout can't be matched to a deposit. Anyone can call `flush()` once a
-batch is due and earns a small bounty, so no keeper service is needed.
+Drivers and venues are paid through `PorterVault` pull payments. For a private exit, a payee turns a
+fixed-denomination part of their balance into a **note** (one host tap), and later spends the note
+into Kusama Shield with a Groth16 proof that reveals only a nullifier (FARE privacy phase 3). Every
+unspent note is the anonymity set. The proof fixes where the money goes, so **anyone** can submit
+the spend: the same open market as burner funding (§5.3), with no keeper and nothing to redirect.
 
 ---
 
@@ -282,7 +286,7 @@ One build serves all four, choosing the view by role. Outside the app it runs re
 
 Each phase ends with something that runs on a phone.
 
-### Phase 0 — Measure what's left (sonde)
+### Phase 0 — Measure what's left (sonde) — *skipped for now, 2026-09-19*
 
 - [ ] Groth16 proximity proof on the phone (`web.limits.groth16`). **Gate:** under 10 s and it
       verifies; otherwise proving moves to a helper and the plan changes.
@@ -295,13 +299,14 @@ Each phase ends with something that runs on a phone.
 
 ### Phase 1 — Contracts
 
-- [ ] Port FARE's contracts: `Registry` (drivers and venues, session keys, personhood flag),
+- [x] Port FARE's contracts: `PorterDrivers` and `PorterVenues` (session keys, personhood flag),
       `Orders` (sealed bids, escrow in any accepted token), `Settlement` (session-key checks), `Vault` (pull
-      payments, batched shielded payouts, `flush()` bounty), `Disputes` (evidence key committed at
+      payments, ZK payout notes), `Disputes` (evidence key committed at
       dropoff; opening and ruling clocks inside 14 days), `Ratings`, `GovernanceRouter`,
-      `PauseRegistry`, and the two verifiers.
-- [ ] Carry FARE's tests over, then add session-key rotation, the payout batching, and the `flush()`
-      bounty.
+      `PauseRegistry`, and the two verifiers. **Done 2026-09-19:** ported from FARE with the forwarder
+      removed, driver session keys, event-time evidence (`PorterDisputes.commitEvidence`) and an
+      off-by-default personhood gate. 178 tests pass. Not done: deployment.
+- [x] Carry FARE's tests over, and add session keys, evidence and the personhood gate.
 - [ ] Deploy to Paseo Asset Hub. Build the PolkaVM target too, with the 256 KiB blob gate.
 
 ### Phase 2 — The app shell
