@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+/// Minimal cross-contract interfaces for the FARE protocol.
+/// Each concrete contract exposes more; consumers bind to only what they use.
+
+interface IPorterVault {
+    function credit(address to) external payable;
+    /// @notice ERC-20 analogue of `credit` for stablecoin-escrowed orders (C3).
+    ///         The authorized caller must have approved `amount` of `token` to
+    ///         the vault; the vault pulls it and attributes the balance to `to`.
+    function creditToken(address token, address to, uint256 amount) external;
+}
+
+/// @notice Groth16 verifier for the drop-proximity circuit (circuits/proximity.circom).
+///         Public signals, in circuit order:
+///           [0] orderId       — binds the proof to one order
+///           [1] dropCommit     — Poseidon(latEnc, lonEnc, salt) == orders.dropCommitOf
+///           [2] driverCommit   — Poseidon(drvLatEnc, drvLonEnc, drvSalt), == the
+///                                driver's signed position commitment
+///           [3] radiusMeters   — the geofence radius the proof enforces
+///           [4] nullifier      — Poseidon(salt, orderId); single-use replay guard
+interface IPorterLocationVerifier {
+    function verifyProximity(bytes calldata proof, uint256[5] calldata pubSignals)
+        external
+        view
+        returns (bool);
+}
+
+interface IPorterPauseRegistry {
+    function isPaused(uint8 category) external view returns (bool);
+}
+
+interface IPorterDrivers {
+    function isEligible(address driver) external view returns (bool);
+    function recordDelivered(address driver) external;
+    function recordFailed(address driver) external;
+    function slash(address driver, uint256 amount, address recipient) external returns (uint256);
+}
+
+interface IPorterVenues {
+    function isActive(uint64 venueId) external view returns (bool);
+    function operatorOf(uint64 venueId) external view returns (address);
+    function signerOf(uint64 venueId) external view returns (address);
+    function payoutOf(uint64 venueId) external view returns (address);
+    function locationOf(uint64 venueId) external view returns (int32 lat, int32 lon);
+    function recordPickup(uint64 venueId) external;
+}
+
+/// External shielded pool (Kusama Shield) — the only surface PorterVault needs.
+/// `commitment` is Poseidon(Poseidon(value, asset), Poseidon(nullifier, secret))
+/// computed client-side; the pool learns nothing from it. See
+/// docs/SHIELDED-POOL-INTEGRATION.md.
+interface IPorterShieldPool {
+    function depositNative(bytes32 commitment) external payable;
+
+    /// Multi-asset deposit. `asset` is the ASSET HUB ASSET ID (1337 for USDC),
+    /// NOT the ERC-20 precompile address — passing an address reverts with
+    /// "AssetId too large". The pool then credits its escrow under the
+    /// precompile ADDRESS, which is also what the commitment and the withdraw
+    /// proof must carry. Getting that pair backwards leaves the value
+    /// permanently unwithdrawable; see docs/SHIELDED-POOL-INTEGRATION.md.
+    /// Requires an ERC-20 approval first — the pool pulls via transferFrom.
+    /// NOT usable from a contract with no native balance: see depositAssetDirect.
+    function depositAsset(uint256 asset, uint256 value, bytes32 commitment) external;
+
+    /// Credit a balance the caller has ALREADY transferred in, with no approval.
+    ///
+    /// This is the only asset-deposit path a contract can rely on. pallet-assets
+    /// charges the approver a RESERVED NATIVE DEPOSIT for `approve`, so a
+    /// contract holding zero PAS cannot approve at all — it reverts with no
+    /// revert data, which reads like a decode failure and is not one. PorterVault
+    /// is exactly that contract: its native balance is payees' money, not a
+    /// float, and is legitimately zero. A plain `transfer` reserves nothing.
+    /// Verified on Paseo: transfer → depositAssetDirect → ZK withdraw to a
+    /// fresh address all succeed.
+    function depositAssetDirect(uint256 asset, uint256 value, bytes32 commitment) external;
+}
+
+/// Groth16 verifier for the shield-note circuit (privacy phase 3).
+/// Public signals: [root, nullifierHash, bucket, ksCommitment].
+interface IPorterShieldVerifier {
+    function verifyShieldNote(bytes calldata proof, uint256[4] calldata pubSignals)
+        external
+        view
+        returns (bool);
+}
+
+/// Poseidon(2) over BN254 — the hash the note tree and the circuit share.
+/// Paseo Asset Hub exposes this as a PVM-native precompile at
+/// 0x1d165f6fE5A30422E0E2140e91C8A9B800380637 (`hash(uint256[2])`, selector
+/// 0x561558fe); pure-Solidity Poseidon would make on-chain insertion
+/// unaffordable. Tests deploy an equivalent behind the same ABI.
+interface IPorterPoseidonT3 {
+    function hash(uint256[2] calldata input) external view returns (uint256);
+}
+
+interface IPorterOrders {
+    enum Status {
+        None,
+        Open,
+        Assigned,
+        PickedUp,
+        Delivered,
+        Cancelled,
+        Disputed,
+        Resolved
+    }
+
+    function statusOf(uint256 orderId) external view returns (Status);
+    function partiesOf(uint256 orderId)
+        external
+        view
+        returns (address customer, address driver, uint64 venueId);
+    function dropCommitOf(uint256 orderId) external view returns (bytes32);
+    function deadlinesOf(uint256 orderId)
+        external
+        view
+        returns (uint64 pickupDeadline, uint64 deliveryDeadline);
+
+    // Settlement callbacks (onlySettlement)
+    function onPickupConfirmed(uint256 orderId) external;
+    // `relayer` is the account that submitted the dropoff settlement tx (the
+    // gas-payer) — used for the relay gas-rebate (F6).
+    function onDropoffConfirmed(uint256 orderId, address relayer) external;
+
+    // Dispute hooks (onlyDisputes)
+    function markDisputed(uint256 orderId) external;
+    function resolveDisputed(uint256 orderId, uint16 customerShareBps) external;
+}

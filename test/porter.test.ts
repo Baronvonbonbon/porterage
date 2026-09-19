@@ -1,0 +1,1075 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+import { loadFixture, time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
+import type { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import { assignSealed, commitSealed, bidSalt } from "./helpers/bids";
+
+// ---- coordinate fixtures (San Francisco) ----
+const VENUE_LAT = 37_774_900; // 37.7749° N in microdegrees
+const VENUE_LON = -122_419_400; // 122.4194° W
+const NEAR_VENUE = { lat: VENUE_LAT + 400, lon: VENUE_LON }; // ~44 m north
+const FAR_FROM_VENUE = { lat: VENUE_LAT + 3_000, lon: VENUE_LON }; // ~334 m north
+const DROP_LAT = 37_784_900; // ~1.1 km north of venue
+const DROP_LON = -122_419_400;
+const NEAR_DROP = { lat: DROP_LAT + 300, lon: DROP_LON }; // ~33 m
+const DROP_SALT = 12345678901234567890n;
+
+const ONE = ethers.parseEther("1");
+const ORDER_VALUE = ethers.parseEther("1");
+const TIP = ethers.parseEther("0.1");
+const MAX_FARE = ethers.parseEther("0.5");
+
+// Build + sign an EIP-2771 ForwardRequest for PorterForwarder (OZ ERC2771Forwarder),
+// so a relay can submit `signer`'s call to `target.data` and pay the gas (F8).
+async function signForwardRequest(
+  forwarder: any,
+  signer: HardhatEthersSigner,
+  target: string,
+  data: string
+) {
+  const chainId = (await ethers.provider.getNetwork()).chainId;
+  const nonce = await forwarder.nonces(signer.address);
+  const deadline = (await time.latest()) + 3600;
+  const gas = 500_000n;
+  const req = { from: signer.address, to: target, value: 0n, gas, nonce, deadline: BigInt(deadline), data };
+  const signature = await signer.signTypedData(
+    { name: "PorterForwarder", version: "1", chainId, verifyingContract: forwarder.target as string },
+    {
+      ForwardRequest: [
+        { name: "from", type: "address" },
+        { name: "to", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "gas", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint48" },
+        { name: "data", type: "bytes" },
+      ],
+    },
+    req
+  );
+  // execute() takes ForwardRequestData (no nonce field — it reads the chain nonce).
+  return { from: req.from, to: req.to, value: req.value, gas: req.gas, deadline: req.deadline, data, signature };
+}
+
+// Sign a PorterVault EIP-712 Withdraw authorization so a relay can submit
+// withdrawFor on the account's behalf (gasless earnings, F8).
+async function signWithdraw(
+  vault: any,
+  signer: HardhatEthersSigner,
+  account: string,
+  recipient: string,
+  nonce: bigint,
+  deadline: bigint
+) {
+  const chainId = (await ethers.provider.getNetwork()).chainId;
+  return signer.signTypedData(
+    { name: "PorterVault", version: "1", chainId, verifyingContract: vault.target as string },
+    {
+      Withdraw: [
+        { name: "account", type: "address" },
+        { name: "recipient", type: "address" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+    },
+    { account, recipient, nonce, deadline }
+  );
+}
+
+const abi = ethers.AbiCoder.defaultAbiCoder();
+
+// Opaque drop commitment for the lifecycle tests. The real protocol commit is
+// Poseidon(latEnc, lonEnc, salt) computed off-chain (web/src/zk.ts); these
+// tests run the confirmDropoffZK path against MockLocationVerifier, which does
+// NOT check the commitment's preimage — so any deterministic bytes32 stands in
+// for the commit here. The real Groth16 verifier + a genuine Poseidon commit
+// are exercised in zk.test.ts against the committed proof fixture.
+function dropCommit(lat: number, lon: number, salt: bigint): string {
+  return ethers.keccak256(abi.encode(["int32", "int32", "uint256"], [lat, lon, salt]));
+}
+
+// A driver position commitment stand-in (Poseidon in production; opaque here).
+function driverCommit(orderId: bigint): string {
+  return ethers.keccak256(abi.encode(["string", "uint256"], ["driver-pos", orderId]));
+}
+
+function nullifierOf(orderId: bigint, salt: bigint): string {
+  return ethers.keccak256(abi.encode(["uint256", "uint256"], [salt, orderId]));
+}
+
+describe("FARE protocol", () => {
+  async function deployAll() {
+    const [deployer, treasury, customer, driver1, driver2, venueOp, venueSigner, stranger] =
+      await ethers.getSigners();
+
+    const pause = await (await ethers.getContractFactory("PorterPauseRegistry")).deploy();
+    const vault = await (await ethers.getContractFactory("PorterVault")).deploy();
+    const drivers = await (await ethers.getContractFactory("PorterDrivers")).deploy(pause.target);
+    const venues = await (await ethers.getContractFactory("PorterVenues")).deploy(pause.target);
+    const forwarder = await (await ethers.getContractFactory("PorterForwarder")).deploy();
+    const orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target, forwarder.target);
+    const settlement = await (await ethers.getContractFactory("PorterSettlement")).deploy(pause.target);
+    const disputes = await (await ethers.getContractFactory("PorterDisputes")).deploy(pause.target);
+    const verifier = await (await ethers.getContractFactory("MockLocationVerifier")).deploy();
+    const ratings = await (await ethers.getContractFactory("PorterRatings")).deploy(forwarder.target);
+    await ratings.configure(orders.target);
+
+    // wiring
+    await orders.configure(
+      vault.target,
+      drivers.target,
+      venues.target,
+      settlement.target,
+      disputes.target,
+      treasury.address
+    );
+    await settlement.configure(orders.target, venues.target);
+    await settlement.setLocationVerifier(verifier.target);
+    await disputes.configure(orders.target, vault.target, drivers.target, treasury.address);
+    await vault.setAuthorized(orders.target, true);
+    await vault.setAuthorized(disputes.target, true);
+    await drivers.setAuthorized(orders.target, true);
+    await drivers.setAuthorized(disputes.target, true);
+    await venues.setAuthorized(orders.target, true);
+
+    // participants
+    await drivers.connect(driver1).register("ipfs://driver1", { value: ONE });
+    await drivers.connect(driver2).register("ipfs://driver2", { value: ONE });
+    await venues
+      .connect(venueOp)
+      .registerVenue(VENUE_LAT, VENUE_LON, venueSigner.address, venueOp.address, "ipfs://venue1");
+    const venueId = 1n;
+
+    const chainId = (await ethers.provider.getNetwork()).chainId;
+    const domain = {
+      name: "PorterSettlement",
+      version: "1",
+      chainId,
+      verifyingContract: settlement.target as string,
+    };
+
+    return {
+      deployer, treasury, customer, driver1, driver2, venueOp, venueSigner, stranger,
+      pause, vault, drivers, venues, orders, settlement, disputes, verifier, ratings,
+      forwarder, venueId, domain,
+    };
+  }
+
+  const LOCATION_TYPES = {
+    LocationAttestation: [
+      { name: "orderId", type: "uint256" },
+      { name: "phase", type: "uint8" },
+      { name: "actor", type: "address" },
+      { name: "lat", type: "int32" },
+      { name: "lon", type: "int32" },
+      { name: "timestamp", type: "uint64" },
+    ],
+  };
+  const DRIVER_COMMIT_TYPES = {
+    DriverCommitAttestation: [
+      { name: "orderId", type: "uint256" },
+      { name: "phase", type: "uint8" },
+      { name: "actor", type: "address" },
+      { name: "posCommit", type: "bytes32" },
+      { name: "timestamp", type: "uint64" },
+    ],
+  };
+
+  async function signLocation(
+    signer: HardhatEthersSigner,
+    domain: any,
+    att: { orderId: bigint; phase: number; actor: string; lat: number; lon: number; timestamp: number }
+  ) {
+    return signer.signTypedData(domain, LOCATION_TYPES, att);
+  }
+
+  async function signDriverCommit(
+    signer: HardhatEthersSigner,
+    domain: any,
+    att: { orderId: bigint; phase: number; actor: string; posCommit: string; timestamp: number }
+  ) {
+    return signer.signTypedData(domain, DRIVER_COMMIT_TYPES, att);
+  }
+
+  const DUMMY_PROOF = "0x" + "00".repeat(256); // MockLocationVerifier ignores proof bytes
+
+  /// Create a standard order, run the auction, return assigned orderId.
+  async function createAndAssign(f: Awaited<ReturnType<typeof deployAll>>) {
+    const commit = dropCommit(DROP_LAT, DROP_LON, DROP_SALT);
+    await f.orders
+      .connect(f.customer)
+      .createOrder(f.venueId, commit, ORDER_VALUE, TIP, MAX_FARE, 0, 0, {
+        value: ORDER_VALUE + TIP,
+      });
+    const orderId = 1n;
+    // Two sealed bids; the customer reveals the one it accepts. driver1's losing
+    // bid is never attributable to driver1 on-chain.
+    await commitSealed(f.orders, orderId, f.driver1, ethers.parseEther("0.45"), "d1");
+    const win = await commitSealed(f.orders, orderId, f.driver2, ethers.parseEther("0.4"), "d2");
+    const fare = ethers.parseEther("0.4");
+    await f.orders.connect(f.customer).acceptSealedBid(orderId, f.driver2.address, fare, win.salt, { value: fare });
+    return { orderId, fare };
+  }
+
+  async function confirmPickupOk(
+    f: Awaited<ReturnType<typeof deployAll>>,
+    orderId: bigint,
+    driver: HardhatEthersSigner
+  ) {
+    const now = await time.latest();
+    const dAtt = {
+      orderId, phase: 1, actor: driver.address,
+      lat: NEAR_VENUE.lat, lon: NEAR_VENUE.lon, timestamp: now,
+    };
+    const vAtt = {
+      orderId, phase: 1, actor: f.venueSigner.address,
+      lat: VENUE_LAT, lon: VENUE_LON, timestamp: now,
+    };
+    const dSig = await signLocation(driver, f.domain, dAtt);
+    const vSig = await signLocation(f.venueSigner, f.domain, vAtt);
+    return f.settlement.confirmPickup(dAtt, dSig, vAtt, vSig);
+  }
+
+  /// Drive the ZK dropoff path with the mock verifier: the driver signs a
+  /// commitment to their position, and the (mock-accepted) proof carries the
+  /// public signals the settlement contract binds to the order.
+  async function confirmDropoffOk(
+    f: Awaited<ReturnType<typeof deployAll>>,
+    orderId: bigint,
+    driver: HardhatEthersSigner,
+    submitter?: HardhatEthersSigner // the relay/gas-payer; defaults to deployer
+  ) {
+    const now = await time.latest();
+    const posCommit = driverCommit(orderId);
+    const dAtt = { orderId, phase: 2, actor: driver.address, posCommit, timestamp: now };
+    const dSig = await signDriverCommit(driver, f.domain, dAtt);
+    const radius = await f.settlement.dropoffRadiusMeters();
+    const pubSignals = [
+      orderId,
+      BigInt(dropCommit(DROP_LAT, DROP_LON, DROP_SALT)),
+      BigInt(posCommit),
+      radius,
+      BigInt(nullifierOf(orderId, DROP_SALT)),
+    ];
+    const s = submitter ? f.settlement.connect(submitter) : f.settlement;
+    return s.confirmDropoffZK(dAtt, dSig, DUMMY_PROOF, pubSignals);
+  }
+
+  // ---------------------------------------------------------------
+
+  describe("registries", () => {
+    it("registers drivers with optional stake and tracks eligibility", async () => {
+      const f = await loadFixture(deployAll);
+      // zero-stake registration is allowed while minStake = 0
+      await f.drivers.connect(f.stranger).register("ipfs://s");
+      expect(await f.drivers.isEligible(f.stranger.address)).to.equal(true);
+
+      // raising the floor de-qualifies zero-stake drivers, not staked ones
+      await f.drivers.setMinStake(ethers.parseEther("0.5"));
+      expect(await f.drivers.isEligible(f.stranger.address)).to.equal(false);
+      expect(await f.drivers.isEligible(f.driver1.address)).to.equal(true);
+    });
+
+    it("unstake flow: request → ineligible → withdraw after delay", async () => {
+      const f = await loadFixture(deployAll);
+      await f.drivers.connect(f.driver1).requestUnstake();
+      expect(await f.drivers.isEligible(f.driver1.address)).to.equal(false);
+      await expect(f.drivers.connect(f.driver1).withdrawStake()).to.be.revertedWith("unbonding");
+      await time.increase(3 * 24 * 3600 + 1);
+      await expect(f.drivers.connect(f.driver1).withdrawStake()).to.changeEtherBalance(
+        f.driver1,
+        ONE
+      );
+    });
+
+    it("registers venues with signer/payout defaults and operator controls", async () => {
+      const f = await loadFixture(deployAll);
+      expect(await f.venues.signerOf(f.venueId)).to.equal(f.venueSigner.address);
+      expect(await f.venues.payoutOf(f.venueId)).to.equal(f.venueOp.address);
+      await expect(
+        f.venues.connect(f.stranger).setActive(f.venueId, false)
+      ).to.be.revertedWith("not-operator");
+      await f.venues.connect(f.venueOp).setActive(f.venueId, false);
+      expect(await f.venues.isActive(f.venueId)).to.equal(false);
+    });
+
+    it("setMetadata emits VenueMetadataUpdated for event-driven menu re-pin (F1)", async () => {
+      const f = await loadFixture(deployAll);
+      await expect(f.venues.connect(f.venueOp).setMetadata(f.venueId, "ipfs://menu-v2"))
+        .to.emit(f.venues, "VenueMetadataUpdated")
+        .withArgs(f.venueId, "ipfs://menu-v2");
+      const v = await f.venues.venues(f.venueId);
+      expect(v.metadataURI).to.equal("ipfs://menu-v2");
+      await expect(
+        f.venues.connect(f.stranger).setMetadata(f.venueId, "ipfs://evil")
+      ).to.be.revertedWith("not-operator");
+    });
+  });
+
+  describe("orders & auction", () => {
+    it("full happy path: create → bid → accept → pickup → dropoff → withdraw", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId, fare } = await createAndAssign(f);
+
+      expect(await f.orders.statusOf(orderId)).to.equal(2n); // Assigned
+
+      // PickupConfirmed carries NO coordinates — exactly (orderId, driver,
+      // venueSigner). withArgs enforces the arity, so a regression that re-adds
+      // driver coords to the log fails here (docs/PRIVACY.md risk #2).
+      await expect(confirmPickupOk(f, orderId, f.driver2))
+        .to.emit(f.settlement, "PickupConfirmed")
+        .withArgs(orderId, f.driver2.address, f.venueSigner.address);
+      expect(await f.orders.statusOf(orderId)).to.equal(3n); // PickedUp
+      // venue got its order value in the vault
+      expect(await f.vault.balanceOf(f.venueOp.address)).to.equal(ORDER_VALUE);
+
+      await expect(confirmDropoffOk(f, orderId, f.driver2)).to.emit(
+        f.settlement,
+        "DropoffConfirmed"
+      );
+      expect(await f.orders.statusOf(orderId)).to.equal(4n); // Delivered
+
+      const fee = (fare * 250n) / 10_000n;
+      expect(await f.vault.balanceOf(f.driver2.address)).to.equal(fare - fee + TIP);
+      expect(await f.vault.balanceOf(f.treasury.address)).to.equal(fee);
+
+      // pull payments
+      await expect(f.vault.connect(f.driver2).withdraw()).to.changeEtherBalance(
+        f.driver2,
+        fare - fee + TIP
+      );
+      await expect(f.vault.connect(f.venueOp).withdraw()).to.changeEtherBalance(
+        f.venueOp,
+        ORDER_VALUE
+      );
+
+      // reputation
+      const [delivered] = await f.drivers.reputationOf(f.driver2.address);
+      expect(delivered).to.equal(1);
+      const venue = await f.venues.venues(f.venueId);
+      expect(venue.pickups).to.equal(1);
+    });
+
+    it("relay gas-rebate (F6): a fee slice goes to the settling relay, rest to treasury", async () => {
+      const f = await loadFixture(deployAll);
+      // Governance enables it: 20% of the protocol fee rebated to the relay.
+      await expect(f.orders.setRelayRebateBps(2000))
+        .to.emit(f.orders, "RelayRebateSet")
+        .withArgs(2000);
+
+      const { orderId, fare } = await createAndAssign(f);
+      await confirmPickupOk(f, orderId, f.driver2);
+
+      const fee = (fare * 250n) / 10_000n;
+      const rebate = (fee * 2000n) / 10_000n;
+      const toTreasury = fee - rebate;
+
+      // `stranger` stands in for the venue relay — the account that fronts gas
+      // by submitting the dropoff settlement tx.
+      await expect(confirmDropoffOk(f, orderId, f.driver2, f.stranger))
+        .to.emit(f.orders, "RelayRebated")
+        .withArgs(orderId, f.stranger.address, rebate);
+
+      expect(await f.vault.balanceOf(f.driver2.address)).to.equal(fare - fee + TIP);
+      expect(await f.vault.balanceOf(f.treasury.address)).to.equal(toTreasury);
+      expect(await f.vault.balanceOf(f.stranger.address)).to.equal(rebate);
+      // Value conservation: the rebate is carved from the fee, not added on top.
+      expect(fare - fee + TIP + toTreasury + rebate).to.equal(fare + TIP);
+    });
+
+    it("relay rebate is dormant by default and is capped + owner-gated", async () => {
+      const f = await loadFixture(deployAll);
+      expect(await f.orders.relayRebateBps()).to.equal(0);
+      // default 0 → the full fee still goes to treasury (covered by happy path);
+      // here: the setter caps at 100% of the fee and is owner-only.
+      await expect(f.orders.setRelayRebateBps(10_001)).to.be.revertedWith("rebate-too-high");
+      await expect(
+        f.orders.connect(f.stranger).setRelayRebateBps(2000)
+      ).to.be.revertedWithCustomError(f.orders, "OwnableUnauthorizedAccount");
+    });
+
+    it("fare-only order (orderValue = 0, tip = 0) settles cleanly", async () => {
+      const f = await loadFixture(deployAll);
+      const commit = dropCommit(DROP_LAT, DROP_LON, DROP_SALT);
+      await f.orders
+        .connect(f.customer)
+        .createOrder(f.venueId, commit, 0, 0, MAX_FARE, 0, 0, { value: 0 });
+      const orderId = 1n;
+      const fare = ethers.parseEther("0.3");
+      await assignSealed(f.orders, orderId, f.driver1, f.customer, fare);
+
+      await confirmPickupOk(f, orderId, f.driver1);
+      expect(await f.vault.balanceOf(f.venueOp.address)).to.equal(0n); // nothing to release
+      await confirmDropoffOk(f, orderId, f.driver1);
+
+      const fee = (fare * 250n) / 10_000n;
+      expect(await f.vault.balanceOf(f.driver1.address)).to.equal(fare - fee);
+    });
+
+    it("auction rules: eligibility, max fare, exact escrow, rebids", async () => {
+      const f = await loadFixture(deployAll);
+      const commit = dropCommit(DROP_LAT, DROP_LON, DROP_SALT);
+      await f.orders
+        .connect(f.customer)
+        .createOrder(f.venueId, commit, 0, 0, MAX_FARE, 0, 0, { value: 0 });
+      const orderId = 1n;
+
+      // Eligibility and the fare bound are enforced at ACCEPT, not at commit:
+      // a sealed commit is only a hash, so the contract cannot see who bid or
+      // how much until the customer reveals it.
+      const ineligible = await commitSealed(f.orders, orderId, f.stranger, ethers.parseEther("0.1"), "stranger");
+      await expect(
+        f.orders.connect(f.customer)
+          .acceptSealedBid(orderId, f.stranger.address, ethers.parseEther("0.1"), ineligible.salt, { value: ethers.parseEther("0.1") })
+      ).to.be.revertedWith("driver-not-eligible");
+
+      const overMax = await commitSealed(f.orders, orderId, f.driver1, MAX_FARE + 1n, "over");
+      await expect(
+        f.orders.connect(f.customer)
+          .acceptSealedBid(orderId, f.driver1.address, MAX_FARE + 1n, overMax.salt, { value: MAX_FARE + 1n })
+      ).to.be.revertedWith("bad-amount");
+
+      const bid = await commitSealed(f.orders, orderId, f.driver1, ethers.parseEther("0.42"), "real");
+
+      // exact fare escrow required
+      await expect(
+        f.orders.connect(f.customer)
+          .acceptSealedBid(orderId, f.driver1.address, ethers.parseEther("0.42"), bid.salt, { value: ethers.parseEther("0.41") })
+      ).to.be.revertedWith("bad-value");
+      // only the customer picks
+      await expect(
+        f.orders.connect(f.stranger)
+          .acceptSealedBid(orderId, f.driver1.address, ethers.parseEther("0.42"), bid.salt, { value: ethers.parseEther("0.42") })
+      ).to.be.revertedWith("not-customer");
+      // a bid nobody committed cannot be conjured by naming a different amount
+      await expect(
+        f.orders.connect(f.customer)
+          .acceptSealedBid(orderId, f.driver1.address, ethers.parseEther("0.43"), bid.salt, { value: ethers.parseEther("0.43") })
+      ).to.be.revertedWith("no-bid");
+
+      // revoked bid can't be accepted
+      await f.orders.connect(f.driver1).revokeBid(orderId, bid.hash, bidSalt("real"));
+      await expect(
+        f.orders.connect(f.customer)
+          .acceptSealedBid(orderId, f.driver1.address, ethers.parseEther("0.42"), bid.salt, { value: ethers.parseEther("0.42") })
+      ).to.be.revertedWith("bid-revoked");
+    });
+
+    it("tips can be increased until dropoff", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId, fare } = await createAndAssign(f);
+      await f.orders.connect(f.customer).increaseTip(orderId, { value: ethers.parseEther("0.05") });
+      await confirmPickupOk(f, orderId, f.driver2);
+      await f.orders.connect(f.customer).increaseTip(orderId, { value: ethers.parseEther("0.05") });
+      await confirmDropoffOk(f, orderId, f.driver2);
+      const fee = (fare * 250n) / 10_000n;
+      expect(await f.vault.balanceOf(f.driver2.address)).to.equal(
+        fare - fee + TIP + ethers.parseEther("0.1")
+      );
+    });
+  });
+
+  describe("gasless meta-transactions (F8)", () => {
+    // This used to forward `placeBid` and assert the bid was recorded under the
+    // driver rather than the relay. `placeBid` is gone, and its sealed
+    // replacement deliberately names NOBODY on-chain, so there is no identity
+    // left for the forwarder to preserve there. The F8 property still matters
+    // for the actions that do read `_msgSender()`, so it is pinned on one:
+    // cancelOpen is customer-authorized, so forwarding it proves the contract
+    // sees the customer and not the relay that paid.
+    it("cancelOpen via the forwarder: attributed to the customer, relay pays gas", async () => {
+      const f = await loadFixture(deployAll);
+      const commit = dropCommit(DROP_LAT, DROP_LON, DROP_SALT);
+      await f.orders.connect(f.customer).createOrder(f.venueId, commit, 0, 0, MAX_FARE, 0, 0, { value: 0 });
+      const orderId = 1n;
+
+      const data = f.orders.interface.encodeFunctionData("cancelOpen", [orderId]);
+      const req = await signForwardRequest(f.forwarder, f.customer, f.orders.target as string, data);
+
+      // the customer holds NO gas of its own; the relay (deployer) submits + pays.
+      const customerBalBefore = await ethers.provider.getBalance(f.customer.address);
+      await expect(f.forwarder.connect(f.deployer).execute(req))
+        .to.emit(f.orders, "OrderCancelled")
+        .withArgs(orderId, 0, 0, 0); // REASON_CUSTOMER_OPEN — so _msgSender() resolved to the customer
+
+      expect((await f.orders.orders(orderId)).status).to.equal(5); // Cancelled
+      // the customer spent nothing — fully gasless
+      expect(await ethers.provider.getBalance(f.customer.address)).to.equal(customerBalBefore);
+    });
+
+    it("rate via the forwarder: the order's customer rates gaslessly", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      await confirmPickupOk(f, orderId, f.driver2);
+      await confirmDropoffOk(f, orderId, f.driver2);
+
+      const data = f.ratings.interface.encodeFunctionData("rate", [orderId, 5, 4]);
+      const req = await signForwardRequest(f.forwarder, f.customer, f.ratings.target as string, data);
+      await expect(f.forwarder.connect(f.deployer).execute(req))
+        .to.emit(f.ratings, "Rated")
+        .withArgs(orderId, f.driver2.address, f.venueId, 5, 4, f.customer.address);
+    });
+
+    it("a forged forward request (signer ≠ from) is rejected by the forwarder", async () => {
+      const f = await loadFixture(deployAll);
+      await f.orders.connect(f.customer).createOrder(f.venueId, dropCommit(DROP_LAT, DROP_LON, DROP_SALT), 0, 0, MAX_FARE, 0, 0, { value: 0 });
+      const data = f.orders.interface.encodeFunctionData("cancelOpen", [1n]);
+      // stranger signs but claims to be the customer → OZ forwarder validates the
+      // sig against `from` and refuses to execute.
+      const req = await signForwardRequest(f.forwarder, f.stranger, f.orders.target as string, data);
+      req.from = f.customer.address;
+      await expect(f.forwarder.connect(f.deployer).execute(req)).to.be.reverted;
+      expect((await f.orders.orders(1n)).status).to.equal(1); // still Open
+    });
+  });
+
+  describe("gasless withdraw (F8)", () => {
+    async function deliverToDriver(f: Awaited<ReturnType<typeof deployAll>>) {
+      const { orderId, fare } = await createAndAssign(f);
+      await confirmPickupOk(f, orderId, f.driver2);
+      await confirmDropoffOk(f, orderId, f.driver2);
+      const fee = (fare * 250n) / 10_000n;
+      return fare - fee + TIP; // driver2's resulting vault balance
+    }
+
+    it("withdrawFor: relay pays gas, driver gets balance minus fee, relay keeps the fee", async () => {
+      const f = await loadFixture(deployAll);
+      const bal = await deliverToDriver(f);
+      expect(await f.vault.balanceOf(f.driver2.address)).to.equal(bal);
+
+      await expect(f.vault.setWithdrawFeeBps(100)).to.emit(f.vault, "WithdrawFeeSet").withArgs(100); // 1%
+      const relayFee = (bal * 100n) / 10_000n;
+      const toDriver = bal - relayFee;
+
+      const nonce = await f.vault.withdrawNonce(f.driver2.address);
+      const deadline = BigInt(await time.latest()) + 3600n;
+      const sig = await signWithdraw(f.vault, f.driver2, f.driver2.address, f.driver2.address, nonce, deadline);
+
+      // `stranger` is the relay (msg.sender) — it pays gas; driver2 holds none.
+      const tx = f.vault.connect(f.stranger).withdrawFor(f.driver2.address, f.driver2.address, deadline, sig);
+      await expect(tx)
+        .to.emit(f.vault, "Withdrawn").withArgs(f.driver2.address, f.driver2.address, toDriver);
+      await expect(tx).to.changeEtherBalance(f.driver2, toDriver);
+
+      expect(await f.vault.balanceOf(f.driver2.address)).to.equal(0n);
+      expect(await f.vault.balanceOf(f.stranger.address)).to.equal(relayFee); // relay's accrued fee
+      expect(await f.vault.withdrawNonce(f.driver2.address)).to.equal(nonce + 1n);
+    });
+
+    it("withdrawFor is free by default (0 fee) and the fee is capped + owner-gated", async () => {
+      const f = await loadFixture(deployAll);
+      expect(await f.vault.withdrawFeeBps()).to.equal(0);
+      await expect(f.vault.setWithdrawFeeBps(1001)).to.be.revertedWith("fee-too-high");
+      await expect(f.vault.connect(f.stranger).setWithdrawFeeBps(100))
+        .to.be.revertedWithCustomError(f.vault, "OwnableUnauthorizedAccount");
+    });
+
+    it("withdrawFor rejects a wrong signer, an expired deadline, and a replay", async () => {
+      const f = await loadFixture(deployAll);
+      await deliverToDriver(f);
+      const nonce = await f.vault.withdrawNonce(f.driver2.address);
+      const deadline = BigInt(await time.latest()) + 3600n;
+
+      // someone else signs but claims driver2's balance → bad-sig
+      const forged = await signWithdraw(f.vault, f.stranger, f.driver2.address, f.driver2.address, nonce, deadline);
+      await expect(
+        f.vault.connect(f.stranger).withdrawFor(f.driver2.address, f.driver2.address, deadline, forged)
+      ).to.be.revertedWith("bad-sig");
+
+      // expired deadline
+      const past = BigInt(await time.latest()) - 1n;
+      const expiredSig = await signWithdraw(f.vault, f.driver2, f.driver2.address, f.driver2.address, nonce, past);
+      await expect(
+        f.vault.connect(f.stranger).withdrawFor(f.driver2.address, f.driver2.address, past, expiredSig)
+      ).to.be.revertedWith("expired");
+
+      // valid once, then a replay of the same signature fails (nonce consumed)
+      const sig = await signWithdraw(f.vault, f.driver2, f.driver2.address, f.driver2.address, nonce, deadline);
+      await f.vault.connect(f.stranger).withdrawFor(f.driver2.address, f.driver2.address, deadline, sig);
+      await expect(
+        f.vault.connect(f.stranger).withdrawFor(f.driver2.address, f.driver2.address, deadline, sig)
+      ).to.be.revertedWith("bad-sig");
+    });
+  });
+
+  describe("cancellations", () => {
+    it("cancelOpen refunds the full escrow", async () => {
+      const f = await loadFixture(deployAll);
+      const commit = dropCommit(DROP_LAT, DROP_LON, DROP_SALT);
+      await f.orders
+        .connect(f.customer)
+        .createOrder(f.venueId, commit, ORDER_VALUE, TIP, MAX_FARE, 0, 0, {
+          value: ORDER_VALUE + TIP,
+        });
+      await f.orders.connect(f.customer).cancelOpen(1n);
+      expect(await f.vault.balanceOf(f.customer.address)).to.equal(ORDER_VALUE + TIP);
+      expect(await f.orders.statusOf(1n)).to.equal(5n); // Cancelled
+    });
+
+    it("customer cancel after assignment compensates the driver", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId, fare } = await createAndAssign(f);
+      await f.orders.connect(f.customer).cancelAssigned(orderId);
+      const comp = (fare * 2000n) / 10_000n; // 20%
+      expect(await f.vault.balanceOf(f.driver2.address)).to.equal(comp);
+      expect(await f.vault.balanceOf(f.customer.address)).to.equal(
+        ORDER_VALUE + TIP + fare - comp
+      );
+    });
+
+    it("driver no-show: full refund + reputation strike", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId, fare } = await createAndAssign(f);
+      await time.increase(46 * 60); // past the 45-min pickup window
+      await f.orders.connect(f.customer).cancelAssigned(orderId);
+      expect(await f.vault.balanceOf(f.customer.address)).to.equal(ORDER_VALUE + TIP + fare);
+      expect(await f.vault.balanceOf(f.driver2.address)).to.equal(0n);
+      const [, failed] = await f.drivers.reputationOf(f.driver2.address);
+      expect(failed).to.equal(1);
+    });
+
+    it("driver abandon: full refund + strike", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId, fare } = await createAndAssign(f);
+      await f.orders.connect(f.driver2).abandonOrder(orderId);
+      expect(await f.vault.balanceOf(f.customer.address)).to.equal(ORDER_VALUE + TIP + fare);
+      const [, failed] = await f.drivers.reputationOf(f.driver2.address);
+      expect(failed).to.equal(1);
+    });
+  });
+
+  describe("settlement attestations", () => {
+    it("rejects a signature from the wrong key", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      const now = await time.latest();
+      const dAtt = {
+        orderId, phase: 1, actor: f.driver2.address,
+        lat: NEAR_VENUE.lat, lon: NEAR_VENUE.lon, timestamp: now,
+      };
+      const vAtt = {
+        orderId, phase: 1, actor: f.venueSigner.address,
+        lat: VENUE_LAT, lon: VENUE_LON, timestamp: now,
+      };
+      const forged = await signLocation(f.stranger, f.domain, dAtt); // stranger signs driver's att
+      const vSig = await signLocation(f.venueSigner, f.domain, vAtt);
+      await expect(f.settlement.confirmPickup(dAtt, forged, vAtt, vSig)).to.be.revertedWith(
+        "bad-signature"
+      );
+    });
+
+    it("rejects out-of-range driver coordinates", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      const now = await time.latest();
+      const dAtt = {
+        orderId, phase: 1, actor: f.driver2.address,
+        lat: FAR_FROM_VENUE.lat, lon: FAR_FROM_VENUE.lon, timestamp: now,
+      };
+      const vAtt = {
+        orderId, phase: 1, actor: f.venueSigner.address,
+        lat: VENUE_LAT, lon: VENUE_LON, timestamp: now,
+      };
+      const dSig = await signLocation(f.driver2, f.domain, dAtt);
+      const vSig = await signLocation(f.venueSigner, f.domain, vAtt);
+      await expect(f.settlement.confirmPickup(dAtt, dSig, vAtt, vSig)).to.be.revertedWith(
+        "driver-out-of-range"
+      );
+    });
+
+    it("rejects stale attestations", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      const stale = (await time.latest()) - 16 * 60; // older than 15-min window
+      const dAtt = {
+        orderId, phase: 1, actor: f.driver2.address,
+        lat: NEAR_VENUE.lat, lon: NEAR_VENUE.lon, timestamp: stale,
+      };
+      const vAtt = {
+        orderId, phase: 1, actor: f.venueSigner.address,
+        lat: VENUE_LAT, lon: VENUE_LON, timestamp: await time.latest(),
+      };
+      const dSig = await signLocation(f.driver2, f.domain, dAtt);
+      const vSig = await signLocation(f.venueSigner, f.domain, vAtt);
+      await expect(f.settlement.confirmPickup(dAtt, dSig, vAtt, vSig)).to.be.revertedWith(
+        "attestation-stale"
+      );
+    });
+
+    it("rejects a phase-2 attestation replayed into pickup", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      const now = await time.latest();
+      const dAtt = {
+        orderId, phase: 2, actor: f.driver2.address,
+        lat: NEAR_VENUE.lat, lon: NEAR_VENUE.lon, timestamp: now,
+      };
+      const vAtt = {
+        orderId, phase: 1, actor: f.venueSigner.address,
+        lat: VENUE_LAT, lon: VENUE_LON, timestamp: now,
+      };
+      const dSig = await signLocation(f.driver2, f.domain, dAtt);
+      const vSig = await signLocation(f.venueSigner, f.domain, vAtt);
+      await expect(f.settlement.confirmPickup(dAtt, dSig, vAtt, vSig)).to.be.revertedWith(
+        "bad-driver-att"
+      );
+    });
+
+    it("rejects a dropoff proof whose commit signal ≠ the order's commit", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      await confirmPickupOk(f, orderId, f.driver2);
+      const now = await time.latest();
+      const posCommit = driverCommit(orderId);
+      const dAtt = { orderId, phase: 2, actor: f.driver2.address, posCommit, timestamp: now };
+      const dSig = await signDriverCommit(f.driver2, f.domain, dAtt);
+      const radius = await f.settlement.dropoffRadiusMeters();
+      // commit signal points at a DIFFERENT drop location than the order's.
+      const pubSignals = [
+        orderId,
+        BigInt(dropCommit(DROP_LAT, DROP_LON, 999n)),
+        BigInt(posCommit),
+        radius,
+        BigInt(nullifierOf(orderId, DROP_SALT)),
+      ];
+      await expect(
+        f.settlement.confirmDropoffZK(dAtt, dSig, DUMMY_PROOF, pubSignals)
+      ).to.be.revertedWith("commit-mismatch");
+    });
+
+    it("rejects a dropoff whose driverCommit signal ≠ the driver's signed commitment", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      await confirmPickupOk(f, orderId, f.driver2);
+      const now = await time.latest();
+      const posCommit = driverCommit(orderId);
+      const dAtt = { orderId, phase: 2, actor: f.driver2.address, posCommit, timestamp: now };
+      const dSig = await signDriverCommit(f.driver2, f.domain, dAtt);
+      const radius = await f.settlement.dropoffRadiusMeters();
+      const pubSignals = [
+        orderId,
+        BigInt(dropCommit(DROP_LAT, DROP_LON, DROP_SALT)),
+        BigInt(driverCommit(orderId + 7n)), // mismatched driver commitment
+        radius,
+        BigInt(nullifierOf(orderId, DROP_SALT)),
+      ];
+      await expect(
+        f.settlement.confirmDropoffZK(dAtt, dSig, DUMMY_PROOF, pubSignals)
+      ).to.be.revertedWith("driver-commit-mismatch");
+    });
+
+    it("rejects a dropoff whose radius signal ≠ the governance radius", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      await confirmPickupOk(f, orderId, f.driver2);
+      const now = await time.latest();
+      const posCommit = driverCommit(orderId);
+      const dAtt = { orderId, phase: 2, actor: f.driver2.address, posCommit, timestamp: now };
+      const dSig = await signDriverCommit(f.driver2, f.domain, dAtt);
+      const pubSignals = [
+        orderId,
+        BigInt(dropCommit(DROP_LAT, DROP_LON, DROP_SALT)),
+        BigInt(posCommit),
+        99999n, // not dropoffRadiusMeters — a prover-chosen loose fence
+        BigInt(nullifierOf(orderId, DROP_SALT)),
+      ];
+      await expect(
+        f.settlement.confirmDropoffZK(dAtt, dSig, DUMMY_PROOF, pubSignals)
+      ).to.be.revertedWith("radius-mismatch");
+    });
+
+    it("rejects a dropoff when the verifier rejects the proof (out-of-fence)", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      await confirmPickupOk(f, orderId, f.driver2);
+      await f.verifier.setResult(false); // circuit would reject: driver not within radius
+      await expect(confirmDropoffOk(f, orderId, f.driver2)).to.be.revertedWith("bad-proof");
+    });
+
+    it("nullifier is single-use: a dropoff proof can't be replayed", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      await confirmPickupOk(f, orderId, f.driver2);
+      await confirmDropoffOk(f, orderId, f.driver2);
+      // second attempt trips the status gate first (order already Delivered)
+      await expect(confirmDropoffOk(f, orderId, f.driver2)).to.be.revertedWith("bad-status");
+    });
+
+    it("cannot confirm pickup twice (status gate = replay protection)", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      await confirmPickupOk(f, orderId, f.driver2);
+      await expect(confirmPickupOk(f, orderId, f.driver2)).to.be.revertedWith("bad-status");
+    });
+  });
+
+  describe("verified ratings", () => {
+    // Drive an order all the way to Delivered so it can be rated.
+    async function deliver(f: Awaited<ReturnType<typeof deployAll>>) {
+      const { orderId } = await createAndAssign(f);
+      await confirmPickupOk(f, orderId, f.driver2);
+      await confirmDropoffOk(f, orderId, f.driver2);
+      expect(await f.orders.statusOf(orderId)).to.equal(4n); // Delivered
+      return orderId;
+    }
+
+    it("customer rates driver + venue after delivery; aggregates update", async () => {
+      const f = await loadFixture(deployAll);
+      const orderId = await deliver(f);
+
+      await expect(f.ratings.connect(f.customer).rate(orderId, 5, 4))
+        .to.emit(f.ratings, "Rated")
+        .withArgs(orderId, f.driver2.address, f.venueId, 5, 4, f.customer.address);
+
+      const [dAvg, dN] = await f.ratings.driverRating(f.driver2.address);
+      expect(dAvg).to.equal(500n); // 5.00★ ×100
+      expect(dN).to.equal(1n);
+      const [vAvg, vN] = await f.ratings.venueRating(f.venueId);
+      expect(vAvg).to.equal(400n);
+      expect(vN).to.equal(1n);
+    });
+
+    it("gate: cannot rate before delivery", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f); // Assigned, not Delivered
+      await expect(f.ratings.connect(f.customer).rate(orderId, 5, 5)).to.be.revertedWith("not-delivered");
+    });
+
+    it("gate: only the order's customer can rate", async () => {
+      const f = await loadFixture(deployAll);
+      const orderId = await deliver(f);
+      await expect(f.ratings.connect(f.stranger).rate(orderId, 5, 5)).to.be.revertedWith("not-customer");
+      await expect(f.ratings.connect(f.driver2).rate(orderId, 5, 5)).to.be.revertedWith("not-customer");
+    });
+
+    it("gate: one rating per order", async () => {
+      const f = await loadFixture(deployAll);
+      const orderId = await deliver(f);
+      await f.ratings.connect(f.customer).rate(orderId, 5, 5);
+      await expect(f.ratings.connect(f.customer).rate(orderId, 1, 1)).to.be.revertedWith("already-rated");
+    });
+
+    it("validates stars: >5 rejected, 0/0 rejected, skip-one allowed", async () => {
+      const f = await loadFixture(deployAll);
+      const orderId = await deliver(f);
+      await expect(f.ratings.connect(f.customer).rate(orderId, 6, 3)).to.be.revertedWith("bad-stars");
+      await expect(f.ratings.connect(f.customer).rate(orderId, 0, 0)).to.be.revertedWith("nothing-to-rate");
+      // rate only the driver (skip venue)
+      await f.ratings.connect(f.customer).rate(orderId, 3, 0);
+      const [, dN] = await f.ratings.driverRating(f.driver2.address);
+      const [, vN] = await f.ratings.venueRating(f.venueId);
+      expect(dN).to.equal(1n);
+      expect(vN).to.equal(0n); // venue skipped
+    });
+
+    it("averages across multiple delivered orders", async () => {
+      const f = await loadFixture(deployAll);
+      const o1 = await deliver(f);
+      await f.ratings.connect(f.customer).rate(o1, 5, 0);
+      // second order to the same driver, different rating. Reuse the same
+      // (opaque) drop commit so confirmDropoffOk's mock pubSignals still match.
+      const commit = dropCommit(DROP_LAT, DROP_LON, DROP_SALT);
+      await f.orders.connect(f.customer).createOrder(f.venueId, commit, ORDER_VALUE, TIP, MAX_FARE, 0, 0, { value: ORDER_VALUE + TIP });
+      const o2 = 2n;
+      await assignSealed(f.orders, o2, f.driver2, f.customer, ethers.parseEther("0.4"));
+      await confirmPickupOk(f, o2, f.driver2);
+      await confirmDropoffOk(f, o2, f.driver2);
+      await f.ratings.connect(f.customer).rate(o2, 2, 0);
+      const [dAvg, dN] = await f.ratings.driverRating(f.driver2.address);
+      expect(dN).to.equal(2n);
+      expect(dAvg).to.equal(350n); // (5+2)/2 = 3.50★
+    });
+  });
+
+  describe("disputes", () => {
+    it("customer opens a dispute, arbiter splits escrow and slashes", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId, fare } = await createAndAssign(f);
+      await confirmPickupOk(f, orderId, f.driver2);
+
+      await f.disputes.setDisputeBond(ethers.parseEther("0.01"));
+      await f.disputes
+        .connect(f.customer)
+        .openDispute(orderId, "ipfs://evidence", { value: ethers.parseEther("0.01") });
+      expect(await f.orders.statusOf(orderId)).to.equal(6n); // Disputed
+
+      // frozen: settlement can't complete a disputed order
+      await expect(confirmDropoffOk(f, orderId, f.driver2)).to.be.revertedWith("bad-status");
+
+      // ruling: customer gets 100% of remaining escrow (fare + tip),
+      // driver at fault, slash 0.5 from stake to the customer as damages
+      const slash = ethers.parseEther("0.5");
+      await expect(
+        f.disputes.resolve(1n, 10_000, true, true, slash)
+      ).to.changeEtherBalance(f.customer, slash); // slash pays direct from stake
+
+      expect(await f.orders.statusOf(orderId)).to.equal(7n); // Resolved
+      expect(await f.vault.balanceOf(f.customer.address)).to.equal(
+        fare + TIP + ethers.parseEther("0.01") // escrow share + refunded bond
+      );
+      const [, failed] = await f.drivers.reputationOf(f.driver2.address);
+      expect(failed).to.equal(1);
+      const d = await f.drivers.drivers(f.driver2.address);
+      expect(d.stake).to.equal(ONE - slash);
+    });
+
+    it("only order parties can open; arbiter-only resolution; no double dispute", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      await expect(
+        f.disputes.connect(f.stranger).openDispute(orderId, "")
+      ).to.be.revertedWith("not-party");
+      await f.disputes.connect(f.driver2).openDispute(orderId, "ipfs://x");
+      await expect(
+        f.disputes.connect(f.customer).openDispute(orderId, "")
+      ).to.be.revertedWith("already-disputed");
+      await expect(
+        f.disputes.connect(f.stranger).resolve(1n, 5_000, true, false, 0)
+      ).to.be.revertedWith("not-arbiter");
+      // 50/50 split ruling
+      await f.disputes.resolve(1n, 5_000, false, false, 0);
+      expect(await f.vault.balanceOf(f.customer.address)).to.be.greaterThan(0n);
+      expect(await f.vault.balanceOf(f.driver2.address)).to.be.greaterThan(0n);
+    });
+  });
+
+  describe("vault & safety", () => {
+    it("rejects unauthorized credits and empty withdrawals", async () => {
+      const f = await loadFixture(deployAll);
+      await expect(
+        f.vault.connect(f.stranger).credit(f.stranger.address, { value: 1_000_000n })
+      ).to.be.revertedWith("not-authorized");
+      await expect(f.vault.connect(f.stranger).withdraw()).to.be.revertedWith("zero-balance");
+    });
+
+    it("pause blocks new orders and bids but never blocks exits", async () => {
+      const f = await loadFixture(deployAll);
+      const commit = dropCommit(DROP_LAT, DROP_LON, DROP_SALT);
+      await f.orders
+        .connect(f.customer)
+        .createOrder(f.venueId, commit, 0, 0, MAX_FARE, 0, 0, { value: 0 });
+
+      await f.pause.pause(0); // CAT_ORDERS
+      await expect(
+        f.orders
+          .connect(f.customer)
+          .createOrder(f.venueId, commit, 0, 0, MAX_FARE, 0, 0, { value: 0 })
+      ).to.be.revertedWith("paused");
+      await expect(
+        f.orders.connect(f.driver1).commitBid(1n, ethers.keccak256(ethers.toUtf8Bytes("x")), ethers.ZeroHash)
+      ).to.be.revertedWith("paused");
+      // exit path stays open under pause
+      await f.orders.connect(f.customer).cancelOpen(1n);
+      expect(await f.orders.statusOf(1n)).to.equal(5n); // Cancelled
+    });
+
+    it("guardian can pause, only owner unpauses", async () => {
+      const f = await loadFixture(deployAll);
+      await f.pause.setGuardian(f.stranger.address, true);
+      await f.pause.connect(f.stranger).pause(1);
+      expect(await f.pause.isPaused(1)).to.equal(true);
+      await expect(f.pause.connect(f.stranger).unpause(1)).to.be.revertedWithCustomError(
+        f.pause,
+        "OwnableUnauthorizedAccount"
+      );
+      await f.pause.unpause(1);
+      expect(await f.pause.isPaused(1)).to.equal(false);
+    });
+
+    it("PaseoSafeSender queues dust for amounts the Paseo gateway rejects", async () => {
+      const f = await loadFixture(deployAll);
+      // driver3 stakes an amount whose trailing 10^6 is in the rejected band
+      const dirty = 2_600_000n; // % 1e6 = 600_000 >= 500_000 → 600_000 dust
+      await f.drivers.connect(f.stranger).register("ipfs://d3", { value: dirty });
+      await f.drivers.connect(f.stranger).requestUnstake();
+      await time.increase(3 * 24 * 3600 + 1);
+      await expect(f.drivers.connect(f.stranger).withdrawStake()).to.changeEtherBalance(
+        f.stranger,
+        2_000_000n // clean part sent, dust queued
+      );
+      expect(await f.drivers.pendingPaseoDust(f.stranger.address)).to.equal(600_000n);
+
+      // accumulate more dust; once the pool has a sendable prefix, claim works
+      await f.drivers.connect(f.stranger).addStake({ value: dirty });
+      await f.drivers.connect(f.stranger).requestUnstake();
+      await time.increase(3 * 24 * 3600 + 1);
+      await f.drivers.connect(f.stranger).withdrawStake();
+      expect(await f.drivers.pendingPaseoDust(f.stranger.address)).to.equal(1_200_000n);
+      // 1_200_000 % 1e6 = 200_000 < 500_000 → the whole pool is now sendable
+      await expect(f.drivers.connect(f.stranger).claimPaseoDust()).to.changeEtherBalance(
+        f.stranger,
+        1_200_000n
+      );
+      expect(await f.drivers.pendingPaseoDust(f.stranger.address)).to.equal(0n);
+    });
+  });
+
+  // Localization filters on the PUBLIC venue pin; a driver's own position is
+  // signed live at attestation time and must never be persisted on-chain.
+  // This invariant guards that: no location-shaped field may enter the driver
+  // registry's ABI (struct getter, function params, or event topics).
+  describe("privacy invariant: driver location stays off-chain", () => {
+    it("exposes no location-shaped field in the PorterDrivers ABI", async () => {
+      const { drivers } = await loadFixture(deployAll);
+      const locationLike = /(^|[^a-z])(lat|lon|latitude|longitude|location|geohash|coord|position|geo)([^a-z]|$)/i;
+      for (const frag of drivers.interface.fragments) {
+        const f = frag as any;
+        const names: string[] = [];
+        if (f.name) names.push(f.name);
+        for (const io of [...(f.inputs ?? []), ...(f.outputs ?? [])]) if (io?.name) names.push(io.name);
+        for (const n of names) {
+          expect(locationLike.test(n), `PorterDrivers ABI leaks a location-shaped field: "${n}"`).to.equal(false);
+        }
+      }
+    });
+  });
+
+  // Localized discovery: createOrder emits OrderRegion(region, orderId) with
+  // region = GeoLib.regionOf(venue pin), region indexed FIRST so clients can
+  // server-side filter open-order discovery by it. Clients recompute the same
+  // region with Math.trunc(coord / REGION_CELL) + keccak(abi.encode(int256,int256)).
+  describe("localized discovery: OrderRegion", () => {
+    const REGION_CELL = 500_000;
+    const regionOf = (lat: number, lon: number) =>
+      ethers.keccak256(
+        abi.encode(["int256", "int256"], [Math.trunc(lat / REGION_CELL), Math.trunc(lon / REGION_CELL)])
+      );
+
+    it("emits OrderRegion matching regionOf(venue pin)", async () => {
+      const f = await loadFixture(deployAll);
+      const commit = dropCommit(DROP_LAT, DROP_LON, DROP_SALT);
+      await expect(
+        f.orders
+          .connect(f.customer)
+          .createOrder(f.venueId, commit, ORDER_VALUE, TIP, MAX_FARE, 0, 0, { value: ORDER_VALUE + TIP })
+      )
+        .to.emit(f.orders, "OrderRegion")
+        .withArgs(regionOf(VENUE_LAT, VENUE_LON), 1n);
+    });
+
+    it("nearby venues share a region; a distant venue differs", async () => {
+      const f = await loadFixture(deployAll);
+      // same ~0.5° cell (~44 m away) vs. ~1.1° north (a different cell)
+      await f.venues
+        .connect(f.venueOp)
+        .registerVenue(VENUE_LAT + 400, VENUE_LON, f.venueSigner.address, f.venueOp.address, "ipfs://near");
+      await f.venues
+        .connect(f.venueOp)
+        .registerVenue(VENUE_LAT + 1_100_000, VENUE_LON, f.venueSigner.address, f.venueOp.address, "ipfs://far");
+      const commit = dropCommit(DROP_LAT, DROP_LON, DROP_SALT);
+      // order at the nearby venue (id 2) shares venue 1's region
+      await expect(
+        f.orders.connect(f.customer).createOrder(2n, commit, 0, 0, MAX_FARE, 0, 0, { value: 0 })
+      )
+        .to.emit(f.orders, "OrderRegion")
+        .withArgs(regionOf(VENUE_LAT, VENUE_LON), 1n);
+      // order at the distant venue (id 3) lands in a different region
+      await expect(
+        f.orders.connect(f.customer).createOrder(3n, commit, 0, 0, MAX_FARE, 0, 0, { value: 0 })
+      )
+        .to.emit(f.orders, "OrderRegion")
+        .withArgs(regionOf(VENUE_LAT + 1_100_000, VENUE_LON), 2n);
+      expect(regionOf(VENUE_LAT + 1_100_000, VENUE_LON)).to.not.equal(regionOf(VENUE_LAT, VENUE_LON));
+    });
+  });
+});

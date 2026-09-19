@@ -3,3 +3,16 @@ dist/
 .env
 .env.*
 *.log
+artifacts/
+cache/
+typechain-types/
+coverage/
+coverage.json
+# Generated circuit artifacts (scripts/setup-zk.mjs). The r1cs, vk and calldata files stay tracked.
+circuits/*.ptau
+circuits/build/*.ptau
+circuits/build/*.sym
+circuits/build/*.zkey
+circuits/build/proximity_js/
+circuits/build/shieldnote_js/
+circuits/build/sample-input.json

@@ -1,0 +1,25 @@
+{
+  "name": "porterage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Peer-to-peer delivery inside the Polkadot app",
+  "license": "MIT",
+  "scripts": {
+    "build": "hardhat compile",
+    "test": "hardhat test",
+    "size": "hardhat size-contracts"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "circomlib": "^2.0.5",
+    "circomlibjs": "^0.1.7",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.22.0",
+    "poseidon-lite": "^0.3.0",
+    "snarkjs": "^0.7.5",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2"
+  }
+}
