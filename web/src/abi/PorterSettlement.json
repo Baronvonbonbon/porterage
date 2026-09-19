@@ -1,0 +1,871 @@
+[
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "_pauseRegistry",
+    "type": "address"
+   }
+  ],
+  "stateMutability": "nonpayable",
+  "type": "constructor"
+ },
+ {
+  "inputs": [],
+  "name": "ECDSAInvalidSignature",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "uint256",
+    "name": "length",
+    "type": "uint256"
+   }
+  ],
+  "name": "ECDSAInvalidSignatureLength",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "bytes32",
+    "name": "s",
+    "type": "bytes32"
+   }
+  ],
+  "name": "ECDSAInvalidSignatureS",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "int32",
+    "name": "lat",
+    "type": "int32"
+   }
+  ],
+  "name": "GeoInvalidLatitude",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "int32",
+    "name": "lon",
+    "type": "int32"
+   }
+  ],
+  "name": "GeoInvalidLongitude",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidShortString",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "owner",
+    "type": "address"
+   }
+  ],
+  "name": "OwnableInvalidOwner",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "account",
+    "type": "address"
+   }
+  ],
+  "name": "OwnableUnauthorizedAccount",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "string",
+    "name": "str",
+    "type": "string"
+   }
+  ],
+  "name": "StringTooLong",
+  "type": "error"
+ },
+ {
+  "anonymous": false,
+  "inputs": [
+   {
+    "indexed": true,
+    "internalType": "address",
+    "name": "drivers",
+    "type": "address"
+   }
+  ],
+  "name": "DriversSet",
+  "type": "event"
+ },
+ {
+  "anonymous": false,
+  "inputs": [
+   {
+    "indexed": true,
+    "internalType": "uint256",
+    "name": "orderId",
+    "type": "uint256"
+   },
+   {
+    "indexed": true,
+    "internalType": "address",
+    "name": "driver",
+    "type": "address"
+   },
+   {
+    "indexed": true,
+    "internalType": "address",
+    "name": "customer",
+    "type": "address"
+   }
+  ],
+  "name": "DropoffConfirmed",
+  "type": "event"
+ },
+ {
+  "anonymous": false,
+  "inputs": [],
+  "name": "EIP712DomainChanged",
+  "type": "event"
+ },
+ {
+  "anonymous": false,
+  "inputs": [
+   {
+    "indexed": false,
+    "internalType": "bool",
+    "name": "frozen",
+    "type": "bool"
+   }
+  ],
+  "name": "FrozenSet",
+  "type": "event"
+ },
+ {
+  "anonymous": false,
+  "inputs": [
+   {
+    "indexed": false,
+    "internalType": "uint32",
+    "name": "pickupRadius",
+    "type": "uint32"
+   },
+   {
+    "indexed": false,
+    "internalType": "uint32",
+    "name": "dropoffRadius",
+    "type": "uint32"
+   },
+   {
+    "indexed": false,
+    "internalType": "uint64",
+    "name": "maxAge",
+    "type": "uint64"
+   },
+   {
+    "indexed": false,
+    "internalType": "uint64",
+    "name": "futureSkew",
+    "type": "uint64"
+   }
+  ],
+  "name": "GeoParamsSet",
+  "type": "event"
+ },
+ {
+  "anonymous": false,
+  "inputs": [
+   {
+    "indexed": true,
+    "internalType": "address",
+    "name": "verifier",
+    "type": "address"
+   }
+  ],
+  "name": "LocationVerifierSet",
+  "type": "event"
+ },
+ {
+  "anonymous": false,
+  "inputs": [
+   {
+    "indexed": true,
+    "internalType": "address",
+    "name": "previousOwner",
+    "type": "address"
+   },
+   {
+    "indexed": true,
+    "internalType": "address",
+    "name": "newOwner",
+    "type": "address"
+   }
+  ],
+  "name": "OwnershipTransferStarted",
+  "type": "event"
+ },
+ {
+  "anonymous": false,
+  "inputs": [
+   {
+    "indexed": true,
+    "internalType": "address",
+    "name": "previousOwner",
+    "type": "address"
+   },
+   {
+    "indexed": true,
+    "internalType": "address",
+    "name": "newOwner",
+    "type": "address"
+   }
+  ],
+  "name": "OwnershipTransferred",
+  "type": "event"
+ },
+ {
+  "anonymous": false,
+  "inputs": [
+   {
+    "indexed": true,
+    "internalType": "uint256",
+    "name": "orderId",
+    "type": "uint256"
+   },
+   {
+    "indexed": true,
+    "internalType": "address",
+    "name": "driver",
+    "type": "address"
+   },
+   {
+    "indexed": true,
+    "internalType": "address",
+    "name": "venueSigner",
+    "type": "address"
+   }
+  ],
+  "name": "PickupConfirmed",
+  "type": "event"
+ },
+ {
+  "anonymous": false,
+  "inputs": [
+   {
+    "indexed": true,
+    "internalType": "address",
+    "name": "router",
+    "type": "address"
+   }
+  ],
+  "name": "RouterSet",
+  "type": "event"
+ },
+ {
+  "inputs": [],
+  "name": "DRIVER_COMMIT_TYPEHASH",
+  "outputs": [
+   {
+    "internalType": "bytes32",
+    "name": "",
+    "type": "bytes32"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "LOCATION_TYPEHASH",
+  "outputs": [
+   {
+    "internalType": "bytes32",
+    "name": "",
+    "type": "bytes32"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "PHASE_DROPOFF",
+  "outputs": [
+   {
+    "internalType": "uint8",
+    "name": "",
+    "type": "uint8"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "PHASE_PICKUP",
+  "outputs": [
+   {
+    "internalType": "uint8",
+    "name": "",
+    "type": "uint8"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "acceptOwnership",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "attestationFutureSkewSecs",
+  "outputs": [
+   {
+    "internalType": "uint64",
+    "name": "",
+    "type": "uint64"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "attestationMaxAgeSecs",
+  "outputs": [
+   {
+    "internalType": "uint64",
+    "name": "",
+    "type": "uint64"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "_orders",
+    "type": "address"
+   },
+   {
+    "internalType": "address",
+    "name": "_venues",
+    "type": "address"
+   }
+  ],
+  "name": "configure",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "components": [
+     {
+      "internalType": "uint256",
+      "name": "orderId",
+      "type": "uint256"
+     },
+     {
+      "internalType": "uint8",
+      "name": "phase",
+      "type": "uint8"
+     },
+     {
+      "internalType": "address",
+      "name": "actor",
+      "type": "address"
+     },
+     {
+      "internalType": "bytes32",
+      "name": "posCommit",
+      "type": "bytes32"
+     },
+     {
+      "internalType": "uint64",
+      "name": "timestamp",
+      "type": "uint64"
+     }
+    ],
+    "internalType": "struct PorterSettlement.DriverCommitAttestation",
+    "name": "driverAtt",
+    "type": "tuple"
+   },
+   {
+    "internalType": "bytes",
+    "name": "driverSig",
+    "type": "bytes"
+   },
+   {
+    "internalType": "bytes",
+    "name": "proof",
+    "type": "bytes"
+   },
+   {
+    "internalType": "uint256[5]",
+    "name": "pubSignals",
+    "type": "uint256[5]"
+   }
+  ],
+  "name": "confirmDropoffZK",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "components": [
+     {
+      "internalType": "uint256",
+      "name": "orderId",
+      "type": "uint256"
+     },
+     {
+      "internalType": "uint8",
+      "name": "phase",
+      "type": "uint8"
+     },
+     {
+      "internalType": "address",
+      "name": "actor",
+      "type": "address"
+     },
+     {
+      "internalType": "int32",
+      "name": "lat",
+      "type": "int32"
+     },
+     {
+      "internalType": "int32",
+      "name": "lon",
+      "type": "int32"
+     },
+     {
+      "internalType": "uint64",
+      "name": "timestamp",
+      "type": "uint64"
+     }
+    ],
+    "internalType": "struct PorterSettlement.LocationAttestation",
+    "name": "driverAtt",
+    "type": "tuple"
+   },
+   {
+    "internalType": "bytes",
+    "name": "driverSig",
+    "type": "bytes"
+   },
+   {
+    "components": [
+     {
+      "internalType": "uint256",
+      "name": "orderId",
+      "type": "uint256"
+     },
+     {
+      "internalType": "uint8",
+      "name": "phase",
+      "type": "uint8"
+     },
+     {
+      "internalType": "address",
+      "name": "actor",
+      "type": "address"
+     },
+     {
+      "internalType": "int32",
+      "name": "lat",
+      "type": "int32"
+     },
+     {
+      "internalType": "int32",
+      "name": "lon",
+      "type": "int32"
+     },
+     {
+      "internalType": "uint64",
+      "name": "timestamp",
+      "type": "uint64"
+     }
+    ],
+    "internalType": "struct PorterSettlement.LocationAttestation",
+    "name": "venueAtt",
+    "type": "tuple"
+   },
+   {
+    "internalType": "bytes",
+    "name": "venueSig",
+    "type": "bytes"
+   }
+  ],
+  "name": "confirmPickup",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "contractVersion",
+  "outputs": [
+   {
+    "internalType": "uint256",
+    "name": "",
+    "type": "uint256"
+   }
+  ],
+  "stateMutability": "pure",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "domainSeparator",
+  "outputs": [
+   {
+    "internalType": "bytes32",
+    "name": "",
+    "type": "bytes32"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "drivers",
+  "outputs": [
+   {
+    "internalType": "contract IPorterDrivers",
+    "name": "",
+    "type": "address"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "dropoffRadiusMeters",
+  "outputs": [
+   {
+    "internalType": "uint32",
+    "name": "",
+    "type": "uint32"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "eip712Domain",
+  "outputs": [
+   {
+    "internalType": "bytes1",
+    "name": "fields",
+    "type": "bytes1"
+   },
+   {
+    "internalType": "string",
+    "name": "name",
+    "type": "string"
+   },
+   {
+    "internalType": "string",
+    "name": "version",
+    "type": "string"
+   },
+   {
+    "internalType": "uint256",
+    "name": "chainId",
+    "type": "uint256"
+   },
+   {
+    "internalType": "address",
+    "name": "verifyingContract",
+    "type": "address"
+   },
+   {
+    "internalType": "bytes32",
+    "name": "salt",
+    "type": "bytes32"
+   },
+   {
+    "internalType": "uint256[]",
+    "name": "extensions",
+    "type": "uint256[]"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "frozen",
+  "outputs": [
+   {
+    "internalType": "bool",
+    "name": "",
+    "type": "bool"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "locationVerifier",
+  "outputs": [
+   {
+    "internalType": "contract IPorterLocationVerifier",
+    "name": "",
+    "type": "address"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "oldContract",
+    "type": "address"
+   }
+  ],
+  "name": "migrate",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "orders",
+  "outputs": [
+   {
+    "internalType": "contract IPorterOrders",
+    "name": "",
+    "type": "address"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "owner",
+  "outputs": [
+   {
+    "internalType": "address",
+    "name": "",
+    "type": "address"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "pauseRegistry",
+  "outputs": [
+   {
+    "internalType": "contract IPorterPauseRegistry",
+    "name": "",
+    "type": "address"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "pendingOwner",
+  "outputs": [
+   {
+    "internalType": "address",
+    "name": "",
+    "type": "address"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "pickupRadiusMeters",
+  "outputs": [
+   {
+    "internalType": "uint32",
+    "name": "",
+    "type": "uint32"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "renounceOwnership",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "router",
+  "outputs": [
+   {
+    "internalType": "address",
+    "name": "",
+    "type": "address"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "_drivers",
+    "type": "address"
+   }
+  ],
+  "name": "setDrivers",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "bool",
+    "name": "_frozen",
+    "type": "bool"
+   }
+  ],
+  "name": "setFrozen",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "uint32",
+    "name": "_pickupRadiusMeters",
+    "type": "uint32"
+   },
+   {
+    "internalType": "uint32",
+    "name": "_dropoffRadiusMeters",
+    "type": "uint32"
+   },
+   {
+    "internalType": "uint64",
+    "name": "_maxAgeSecs",
+    "type": "uint64"
+   },
+   {
+    "internalType": "uint64",
+    "name": "_futureSkewSecs",
+    "type": "uint64"
+   }
+  ],
+  "name": "setGeoParams",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "_verifier",
+    "type": "address"
+   }
+  ],
+  "name": "setLocationVerifier",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "_router",
+    "type": "address"
+   }
+  ],
+  "name": "setRouter",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "newOwner",
+    "type": "address"
+   }
+  ],
+  "name": "transferOwnership",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "bytes32",
+    "name": "",
+    "type": "bytes32"
+   }
+  ],
+  "name": "usedNullifiers",
+  "outputs": [
+   {
+    "internalType": "bool",
+    "name": "",
+    "type": "bool"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "venues",
+  "outputs": [
+   {
+    "internalType": "contract IPorterVenues",
+    "name": "",
+    "type": "address"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ }
+]

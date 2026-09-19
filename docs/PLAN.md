@@ -311,9 +311,11 @@ Each phase ends with something that runs on a phone.
 
 ### Phase 2 — The app shell
 
-- [ ] Product scaffold on `product-sdk-host` 0.19.1 (wire codec 1; newer codecs hang the current app).
-- [ ] Every host call with a deadline; detection of the host.
-- [ ] Key derivation (§3.1), session-key registration, `map_account` onboarding.
+- [x] Product scaffold on `product-sdk-host` 0.19.1 (wire codec 1; newer codecs hang the current app).
+- [x] Every host call with a deadline; detection of the host.
+- [x] Key derivation (§3.1) from `deriveEntropy`, and driver onboarding: register with a session
+      key, fund it, rotate it. Host accounts call contracts through `Revive.call`; this runtime maps
+      accounts automatically, so there is no `map_account` step. Not yet tried on a phone.
 - [ ] Publish to a `.dot` label with a local deploy key.
 
 ### Phase 3 — Money
