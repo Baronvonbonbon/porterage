@@ -43,6 +43,14 @@ contract PorterDrivers is Ownable2Step, PaseoSafeSender, PorterUpgradable {
     mapping(address => bool) public authorized; // orders + disputes contracts
     IPorterPauseRegistry public pauseRegistry;
 
+    /// Session keys (docs/PLAN.md §3.2). A driver's identity is their host
+    /// account, which signs sr25519 and costs a tap per signature. So the host
+    /// account registers one app-held secp256k1 key that may sign attestations
+    /// and send day-to-day calls on its behalf. One key serves one driver;
+    /// rotating replaces it, and the old key stops counting at once.
+    mapping(address => address) public sessionKeyOf; // driver → key
+    mapping(address => address) public driverOfSessionKey; // key → driver
+
     uint96 public minStake; // 0 = registration alone qualifies
     uint64 public unbondingSeconds = 3 days;
 
@@ -56,6 +64,7 @@ contract PorterDrivers is Ownable2Step, PaseoSafeSender, PorterUpgradable {
     event AuthorizedSet(address indexed account, bool enabled);
     event MinStakeSet(uint96 minStake);
     event UnbondingSet(uint64 unbondingSeconds);
+    event SessionKeySet(address indexed driver, address indexed key);
 
     constructor(address _pauseRegistry) Ownable(msg.sender) {
         pauseRegistry = IPorterPauseRegistry(_pauseRegistry);
@@ -142,6 +151,44 @@ contract PorterDrivers is Ownable2Step, PaseoSafeSender, PorterUpgradable {
         emit DriverRegistered(msg.sender, d.stake, metadataURI);
     }
 
+    /// @notice Register and set a session key in one transaction, so a new
+    ///         driver approves onboarding with a single host tap.
+    function registerWithSessionKey(string calldata metadataURI, address key)
+        external
+        payable
+        whenNotPaused
+        whenNotFrozen
+    {
+        Driver storage d = drivers[msg.sender];
+        require(!d.registered, "already-registered");
+        d.registered = true;
+        d.stake = uint96(msg.value);
+        d.metadataURI = metadataURI;
+        emit DriverRegistered(msg.sender, d.stake, metadataURI);
+        _setSessionKey(msg.sender, key);
+    }
+
+    /// @notice Set, rotate (a new key) or clear (address(0)) the caller's
+    ///         session key. Not pause- or freeze-gated: a leaked key must
+    ///         always be revocable.
+    function setSessionKey(address key) external {
+        require(drivers[msg.sender].registered, "not-registered");
+        _setSessionKey(msg.sender, key);
+    }
+
+    function _setSessionKey(address driver, address key) internal {
+        require(key != driver, "key-is-driver");
+        address old = sessionKeyOf[driver];
+        if (old != address(0)) delete driverOfSessionKey[old];
+        if (key != address(0)) {
+            require(driverOfSessionKey[key] == address(0), "key-in-use");
+            require(!drivers[key].registered, "key-is-a-driver");
+            driverOfSessionKey[key] = driver;
+        }
+        sessionKeyOf[driver] = key;
+        emit SessionKeySet(driver, key);
+    }
+
     function setMetadata(string calldata metadataURI) external {
         require(drivers[msg.sender].registered, "not-registered");
         drivers[msg.sender].metadataURI = metadataURI;
@@ -224,6 +271,12 @@ contract PorterDrivers is Ownable2Step, PaseoSafeSender, PorterUpgradable {
             !d.banned &&
             d.stake >= minStake &&
             d.unstakeRequestedAt == 0; // exiting drivers can't take new work
+    }
+
+    /// @notice True when `account` may act or sign for `driver`: the driver's
+    ///         own address, or its current session key.
+    function actsFor(address account, address driver) external view returns (bool) {
+        return account == driver || (account != address(0) && sessionKeyOf[driver] == account);
     }
 
     function reputationOf(address driver) external view returns (uint32 delivered, uint32 failed) {

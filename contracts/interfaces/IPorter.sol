@@ -36,6 +36,7 @@ interface IPorterDrivers {
     function recordDelivered(address driver) external;
     function recordFailed(address driver) external;
     function slash(address driver, uint256 amount, address recipient) external returns (uint256);
+    function actsFor(address account, address driver) external view returns (bool);
 }
 
 interface IPorterVenues {

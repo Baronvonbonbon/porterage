@@ -426,7 +426,7 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, IPorte
     ///         a trapped assignment is worse than a strike.
     function abandonOrder(uint256 orderId) external nonReentrant {
         Order storage o = orders[orderId];
-        require(msg.sender == o.driver, "not-driver");
+        require(drivers.actsFor(msg.sender, o.driver), "not-driver");
         require(o.status == Status.Assigned, "bad-status");
         uint96 refund = o.escrow;
         o.escrow = 0;

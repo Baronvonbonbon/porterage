@@ -82,6 +82,8 @@ contract PorterSettlement is Ownable2Step, EIP712, PorterUpgradable {
     IPorterVenues public venues;
     IPorterLocationVerifier public locationVerifier;
     IPorterPauseRegistry public pauseRegistry;
+    /// Driver registry, for session keys. Unset, only a driver's own key signs.
+    IPorterDrivers public drivers;
 
     /// Poseidon(salt, orderId) → consumed. Single-use guard on the dropoff
     /// proof; a belt-and-suspenders complement to the status gate below.
@@ -112,6 +114,7 @@ contract PorterSettlement is Ownable2Step, EIP712, PorterUpgradable {
     );
     event GeoParamsSet(uint32 pickupRadius, uint32 dropoffRadius, uint64 maxAge, uint64 futureSkew);
     event LocationVerifierSet(address indexed verifier);
+    event DriversSet(address indexed drivers);
 
     constructor(address _pauseRegistry) Ownable(msg.sender) EIP712("PorterSettlement", "1") {
         pauseRegistry = IPorterPauseRegistry(_pauseRegistry);
@@ -133,6 +136,14 @@ contract PorterSettlement is Ownable2Step, EIP712, PorterUpgradable {
         require(_orders != address(0) && _venues != address(0), "zero-addr");
         orders = IPorterOrders(_orders);
         venues = IPorterVenues(_venues);
+    }
+
+    /// @notice Wire the driver registry, so attestations signed by a driver's
+    ///         session key count as the driver's (docs/PLAN.md §3.2).
+    function setDrivers(address _drivers) external onlyOwner {
+        require(_drivers != address(0), "zero-addr");
+        drivers = IPorterDrivers(_drivers);
+        emit DriversSet(_drivers);
     }
 
     /// @notice Wire the Groth16 proximity verifier. Kept separate from
@@ -181,13 +192,13 @@ contract PorterSettlement is Ownable2Step, EIP712, PorterUpgradable {
 
         // Driver side
         require(driverAtt.phase == PHASE_PICKUP && driverAtt.actor == driver, "bad-driver-att");
-        _verifyLocationSig(driverAtt, driverSig);
+        _requireDriverSigner(driver, _recoverLocation(driverAtt, driverSig));
         _requireFresh(driverAtt.timestamp);
 
         // Venue side — must be the venue's registered hot signer
         address venueSigner = venues.signerOf(venueId);
         require(venueAtt.phase == PHASE_PICKUP && venueAtt.actor == venueSigner, "bad-venue-att");
-        _verifyLocationSig(venueAtt, venueSig);
+        require(_recoverLocation(venueAtt, venueSig) == venueSigner, "bad-signature");
         _requireFresh(venueAtt.timestamp);
 
         // Geo: both parties within radius of the venue's registered (public) pin.
@@ -245,7 +256,7 @@ contract PorterSettlement is Ownable2Step, EIP712, PorterUpgradable {
 
         // Driver side: signed commitment to their own position.
         require(driverAtt.phase == PHASE_DROPOFF && driverAtt.actor == driver, "bad-driver-att");
-        _verifyDriverCommitSig(driverAtt, driverSig);
+        _requireDriverSigner(driver, _recoverDriverCommit(driverAtt, driverSig));
         _requireFresh(driverAtt.timestamp);
 
         // Bind the public signals to on-chain truth.
@@ -271,7 +282,20 @@ contract PorterSettlement is Ownable2Step, EIP712, PorterUpgradable {
 
     // ---- helpers ----
 
-    function _verifyLocationSig(LocationAttestation calldata att, bytes calldata sig) internal view {
+    /// A driver attestation counts when the driver's own key or its current
+    /// session key signed it. `actor` stays the driver either way, so the
+    /// signed message still names who is attesting.
+    function _requireDriverSigner(address driver, address signer) internal view {
+        bool ok = signer == driver ||
+            (address(drivers) != address(0) && drivers.actsFor(signer, driver));
+        require(ok, "bad-signature");
+    }
+
+    function _recoverLocation(LocationAttestation calldata att, bytes calldata sig)
+        internal
+        view
+        returns (address)
+    {
         bytes32 digest = _hashTypedDataV4(
             keccak256(
                 abi.encode(
@@ -285,12 +309,13 @@ contract PorterSettlement is Ownable2Step, EIP712, PorterUpgradable {
                 )
             )
         );
-        require(ECDSA.recover(digest, sig) == att.actor, "bad-signature");
+        return ECDSA.recover(digest, sig);
     }
 
-    function _verifyDriverCommitSig(DriverCommitAttestation calldata att, bytes calldata sig)
+    function _recoverDriverCommit(DriverCommitAttestation calldata att, bytes calldata sig)
         internal
         view
+        returns (address)
     {
         bytes32 digest = _hashTypedDataV4(
             keccak256(
@@ -304,7 +329,7 @@ contract PorterSettlement is Ownable2Step, EIP712, PorterUpgradable {
                 )
             )
         );
-        require(ECDSA.recover(digest, sig) == att.actor, "bad-signature");
+        return ECDSA.recover(digest, sig);
     }
 
     function _requireFresh(uint64 ts) internal view {
