@@ -2,8 +2,6 @@
 pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
-import "@openzeppelin/contracts/utils/Context.sol";
-import "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 import "./interfaces/IPorter.sol";
 import "./lib/PorterUpgradable.sol";
 
@@ -26,7 +24,7 @@ import "./lib/PorterUpgradable.sol";
 ///         colluding driver, deliver, self-rate) is bounded by the same economics
 ///         as the rest of the protocol — a real pickup+dropoff cosign is required,
 ///         and phantom deliveries map onto existing fraud shapes (see docs/GPS.md).
-contract PorterRatings is Ownable2Step, PorterUpgradable, ERC2771Context {
+contract PorterRatings is Ownable2Step, PorterUpgradable {
     IPorterOrders public orders;
 
     struct Agg {
@@ -47,10 +45,7 @@ contract PorterRatings is Ownable2Step, PorterUpgradable, ERC2771Context {
         address customer
     );
 
-    /// @param _forwarder trusted EIP-2771 forwarder (PorterForwarder) so a customer
-    ///        can rate gaslessly — the relay pays gas, the order's burner signs
-    ///        (F8). Pass address(0) to disable meta-txs. rate() moves no value.
-    constructor(address _forwarder) Ownable(msg.sender) ERC2771Context(_forwarder) {}
+    constructor() Ownable(msg.sender) {}
 
     /// @notice One-time binding to the PorterGovernanceRouter (upgrade authority).
     function setRouter(address _router) external onlyOwner {
@@ -73,7 +68,7 @@ contract PorterRatings is Ownable2Step, PorterUpgradable, ERC2771Context {
         require(orders.statusOf(orderId) == IPorterOrders.Status.Delivered, "not-delivered");
 
         (address customer, address driver, uint64 venueId) = orders.partiesOf(orderId);
-        require(_msgSender() == customer, "not-customer"); // gasless via forwarder (F8)
+        require(msg.sender == customer, "not-customer");
 
         rated[orderId] = true;
         if (driverStars != 0) {
@@ -100,16 +95,4 @@ contract PorterRatings is Ownable2Step, PorterUpgradable, ERC2771Context {
         return (a.count == 0 ? 0 : (uint256(a.sum) * 100) / a.count, a.count);
     }
 
-    // ---- EIP-2771 context (F8) ----
-    function _msgSender() internal view override(Context, ERC2771Context) returns (address) {
-        return ERC2771Context._msgSender();
-    }
-
-    function _msgData() internal view override(Context, ERC2771Context) returns (bytes calldata) {
-        return ERC2771Context._msgData();
-    }
-
-    function _contextSuffixLength() internal view override(Context, ERC2771Context) returns (uint256) {
-        return ERC2771Context._contextSuffixLength();
-    }
 }

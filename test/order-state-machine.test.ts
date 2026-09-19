@@ -137,8 +137,7 @@ describe("order state machine: every action, every status", function () {
     const vault = await (await ethers.getContractFactory("PorterVault")).deploy();
     const drivers = await (await ethers.getContractFactory("PorterDrivers")).deploy(pause.target);
     const venues = await (await ethers.getContractFactory("PorterVenues")).deploy(pause.target);
-    const forwarder = await (await ethers.getContractFactory("PorterForwarder")).deploy();
-    const orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target, forwarder.target);
+    const orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target);
 
     // The settlement and dispute hooks are `onlySettlement` / `onlyDisputes`,
     // so those roles are held by EOAs here. Configuring them as accounts rather

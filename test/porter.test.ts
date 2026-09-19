@@ -19,38 +19,6 @@ const ORDER_VALUE = ethers.parseEther("1");
 const TIP = ethers.parseEther("0.1");
 const MAX_FARE = ethers.parseEther("0.5");
 
-// Build + sign an EIP-2771 ForwardRequest for PorterForwarder (OZ ERC2771Forwarder),
-// so a relay can submit `signer`'s call to `target.data` and pay the gas (F8).
-async function signForwardRequest(
-  forwarder: any,
-  signer: HardhatEthersSigner,
-  target: string,
-  data: string
-) {
-  const chainId = (await ethers.provider.getNetwork()).chainId;
-  const nonce = await forwarder.nonces(signer.address);
-  const deadline = (await time.latest()) + 3600;
-  const gas = 500_000n;
-  const req = { from: signer.address, to: target, value: 0n, gas, nonce, deadline: BigInt(deadline), data };
-  const signature = await signer.signTypedData(
-    { name: "PorterForwarder", version: "1", chainId, verifyingContract: forwarder.target as string },
-    {
-      ForwardRequest: [
-        { name: "from", type: "address" },
-        { name: "to", type: "address" },
-        { name: "value", type: "uint256" },
-        { name: "gas", type: "uint256" },
-        { name: "nonce", type: "uint256" },
-        { name: "deadline", type: "uint48" },
-        { name: "data", type: "bytes" },
-      ],
-    },
-    req
-  );
-  // execute() takes ForwardRequestData (no nonce field — it reads the chain nonce).
-  return { from: req.from, to: req.to, value: req.value, gas: req.gas, deadline: req.deadline, data, signature };
-}
-
 // Sign a PorterVault EIP-712 Withdraw authorization so a relay can submit
 // withdrawFor on the account's behalf (gasless earnings, F8).
 async function signWithdraw(
@@ -106,12 +74,11 @@ describe("FARE protocol", () => {
     const vault = await (await ethers.getContractFactory("PorterVault")).deploy();
     const drivers = await (await ethers.getContractFactory("PorterDrivers")).deploy(pause.target);
     const venues = await (await ethers.getContractFactory("PorterVenues")).deploy(pause.target);
-    const forwarder = await (await ethers.getContractFactory("PorterForwarder")).deploy();
-    const orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target, forwarder.target);
+    const orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target);
     const settlement = await (await ethers.getContractFactory("PorterSettlement")).deploy(pause.target);
     const disputes = await (await ethers.getContractFactory("PorterDisputes")).deploy(pause.target);
     const verifier = await (await ethers.getContractFactory("MockLocationVerifier")).deploy();
-    const ratings = await (await ethers.getContractFactory("PorterRatings")).deploy(forwarder.target);
+    const ratings = await (await ethers.getContractFactory("PorterRatings")).deploy();
     await ratings.configure(orders.target);
 
     // wiring
@@ -151,7 +118,7 @@ describe("FARE protocol", () => {
     return {
       deployer, treasury, customer, driver1, driver2, venueOp, venueSigner, stranger,
       pause, vault, drivers, venues, orders, settlement, disputes, verifier, ratings,
-      forwarder, venueId, domain,
+      venueId, domain,
     };
   }
 
@@ -466,60 +433,6 @@ describe("FARE protocol", () => {
       expect(await f.vault.balanceOf(f.driver2.address)).to.equal(
         fare - fee + TIP + ethers.parseEther("0.1")
       );
-    });
-  });
-
-  describe("gasless meta-transactions (F8)", () => {
-    // This used to forward `placeBid` and assert the bid was recorded under the
-    // driver rather than the relay. `placeBid` is gone, and its sealed
-    // replacement deliberately names NOBODY on-chain, so there is no identity
-    // left for the forwarder to preserve there. The F8 property still matters
-    // for the actions that do read `_msgSender()`, so it is pinned on one:
-    // cancelOpen is customer-authorized, so forwarding it proves the contract
-    // sees the customer and not the relay that paid.
-    it("cancelOpen via the forwarder: attributed to the customer, relay pays gas", async () => {
-      const f = await loadFixture(deployAll);
-      const commit = dropCommit(DROP_LAT, DROP_LON, DROP_SALT);
-      await f.orders.connect(f.customer).createOrder(f.venueId, commit, 0, 0, MAX_FARE, 0, 0, { value: 0 });
-      const orderId = 1n;
-
-      const data = f.orders.interface.encodeFunctionData("cancelOpen", [orderId]);
-      const req = await signForwardRequest(f.forwarder, f.customer, f.orders.target as string, data);
-
-      // the customer holds NO gas of its own; the relay (deployer) submits + pays.
-      const customerBalBefore = await ethers.provider.getBalance(f.customer.address);
-      await expect(f.forwarder.connect(f.deployer).execute(req))
-        .to.emit(f.orders, "OrderCancelled")
-        .withArgs(orderId, 0, 0, 0); // REASON_CUSTOMER_OPEN — so _msgSender() resolved to the customer
-
-      expect((await f.orders.orders(orderId)).status).to.equal(5); // Cancelled
-      // the customer spent nothing — fully gasless
-      expect(await ethers.provider.getBalance(f.customer.address)).to.equal(customerBalBefore);
-    });
-
-    it("rate via the forwarder: the order's customer rates gaslessly", async () => {
-      const f = await loadFixture(deployAll);
-      const { orderId } = await createAndAssign(f);
-      await confirmPickupOk(f, orderId, f.driver2);
-      await confirmDropoffOk(f, orderId, f.driver2);
-
-      const data = f.ratings.interface.encodeFunctionData("rate", [orderId, 5, 4]);
-      const req = await signForwardRequest(f.forwarder, f.customer, f.ratings.target as string, data);
-      await expect(f.forwarder.connect(f.deployer).execute(req))
-        .to.emit(f.ratings, "Rated")
-        .withArgs(orderId, f.driver2.address, f.venueId, 5, 4, f.customer.address);
-    });
-
-    it("a forged forward request (signer ≠ from) is rejected by the forwarder", async () => {
-      const f = await loadFixture(deployAll);
-      await f.orders.connect(f.customer).createOrder(f.venueId, dropCommit(DROP_LAT, DROP_LON, DROP_SALT), 0, 0, MAX_FARE, 0, 0, { value: 0 });
-      const data = f.orders.interface.encodeFunctionData("cancelOpen", [1n]);
-      // stranger signs but claims to be the customer → OZ forwarder validates the
-      // sig against `from` and refuses to execute.
-      const req = await signForwardRequest(f.forwarder, f.stranger, f.orders.target as string, data);
-      req.from = f.customer.address;
-      await expect(f.forwarder.connect(f.deployer).execute(req)).to.be.reverted;
-      expect((await f.orders.orders(1n)).status).to.equal(1); // still Open
     });
   });
 

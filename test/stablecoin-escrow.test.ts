@@ -63,8 +63,7 @@ describe("FARE — stablecoin escrow (C3)", () => {
     const vault = await (await ethers.getContractFactory("PorterVault")).deploy();
     const drivers = await (await ethers.getContractFactory("PorterDrivers")).deploy(pause.target);
     const venues = await (await ethers.getContractFactory("PorterVenues")).deploy(pause.target);
-    const forwarder = await (await ethers.getContractFactory("PorterForwarder")).deploy();
-    const orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target, forwarder.target);
+    const orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target);
     const settlement = await (await ethers.getContractFactory("PorterSettlement")).deploy(pause.target);
     const disputes = await (await ethers.getContractFactory("PorterDisputes")).deploy(pause.target);
     const verifier = await (await ethers.getContractFactory("MockLocationVerifier")).deploy();
@@ -94,7 +93,7 @@ describe("FARE — stablecoin escrow (C3)", () => {
     const domain = { name: "PorterSettlement", version: "1", chainId, verifyingContract: settlement.target as string };
 
     return { deployer, treasury, customer, driver1, driver2, venueOp, venueSigner, stranger,
-      pause, vault, drivers, venues, orders, settlement, disputes, verifier, usdc, forwarder, venueId, domain };
+      pause, vault, drivers, venues, orders, settlement, disputes, verifier, usdc, venueId, domain };
   }
 
   const signLoc = (signer: HardhatEthersSigner, domain: any, att: any) =>

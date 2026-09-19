@@ -28,7 +28,7 @@ describe("Upgradability", () => {
     const vault = await (await ethers.getContractFactory("PorterVault")).deploy();
     const drivers = await (await ethers.getContractFactory("PorterDrivers")).deploy(pause.target);
     const venues = await (await ethers.getContractFactory("PorterVenues")).deploy(pause.target);
-    const orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target, ethers.ZeroAddress);
+    const orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target);
     const settlement = await (await ethers.getContractFactory("PorterSettlement")).deploy(pause.target);
     const disputes = await (await ethers.getContractFactory("PorterDisputes")).deploy(pause.target);
     const verifier = await (await ethers.getContractFactory("MockLocationVerifier")).deploy();
@@ -102,7 +102,7 @@ describe("Upgradability", () => {
     expect(await f.router.currentAddrOf(name("orders"))).to.equal(f.orders.target);
     expect(await f.router.versionOf(name("orders"))).to.equal(1n);
 
-    const ordersV2 = await (await ethers.getContractFactory("PorterOrders")).deploy(f.pause.target, ethers.ZeroAddress);
+    const ordersV2 = await (await ethers.getContractFactory("PorterOrders")).deploy(f.pause.target);
     await ordersV2.setRouter(f.router.target);
     await f.router.upgradeContract(name("orders"), ordersV2.target, true);
 
@@ -120,7 +120,7 @@ describe("Upgradability", () => {
     await f.orders.connect(f.customer).createOrder(1n, dropCommit(), 0, 0, ethers.parseEther("0.5"), 0, 0, { value: 0 });
     const openId = (await f.orders.nextOrderId()) - 1n;
 
-    const ordersV2 = await (await ethers.getContractFactory("PorterOrders")).deploy(f.pause.target, ethers.ZeroAddress);
+    const ordersV2 = await (await ethers.getContractFactory("PorterOrders")).deploy(f.pause.target);
     await ordersV2.setRouter(f.router.target);
     await f.router.upgradeContract(name("orders"), ordersV2.target, true);
 
@@ -221,7 +221,7 @@ describe("Upgradability", () => {
 
   it("rollback: router can unfreeze a demoted contract", async () => {
     const f = await loadFixture(deployAll);
-    const ordersV2 = await (await ethers.getContractFactory("PorterOrders")).deploy(f.pause.target, ethers.ZeroAddress);
+    const ordersV2 = await (await ethers.getContractFactory("PorterOrders")).deploy(f.pause.target);
     await ordersV2.setRouter(f.router.target);
     await f.router.upgradeContract(name("orders"), ordersV2.target, true);
     expect(await f.orders.frozen()).to.equal(true);

@@ -127,12 +127,11 @@ describe("gas snapshot", function () {
     const vault = await (await ethers.getContractFactory("PorterVault")).deploy();
     const drivers = await (await ethers.getContractFactory("PorterDrivers")).deploy(pause.target);
     const venues = await (await ethers.getContractFactory("PorterVenues")).deploy(pause.target);
-    const forwarder = await (await ethers.getContractFactory("PorterForwarder")).deploy();
-    const orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target, forwarder.target);
+    const orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target);
     const settlement = await (await ethers.getContractFactory("PorterSettlement")).deploy(pause.target);
     const disputes = await (await ethers.getContractFactory("PorterDisputes")).deploy(pause.target);
     const locVerifier = await (await ethers.getContractFactory("MockLocationVerifier")).deploy();
-    const ratings = await (await ethers.getContractFactory("PorterRatings")).deploy(forwarder.target);
+    const ratings = await (await ethers.getContractFactory("PorterRatings")).deploy();
     const usdc = await (await ethers.getContractFactory("MockUSDC")).deploy();
     const pool = await (await ethers.getContractFactory("MockShieldPool")).deploy();
     const shieldVerifier = await (await ethers.getContractFactory("PorterShieldVerifier")).deploy();
@@ -171,7 +170,7 @@ describe("gas snapshot", function () {
     };
     return {
       deployer, treasury, customer, driver, driver2, venueOp, venueSigner, relay,
-      vault, drivers, venues, orders, settlement, disputes, ratings, usdc, forwarder,
+      vault, drivers, venues, orders, settlement, disputes, ratings, usdc,
       adapter, domain, venueId: 1n,
     };
   }

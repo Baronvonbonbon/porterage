@@ -100,8 +100,7 @@ describe("settlement with no GPS fix (handoff.ts)", function () {
     const vault = await (await ethers.getContractFactory("PorterVault")).deploy();
     const drivers = await (await ethers.getContractFactory("PorterDrivers")).deploy(pause.target);
     venues = await (await ethers.getContractFactory("PorterVenues")).deploy(pause.target);
-    const forwarder = await (await ethers.getContractFactory("PorterForwarder")).deploy();
-    orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target, forwarder.target);
+    orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target);
     settlement = await (await ethers.getContractFactory("PorterSettlement")).deploy(pause.target);
     const disputes = await (await ethers.getContractFactory("PorterDisputes")).deploy(pause.target);
     const verifier = await (await ethers.getContractFactory("PorterLocationVerifier")).deploy();

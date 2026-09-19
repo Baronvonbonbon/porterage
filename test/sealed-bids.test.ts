@@ -23,8 +23,7 @@ describe("sealed bids (privacy phase 4)", () => {
     const vault = await (await ethers.getContractFactory("PorterVault")).deploy();
     const drivers = await (await ethers.getContractFactory("PorterDrivers")).deploy(pause.target);
     const venues = await (await ethers.getContractFactory("PorterVenues")).deploy(pause.target);
-    const forwarder = await (await ethers.getContractFactory("PorterForwarder")).deploy();
-    const orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target, forwarder.target);
+    const orders = await (await ethers.getContractFactory("PorterOrders")).deploy(pause.target);
     const settlement = await (await ethers.getContractFactory("PorterSettlement")).deploy(pause.target);
     const disputes = await (await ethers.getContractFactory("PorterDisputes")).deploy(pause.target);
     await orders.configure(vault.target, drivers.target, venues.target, settlement.target, disputes.target, treasury.address);

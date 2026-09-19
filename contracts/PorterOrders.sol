@@ -3,10 +3,7 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/Context.sol";
-import "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./interfaces/IPorter.sol";
 import "./lib/PorterUpgradable.sol";
@@ -36,7 +33,7 @@ import "./lib/GeoLib.sol";
 ///           pickup cosign  → orderValue credited to venue payout
 ///           dropoff cosign → fare (minus protocol fee) + tip to driver
 ///         All value leaves through PorterVault pull-payments.
-contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, ERC2771Context, IPorterOrders {
+contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, IPorterOrders {
     using SafeERC20 for IERC20;
 
     struct Order {
@@ -141,15 +138,10 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, ERC277
     uint8 public constant REASON_DRIVER_NO_SHOW = 2;
     uint8 public constant REASON_DRIVER_ABANDON = 3;
 
-    /// @param _forwarder trusted EIP-2771 forwarder (PorterForwarder) for gasless
-    ///        meta-txs on the non-value user actions — commitBid / revokeBid /
-    ///        cancels / abandon (F8). Pass address(0) to disable meta-txs; value
-    ///        actions (createOrder / acceptSealedBid / increaseTip) use the
-    ///        direct caller, so the relay can never front a customer's escrow.
-    constructor(address _pauseRegistry, address _forwarder)
-        Ownable(msg.sender)
-        ERC2771Context(_forwarder)
-    {
+    // No EIP-2771 forwarder: nothing in Porterage is meta-forwarded. Burners pay
+    // their own gas from the note that funded them, drivers and venues send from
+    // their session keys, and hosts pay for their own taps (docs/PLAN.md §3.3).
+    constructor(address _pauseRegistry) Ownable(msg.sender) {
         pauseRegistry = IPorterPauseRegistry(_pauseRegistry);
     }
 
@@ -283,37 +275,7 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, ERC277
         uint64 pickupWindowSecs,
         uint64 deliveryWindowSecs
     ) external whenNotPaused whenNotFrozen returns (uint256 orderId) {
-        // Token value function: escrow is pulled via transferFrom from the
-        // customer's OWN balance, so a relay forwarding this never fronts value —
-        // hence it reads _msgSender() and IS gaslessly meta-forwardable (Option C).
-        orderId = _openERC20(_msgSender(), token, venueId, dropCommit, orderValue, tip, maxFare, pickupWindowSecs, deliveryWindowSecs);
-    }
-
-    /// @notice Gasless stablecoin order (Option C): identical to createOrderERC20
-    ///         but carries an EIP-2612 permit so the customer never needs a
-    ///         separate approve tx — sign the permit off-chain, the relay forwards
-    ///         this, and the whole order is gas-free for the customer. Permit is
-    ///         best-effort (try/catch): a front-run permit that already set the
-    ///         allowance doesn't brick the order. Set `permitValue` high (e.g.
-    ///         type(uint256).max) so it also covers the later sealed accept/tips.
-    function createOrderERC20WithPermit(
-        address token,
-        uint64 venueId,
-        bytes32 dropCommit,
-        uint96 orderValue,
-        uint96 tip,
-        uint96 maxFare,
-        uint64 pickupWindowSecs,
-        uint64 deliveryWindowSecs,
-        uint256 permitValue,
-        uint256 permitDeadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external whenNotPaused whenNotFrozen returns (uint256 orderId) {
-        address customer = _msgSender();
-        try IERC20Permit(token).permit(customer, address(this), permitValue, permitDeadline, v, r, s) {} catch {}
-        orderId = _openERC20(customer, token, venueId, dropCommit, orderValue, tip, maxFare, pickupWindowSecs, deliveryWindowSecs);
+        orderId = _openERC20(msg.sender, token, venueId, dropCommit, orderValue, tip, maxFare, pickupWindowSecs, deliveryWindowSecs);
     }
 
     /// @dev Shared ERC-20 open: pull escrow from `customer` and record the order.
@@ -406,7 +368,7 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, ERC277
     ///         order's escrow token (customer must have approved this contract).
     function increaseTipERC20(uint256 orderId, uint96 amount) external whenNotFrozen {
         Order storage o = orders[orderId];
-        address customer = _msgSender(); // gaslessly forwardable (Option C)
+        address customer = msg.sender;
         require(customer == o.customer, "not-customer");
         require(o.token != address(0), "use-native-tip"); // token path only
         require(
@@ -424,7 +386,7 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, ERC277
     ///         customers can always exit an open order.
     function cancelOpen(uint256 orderId) external nonReentrant {
         Order storage o = orders[orderId];
-        require(_msgSender() == o.customer, "not-customer"); // gasless via forwarder (F8)
+        require(msg.sender == o.customer, "not-customer");
         require(o.status == Status.Open, "bad-status");
         uint96 refund = o.escrow;
         o.escrow = 0;
@@ -439,7 +401,7 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, ERC277
     ///         it's a driver no-show — full refund and a reputation strike.
     function cancelAssigned(uint256 orderId) external nonReentrant {
         Order storage o = orders[orderId];
-        require(_msgSender() == o.customer, "not-customer"); // gasless via forwarder (F8)
+        require(msg.sender == o.customer, "not-customer");
         require(o.status == Status.Assigned, "bad-status");
 
         uint96 escrow = o.escrow;
@@ -464,7 +426,7 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, ERC277
     ///         a trapped assignment is worse than a strike.
     function abandonOrder(uint256 orderId) external nonReentrant {
         Order storage o = orders[orderId];
-        require(_msgSender() == o.driver, "not-driver"); // gasless via forwarder (F8)
+        require(msg.sender == o.driver, "not-driver");
         require(o.status == Status.Assigned, "bad-status");
         uint96 refund = o.escrow;
         o.escrow = 0;
@@ -565,19 +527,13 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, ERC277
     {
         Order storage o = orders[orderId];
         require(o.token == address(0), "use-erc20-accept");
-        // Native value function: read msg.sender directly, never _msgSender() —
-        // a relay must not be able to front msg.value.
         _prepareSealedAccept(o, orderId, driver, amount, salt, msg.sender);
         require(msg.value == amount, "bad-value");
         _assign(o, orderId, driver, amount);
     }
 
     /// @notice Accept a sealed bid on a stablecoin order.
-    /// @dev Gaslessly forwardable (Option C), like the ERC-20 accept it
-    ///      replaced: the escrow is a `transferFrom` from the customer's own
-    ///      balance, so a forwarding relay never fronts value. Reads
-    ///      `_msgSender()` for exactly that reason — see the EIP-2771 note at
-    ///      the bottom of this contract.
+    /// @dev The escrow is a `transferFrom` from the customer's own balance.
     function acceptSealedBidERC20(uint256 orderId, address driver, uint96 amount, bytes32 salt)
         external
         whenNotPaused
@@ -586,7 +542,7 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, ERC277
     {
         Order storage o = orders[orderId];
         require(o.token != address(0), "use-native-accept");
-        address customer = _msgSender();
+        address customer = msg.sender;
         _prepareSealedAccept(o, orderId, driver, amount, salt, customer);
         IERC20(o.token).safeTransferFrom(customer, address(this), amount);
         _assign(o, orderId, driver, amount);
@@ -752,27 +708,5 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, ERC277
     {
         Order storage o = orders[orderId];
         return (o.pickupDeadline, o.deliveryDeadline);
-    }
-
-    // ---- EIP-2771 context (F8) ----
-    // Context is inherited via both Ownable and ERC2771Context; resolve to the
-    // 2771 versions so `_msgSender()` unwraps the appended sender on a forwarded
-    // call. NATIVE value functions (createOrder/acceptSealedBid/increaseTip) read
-    // `msg.sender` directly — a relay must never front `msg.value`. The TOKEN
-    // value functions (createOrderERC20[WithPermit]/acceptSealedBidERC20/increaseTipERC20)
-    // read `_msgSender()`: their escrow is a `transferFrom` from the customer's own
-    // balance, so a forwarding relay never fronts value → they are gaslessly
-    // meta-forwardable (Option C).
-
-    function _msgSender() internal view override(Context, ERC2771Context) returns (address) {
-        return ERC2771Context._msgSender();
-    }
-
-    function _msgData() internal view override(Context, ERC2771Context) returns (bytes calldata) {
-        return ERC2771Context._msgData();
-    }
-
-    function _contextSuffixLength() internal view override(Context, ERC2771Context) returns (uint256) {
-        return ERC2771Context._contextSuffixLength();
     }
 }
