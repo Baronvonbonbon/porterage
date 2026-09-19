@@ -8,8 +8,5 @@
   "settlement": "0x4B70B328E970be31E6c772F89AAE7A492EBd1556",
   "disputes": "0x570758eb9C8DEE4d4A44b0221DD62024731B532d",
   "locationVerifier": "0x2c90b2bA4EA54C1151F6c311b38E8Cbe7b79F843",
-  "ratings": "0x34f9577913C1E329887477Ef682a69A8D2bD3223",
-  "network": "polkadotTestnet",
-  "chainId": 420420417,
-  "deployedAt": "2026-09-19T19:14:29.804Z"
+  "ratings": "0x34f9577913C1E329887477Ef682a69A8D2bD3223"
 }

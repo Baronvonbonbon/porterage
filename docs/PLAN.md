@@ -305,9 +305,12 @@ Each phase ends with something that runs on a phone.
       dropoff; opening and ruling clocks inside 14 days), `Ratings`, `GovernanceRouter`,
       `PauseRegistry`, and the two verifiers. **Done 2026-09-19:** ported from FARE with the forwarder
       removed, driver session keys, event-time evidence (`PorterDisputes.commitEvidence`) and an
-      off-by-default personhood gate. 178 tests pass. Not done: deployment.
+      off-by-default personhood gate. 178 tests pass.
 - [x] Carry FARE's tests over, and add session keys, evidence and the personhood gate.
-- [ ] Deploy to Paseo Asset Hub. Build the PolkaVM target too, with the 256 KiB blob gate.
+- [x] Deploy to Paseo Asset Hub (EVM bytecode, 2026-09-19): `npm run deploy-key` once, then
+      `npm run deploy`. All 17 wiring checks pass; the full deploy cost about 9 PAS. Addresses are
+      in `deployed-addresses.json` and `web/src/deployed.json`.
+- [ ] Build the PolkaVM target too, with the 256 KiB blob gate.
 
 ### Phase 2 — The app shell
 

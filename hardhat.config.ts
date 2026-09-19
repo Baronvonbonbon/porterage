@@ -8,7 +8,15 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import * as dotenv from "dotenv";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 dotenv.config();
+
+// The deployer key lives outside the repo (tools/deploy-key.mjs; `npm run deploy-key`).
+const KEY_FILE = process.env.PORTERAGE_DEPLOY_KEY ?? join(homedir(), ".config", "porterage", "deploy-key");
+const DEPLOYER_KEY =
+  process.env.DEPLOYER_PRIVATE_KEY ?? (existsSync(KEY_FILE) ? readFileSync(KEY_FILE, "utf8").trim() : undefined);
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -38,9 +46,9 @@ const config: HardhatUserConfig = {
       // Caveat: eth_getCode currently hangs on Asset Hub (see pine-rpc
       // CAPABILITIES.md); deploy.ts skips code verification on this network.
       url: process.env.PINE_RPC ?? "http://127.0.0.1:8545",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY
+      accounts: DEPLOYER_KEY
         ? [
-            process.env.DEPLOYER_PRIVATE_KEY,
+            DEPLOYER_KEY,
             ...(process.env.TESTNET_ACCOUNTS ?? "").split(",").filter(Boolean),
           ]
         : [],
@@ -53,9 +61,9 @@ const config: HardhatUserConfig = {
       //  - getTransactionReceipt can return null for confirmed txs
       //    (deploy script uses nonce polling + getCreateAddress)
       url: process.env.TESTNET_RPC ?? "https://eth-rpc-testnet.polkadot.io/",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY
+      accounts: DEPLOYER_KEY
         ? [
-            process.env.DEPLOYER_PRIVATE_KEY,
+            DEPLOYER_KEY,
             ...(process.env.TESTNET_ACCOUNTS ?? "").split(",").filter(Boolean),
           ]
         : [],

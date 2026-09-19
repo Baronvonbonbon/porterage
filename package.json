@@ -7,7 +7,9 @@
   "scripts": {
     "build": "hardhat compile",
     "test": "hardhat test",
-    "size": "hardhat size-contracts"
+    "size": "hardhat size-contracts",
+    "deploy-key": "node tools/deploy-key.mjs",
+    "deploy": "hardhat run scripts/deploy.ts --network polkadotTestnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
