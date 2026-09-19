@@ -9,10 +9,16 @@
     "test": "hardhat test",
     "size": "hardhat size-contracts",
     "deploy-key": "node tools/deploy-key.mjs",
-    "deploy": "hardhat run scripts/deploy.ts --network polkadotTestnet"
+    "deploy": "hardhat run scripts/deploy.ts --network polkadotTestnet",
+    "name-key": "node tools/name-key.mjs",
+    "deploy:app": "node tools/publish-app.mjs"
   },
   "devDependencies": {
+    "@noble/hashes": "^1.8.0",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@polkadot-community-foundation/polkadot-app-deploy": "0.16.6",
+    "@polkadot-labs/hdkd": "^0.0.28",
+    "@polkadot-labs/hdkd-helpers": "^0.0.29",
     "circomlib": "^2.0.5",
     "circomlibjs": "^0.1.7",
     "dotenv": "^16.4.5",

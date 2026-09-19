@@ -319,7 +319,7 @@ Each phase ends with something that runs on a phone.
 - [x] Key derivation (§3.1) from `deriveEntropy`, and driver onboarding: register with a session
       key, fund it, rotate it. Host accounts call contracts through `Revive.call`; this runtime maps
       accounts automatically, so there is no `map_account` step. Not yet tried on a phone.
-- [ ] Publish to a `.dot` label with a local deploy key.
+- [x] Publish to a `.dot` label with a local deploy key: `porterage.dot`, owned by the name key (docs/DEPLOY.md).
 
 ### Phase 3 — Money
 
