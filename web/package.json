@@ -9,7 +9,8 @@
     "abi": "node tools/abi.mjs",
     "build": "node tools/abi.mjs && tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "relay": "vite-node tools/relay.ts"
   },
   "dependencies": {
     "@parity/product-sdk-host": "0.19.1",

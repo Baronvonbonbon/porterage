@@ -217,6 +217,32 @@ export async function notePathsAt(
   });
 }
 
+/**
+ * The block a leaf was inserted in, searching from `from`. Ethereum logs first
+ * (a peer's withdrawal is an Ethereum transaction); failing that, the blocks
+ * where the tree grew are read from Substrate.
+ */
+export async function findLeafBlock(
+  provider: Provider,
+  pool: string,
+  leaf: bigint,
+  from: number,
+  fromSubstrate: BlockInserts,
+): Promise<number | null> {
+  const head = await provider.getBlockNumber();
+  const hit = (await insertLogs(provider, pool, from, head)).find((l) => l.leaf === leaf);
+  if (hit) return hit.block;
+  const read = new Contract(pool, POOL_ABI, provider);
+  const size = async (b: number) => Number(await read.treeSize({ blockTag: b }));
+  const search = async (a: number, b: number): Promise<number | null> => {
+    if ((await size(b)) === (await size(a - 1))) return null;
+    if (a === b) return (await fromSubstrate(a)).includes(leaf) ? a : null;
+    const m = (a + b) >> 1;
+    return (await search(a, m)) ?? (await search(m + 1, b));
+  };
+  return search(from, head);
+}
+
 // ── right side, at spend time ────────────────────────────────────────────────
 
 /** Root of the subtree covering [start, start + 2^lv) from the known leaves. */

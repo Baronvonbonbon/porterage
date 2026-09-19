@@ -24,12 +24,16 @@ export interface NoteRecord {
   path?: NotePath;
   /** A deposit was sent and its outcome isn't known yet. Recoverable from the pool. */
   pendingSince?: number;
+  /** A funding request spending this note is out; the burner it pays, and when. */
+  spending?: { burner: number; change: number; since: number; tip: string };
   spent?: boolean;
 }
 
 interface Book {
   next: number;
   notes: NoteRecord[];
+  /** Burners handed out so far; burner n's key is deriveEntropy("porterage:burner:<n>"). */
+  burners?: number;
 }
 
 const KEY = "porterage.notes.v1";
@@ -145,6 +149,20 @@ export function dropNotes(ns: number[]): Promise<void> {
   });
 }
 
+export function nextBurner(): Promise<number> {
+  return update((book) => {
+    const n = book.burners ?? 0;
+    book.burners = n + 1;
+    return n;
+  });
+}
+
+export function markSpending(n: number, spending: NoteRecord["spending"]): Promise<void> {
+  return update((book) => {
+    for (const r of book.notes) if (r.n === n) r.spending = spending;
+  });
+}
+
 export function markSpent(n: number): Promise<void> {
   return update((book) => {
     for (const r of book.notes) if (r.n === n) r.spent = true;
@@ -154,7 +172,7 @@ export function markSpent(n: number): Promise<void> {
 /** Unspent, settled notes of one asset, smallest first. */
 export async function spendable(asset = NATIVE): Promise<NoteRecord[]> {
   return (await allNotes())
-    .filter((r) => !r.spent && r.path && BigInt(r.asset) === asset)
+    .filter((r) => !r.spent && !r.spending && r.path && BigInt(r.asset) === asset)
     .sort((a, b) => (BigInt(a.value) < BigInt(b.value) ? -1 : 1));
 }
 

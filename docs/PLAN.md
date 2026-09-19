@@ -331,7 +331,18 @@ Each phase ends with something that runs on a phone.
       not yet from the phone.
 - [ ] Swaps into PAS before shielding, and from PAS into the escrow token at the burner, for each
       accepted token; drop any token without a PAS pair.
-- [ ] The funding market: request format, the submitter loop, fees.
+- [x] Withdrawal to a fresh burner: the proof (Kusama Shield withdraw_v7, 32.8 MiB key shipped with the
+      app and checked by SHA-256), a derived change note, and recovery of requests left over from an
+      earlier session. Verified live from node on 2026-09-19: deposit, an 11.4 s proof, a submission
+      from a different key (32,490 gas), 0.4 PAS at the burner, and the change note's path reaching the
+      live root.
+- [x] The funding market: a 426-byte request on the Statement Store (topic `porterage:fund:v1`, one
+      channel per requester, one hour's expiry), submitters on drivers' session keys ("Help fund
+      private orders") and the optional relay (`npm run relay`), which reads both People chains.
+      **Fee:** the burner tips the submitter after it's funded. The proof binds only the recipient, so
+      the tip is on trust; a fee splitter the proof pays into is the mainnet fix (§9).
+- [ ] The funding market from the phone: the proof's time on the phone, and a request posted by the
+      host reaching a submitter.
 - [ ] Batched shielded payouts and `flush()`.
 
 ### Phase 4 — Delivery
@@ -370,7 +381,9 @@ notifications. Each is a convenience, turned on per region.
 
 Not started until Phase 7 passes. It needs:
 
-- Funding-market fees that cover real gas prices, and enough online submitters.
+- Funding-market fees that cover real gas prices, and enough online submitters. The tip must stop
+  being on trust: withdraw to a fee splitter at a CREATE2 address derived from (burner, fee), so the
+  proof itself fixes both payments, and anyone can then split it.
 - An anonymity set large enough to mean something.
 - Evidence storage and contracts on networks with the same lifetime (the devnet resets).
 - A trusted setup with more than one party (FARE's single-party ceremony doesn't carry over).

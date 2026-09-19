@@ -27,3 +27,4 @@ signed. Registering an unowned label needs `--register` and the label typed back
 | 2026-09-19 | Registered `porterage.dot` | Owner: the name key, `5GVobt2azMJ3PjZxtc935wJJL3aDEM9cQoSU3C8d12ZrxVtu` / `0xc05764d1eea94660ec073ab288f5cd0bf5d85061`. 11 PAS paid. Funded with 20 PAS from sonde's deploy key. |
 | 2026-09-19 | Published | `bafybeihmklscserz4j6pwpbwhhooktramdsfqopwuz62x5qtjjcmwodo6y`. The first run registered the name, but its contenthash step timed out after 300 s; the re-run set it. |
 | 2026-09-19 | Published the private balance screen | `bafybeiewfiinn276mrigc22j53c3ubqhhh4umwplluvf67djozvs5hin5e` |
+| 2026-09-19 | Published withdrawals and the funding market, with the 32.8 MiB proving key | `bafybeicbqnb4d5awqi57cillg72drnfmrlhyxeo73bhav6xelhzacdhtfi`. 38.6 MB in 32 Bulletin chunks; the publish took 9 min 51 s. |

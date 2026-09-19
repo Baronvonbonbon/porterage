@@ -11,7 +11,8 @@
     "deploy-key": "node tools/deploy-key.mjs",
     "deploy": "hardhat run scripts/deploy.ts --network polkadotTestnet",
     "name-key": "node tools/name-key.mjs",
-    "deploy:app": "node tools/publish-app.mjs"
+    "deploy:app": "node tools/publish-app.mjs",
+    "relay": "npm run relay --prefix web"
   },
   "devDependencies": {
     "@noble/hashes": "^1.8.0",

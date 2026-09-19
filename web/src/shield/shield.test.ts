@@ -75,3 +75,55 @@ describe("paths", () => {
     expect(batchNotePaths(5, side, leaves.slice(5))).toEqual(all.slice(5));
   });
 });
+
+import { REQUEST_BYTES, decodeRequest, encodeRequest } from "../market/request";
+import { contextFor } from "./pool";
+import { decodeStatement } from "../market/scale";
+
+describe("funding request", () => {
+  const recipient = "0x329abA8a30B10E13bfb9f6dD28d0dc34ceDb92a8";
+  const withdrawn = 13n * 10n ** 17n;
+  const proof = {
+    recipient,
+    pA: ["1", "2"] as [string, string],
+    pB: [["3", "4"], ["5", "6"]] as [[string, string], [string, string]],
+    pC: ["7", "8"] as [string, string],
+    pubSignals: ["101", "102", "103", withdrawn.toString(), "128", contextFor(recipient).toString(), "107", "0"],
+  };
+
+  it("round-trips in 426 bytes, restoring the derived signals", () => {
+    const bytes = encodeRequest({ proof, withdrawn, fee: 3n * 10n ** 17n });
+    expect(bytes.length).toBe(REQUEST_BYTES);
+    const back = decodeRequest(bytes);
+    expect(back.proof).toEqual(proof);
+    expect(back.withdrawn).toBe(withdrawn);
+    expect(back.fee).toBe(3n * 10n ** 17n);
+  });
+
+  it("refuses a proof whose signals disagree with the request", () => {
+    expect(() => encodeRequest({ proof, withdrawn: withdrawn + 1n, fee: 0n })).toThrow();
+  });
+});
+
+describe("statement decoding", () => {
+  it("reads topics, channel, expiry and data", () => {
+    const topic = new Uint8Array(32).fill(7);
+    const channel = new Uint8Array(32).fill(9);
+    const data = new Uint8Array(300).fill(5);
+    const expiry = (1_800_000_000n << 32n) | 3n;
+    const le = (v: bigint) => Uint8Array.from({ length: 8 }, (_, i) => Number((v >> BigInt(8 * i)) & 0xffn));
+    const bytes = new Uint8Array([
+      5 << 2, // five fields
+      0, 0, ...new Uint8Array(96), // sr25519 proof
+      2, ...le(expiry),
+      3, ...channel,
+      4, ...topic,
+      8, ((300 << 2) | 1) & 0xff, (300 << 2 | 1) >> 8, ...data,
+    ]);
+    const s = decodeStatement(bytes);
+    expect(s.topics).toEqual([topic]);
+    expect(s.channel).toEqual(channel);
+    expect(s.expiry).toBe(expiry);
+    expect(s.data).toEqual(data);
+  });
+});

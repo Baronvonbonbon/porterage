@@ -7,6 +7,7 @@ import { parseEther } from "ethers";
 import { freeBalance, hostAccount, type HostAccount } from "../hostchain";
 import { allNotes, type NoteRecord } from "../shield/notes";
 import { planTopUp, topUp } from "../shield/deposit";
+import { DEFAULT_TIP, fundBurner, resumeFunding, type FundStage, type Funded } from "../shield/fund";
 import { errorText, pas, pasWei, short } from "../format";
 
 const PLANCK_PER_WEI = 10n ** 8n;
@@ -28,6 +29,10 @@ export function Wallet() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [fundAmount, setFundAmount] = useState("1");
+  const [stage, setStage] = useState<{ stage: FundStage; at: number } | null>(null);
+  const [proveMs, setProveMs] = useState<number | null>(null);
+  const [funded, setFunded] = useState<Funded | null>(null);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -43,6 +48,14 @@ export function Wallet() {
 
   useEffect(() => {
     refresh();
+    resumeFunding()
+      .then((r) => {
+        if (r.length) {
+          setFunded(r[r.length - 1]);
+          refresh();
+        }
+      })
+      .catch((e) => setError(`resuming a funding request: ${errorText(e)}`));
   }, [refresh]);
 
   const unspent = notes.filter((n) => n.path && !n.spent);
@@ -70,6 +83,38 @@ export function Wallet() {
       setBusy(null);
     }
   }
+
+  async function fund() {
+    const want = parsePas(fundAmount);
+    if (!want) return;
+    setError(null);
+    setFunded(null);
+    setProveMs(null);
+    let provingFrom = 0;
+    try {
+      const r = await fundBurner(want, (s) => {
+        const now = performance.now();
+        if (s === "proving") provingFrom = now;
+        if (s === "posting") setProveMs(Math.round(now - provingFrom));
+        setStage({ stage: s, at: now });
+      });
+      setFunded(r);
+      await refresh();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setStage(null);
+    }
+  }
+
+  const STAGE_TEXT: Record<FundStage, string> = {
+    proving: "Making the withdrawal proof on this phone. This is the slow part",
+    posting: "Posting the request. Approve it in the Polkadot app if asked",
+    waiting: "Waiting for someone online to submit it",
+    settling: "Funded. Recording the change note",
+    tipping: "Tipping whoever submitted it, from the new account",
+    done: "Done",
+  };
 
   return (
     <section>
@@ -130,6 +175,29 @@ export function Wallet() {
         Shield well ahead of ordering. A deposit followed minutes later by a spend of the same notes is easy to match
         up; hours or days apart, with other people's deposits in between, it isn't.
       </p>
+
+      <h3>Try a private account</h3>
+      <p className="muted">
+        Each order gets a fresh account funded from one note, with nothing on-chain linking it to you. The note must
+        hold the amount plus a {pasWei(DEFAULT_TIP)} tip for whoever submits the withdrawal.
+      </p>
+      <div className="actions">
+        <label>
+          Fund with <input inputMode="decimal" value={fundAmount} onChange={(e) => setFundAmount(e.target.value)} size={6} />{" "}
+          PAS
+        </label>
+        <button disabled={!!busy || !!stage || !parsePas(fundAmount)} onClick={fund}>
+          Fund a private account
+        </button>
+      </div>
+      {stage && <p className="muted">{STAGE_TEXT[stage.stage]}…</p>}
+      {proveMs !== null && <p className="muted">The proof took {(proveMs / 1000).toFixed(1)} s on this phone.</p>}
+      {funded && (
+        <p className="ok">
+          Private account {short(funded.burner.address)} holds {pasWei(funded.received)}.
+          {funded.submitter ? ` Submitted by ${short(funded.submitter)}${funded.tipped ? ", tipped" : ""}.` : ""}
+        </p>
+      )}
 
       {busy && <p className="muted">{busy}… approve it in the Polkadot app.</p>}
       {done && <p className="ok">{done}</p>}
