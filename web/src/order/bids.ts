@@ -11,10 +11,11 @@
 // driver to anyone watching.
 
 import { AbiCoder, Contract, SigningKey, Wallet, concat, getBytes, hexlify, keccak256, toUtf8Bytes } from "ethers";
+
 import { ABI, addressOf, read } from "../contracts";
 import { publishStatement, subscribeTopics } from "../market/statements";
+import { VERSION, open, seal, type Reader } from "./seal";
 
-const VERSION = 1;
 const ANNOUNCE = 3;
 const BID = 4;
 
@@ -52,13 +53,6 @@ export interface BidOpening {
   salt: string;
 }
 
-async function keyFrom(secret: SigningKey, theirs: string): Promise<CryptoKey> {
-  // The shared point's x coordinate, hashed: the standard ECDH-to-AES step.
-  const shared = getBytes(secret.computeSharedSecret(theirs));
-  const material = getBytes(keccak256(shared.slice(1, 33)));
-  return crypto.subtle.importKey("raw", material as BufferSource, "AES-GCM", false, ["encrypt", "decrypt"]);
-}
-
 const openingBytes = (o: BidOpening): Uint8Array =>
   getBytes(concat([o.driver, hexlify(bigToBytes(o.amount, 12)), o.salt]));
 
@@ -73,43 +67,16 @@ function bigToBytes(v: bigint, n: number): Uint8Array {
 }
 
 /** Encrypt an opening to the customer's key, with a throwaway key of our own. */
-export async function sealOpening(customerKey: string, opening: BidOpening): Promise<Uint8Array> {
-  const ephemeral = Wallet.createRandom();
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const body = new Uint8Array(
-    await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv },
-      await keyFrom(ephemeral.signingKey, customerKey),
-      openingBytes(opening) as BufferSource,
-    ),
-  );
-  const pub = getBytes(SigningKey.computePublicKey(ephemeral.signingKey.publicKey, true));
-  return getBytes(concat([new Uint8Array([VERSION, BID]), pub, iv, body]));
-}
-
-/** Anything holding the order account's key: a Wallet, or one derived from a seed phrase. */
-export type Reader = { signingKey: SigningKey };
+export const sealOpening = (customerKey: string, opening: BidOpening): Promise<Uint8Array> =>
+  seal(customerKey, BID, openingBytes(opening));
 
 /** Read an opening addressed to this order account. Null when it isn't one, or isn't ours. */
 export async function openSealed(burner: Reader, bytes: Uint8Array): Promise<BidOpening | null> {
-  if (bytes.length < 2 + 33 + 12 + 16 || bytes[0] !== VERSION || bytes[1] !== BID) return null;
-  const theirs = hexlify(bytes.slice(2, 35));
-  const iv = bytes.slice(35, 47);
-  try {
-    const plain = new Uint8Array(
-      await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: iv as BufferSource },
-        await keyFrom(burner.signingKey, theirs),
-        bytes.slice(47) as BufferSource,
-      ),
-    );
-    if (plain.length !== 64) return null;
-    let amount = 0n;
-    for (const byte of plain.slice(20, 32)) amount = (amount << 8n) | BigInt(byte);
-    return { driver: hexlify(plain.slice(0, 20)), amount, salt: hexlify(plain.slice(32, 64)) };
-  } catch {
-    return null; // someone else's bid, or noise on the topic
-  }
+  const plain = await open(burner, BID, bytes);
+  if (!plain || plain.length !== 64) return null;
+  let amount = 0n;
+  for (const byte of plain.slice(20, 32)) amount = (amount << 8n) | BigInt(byte);
+  return { driver: hexlify(plain.slice(0, 20)), amount, salt: hexlify(plain.slice(32, 64)) };
 }
 
 // ── the two sides ────────────────────────────────────────────────────────────

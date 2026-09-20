@@ -11,6 +11,7 @@ import { recentOrders, Status, statusName, type Order } from "../order/orders";
 import { encodePickup, nowSeconds, signPickup } from "../order/handoff";
 import { QrShow } from "./Qr";
 import { menuOf, publishMenu, type Menu, type MenuItem } from "../order/menu";
+import { basketLine, watchBaskets, type Basket } from "../order/kitchen";
 import { errorText, pasWei, short } from "../format";
 
 export function Venue() {
@@ -25,6 +26,7 @@ export function Venue() {
   const [code, setCode] = useState<{ id: string; text: string } | null>(null);
   const [menu, setMenu] = useState<Menu>({ name: "", items: [] });
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [baskets, setBaskets] = useState<Map<string, Basket>>(new Map());
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -53,6 +55,16 @@ export function Venue() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Baskets arrive sealed to the counter's key on the venue's own topic.
+  useEffect(() => {
+    if (!key || !mine.length) return;
+    let stop: (() => void) | null = null;
+    watchBaskets(key, mine[0].id, (b) => setBaskets((all) => new Map(all).set(b.orderId.toString(), b)))
+      .then((s) => (stop = s))
+      .catch((e) => setError(errorText(e)));
+    return () => stop?.();
+  }, [key, mine]);
 
   const setItem = (n: number, patch: Partial<MenuItem>) =>
     setMenu({ ...menu, items: menu.items.map((it, i) => (i === n ? { ...it, ...patch } : it)) });
@@ -165,10 +177,15 @@ export function Venue() {
               Add another item
             </button>
             <button
-              disabled={!!busy || !menu.items.some((i) => i.name.trim())}
+              disabled={!!busy || !key || !menu.items.some((i) => i.name.trim())}
               onClick={() =>
                 run("Publishing the menu", () =>
-                  publishMenu(mine[0].id, { ...menu, items: menu.items.filter((i) => i.name.trim()) }),
+                  publishMenu(mine[0].id, {
+                    ...menu,
+                    items: menu.items.filter((i) => i.name.trim()),
+                    // Customers seal their baskets to this, so only the counter reads them.
+                    counterKey: key!.signingKey.compressedPublicKey,
+                  }),
                 )
               }
             >
@@ -178,12 +195,21 @@ export function Venue() {
 
           <h3>Orders</h3>
           {orders.length === 0 && <p className="muted">No orders yet.</p>}
+          <p className="muted">
+            What was ordered reaches only this counter: the chain says how much, never what.
+          </p>
           <ul>
             {orders.map((o) => {
               const venue = mine.find((v) => v.id === o.venueId)!;
               return (
                 <li key={o.id.toString()}>
-                  #{o.id.toString()} — {statusName(o.status)}, goods {pasWei(o.orderValue)}
+                  <b>#{o.id.toString()}</b> — {statusName(o.status)}, goods {pasWei(o.orderValue)}
+                  {baskets.has(o.id.toString()) && (
+                    <>
+                      <br />
+                      <b>{basketLine(menu, baskets.get(o.id.toString())!)}</b>
+                    </>
+                  )}
                   {o.driver !== "0x0000000000000000000000000000000000000000" && ` — driver ${short(o.driver)}`}
                   {o.status === Status.Assigned && key && (
                     <>

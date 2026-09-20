@@ -132,3 +132,35 @@ describe("delivery photos", () => {
     await expect(openPhoto(stranger, driver.publicKey, sealed)).rejects.toThrow();
   });
 });
+
+import { decodeBasket, encodeBasket, basketLine } from "./kitchen";
+import { open as openEnvelope, seal } from "./seal";
+
+describe("baskets", () => {
+  const basket = { orderId: 42n, items: new Map([["a", 2], ["b", 1], ["c", 0]]) };
+
+  it("pack an order's items into a few bytes", () => {
+    const bytes = encodeBasket(basket);
+    expect(bytes.length).toBe(12); // 8 for the order, 2 per item picked
+    const back = decodeBasket(bytes)!;
+    expect(back.orderId).toBe(42n);
+    expect([...back.items]).toEqual([["a", 2], ["b", 1]]);
+    expect(decodeBasket(new Uint8Array(3))).toBe(null);
+  });
+
+  it("read as a line for the counter", () => {
+    const menu = { name: "x", items: [{ id: "a", name: "Coffee", price: 1n }, { id: "b", name: "Bun", price: 1n }] };
+    expect(basketLine(menu, basket)).toBe("2× Coffee, 1× Bun");
+    expect(basketLine(null, basket)).toBe("2× a, 1× b");
+  });
+
+  it("only the counter can read one", async () => {
+    const counter = new SigningKey(hexlify(new Uint8Array(32).fill(13)));
+    const stranger = new SigningKey(hexlify(new Uint8Array(32).fill(17)));
+    const sealed = await seal(counter.compressedPublicKey, 5, encodeBasket(basket));
+    expect(await openEnvelope({ signingKey: counter }, 5, sealed)).toEqual(encodeBasket(basket));
+    expect(await openEnvelope({ signingKey: stranger }, 5, sealed)).toBe(null);
+    // A different kind of envelope is not this one.
+    expect(await openEnvelope({ signingKey: counter }, 4, sealed)).toBe(null);
+  });
+});

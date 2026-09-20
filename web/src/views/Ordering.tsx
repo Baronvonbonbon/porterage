@@ -111,6 +111,7 @@ export function Ordering() {
           venueId: BigInt(venueId),
           drop: { lat: drop.lat, lon: drop.lon },
           orderValue: basket !== null && basket > 0n ? basket : BigInt(Math.round(Number(goods) * 1e6)) * 10n ** 12n,
+          basket: menu ? { items: picked, counterKey: menu.counterKey } : undefined,
           tip: 0n,
           maxFare: BigInt(Math.round(Number(maxFare) * 1e6)) * 10n ** 12n,
         }
@@ -232,6 +233,9 @@ export function Ordering() {
                   ))}
                   <p className="muted">
                     {basket && basket > 0n ? `${basketText(menu, picked)} — ${pasWei(basket)}` : "Pick something from the menu."}
+                    {menu.counterKey
+                      ? " The counter is told what to make, sealed to it alone."
+                      : " This menu has no counter key, so the venue will only see the amount."}
                   </p>
                 </>
               ) : (

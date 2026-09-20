@@ -13,6 +13,7 @@ import { ethProvider } from "../contracts";
 import { DEFAULT_TIP, fundBurner, type FundStage } from "../shield/fund";
 import { allOrders, rememberOrder, type OrderRecord } from "../shield/notes";
 import { announceOrder } from "./bids";
+import { sendBasket } from "./kitchen";
 import { b32, positionCommit, randomSalt, type Position } from "./geo";
 import { ORDER_GAS_RESERVE, createOrder, escrowFor } from "./orders";
 
@@ -21,6 +22,8 @@ export type PlaceStage = FundStage | "creating" | "announcing" | "placed";
 export interface OrderPlan {
   venueId: bigint;
   drop: Position;
+  /** What was picked from the menu, and the counter's key to seal it to. */
+  basket?: { items: Map<string, number>; counterKey?: string };
   /** Goods value owed to the venue. */
   orderValue: bigint;
   tip: bigint;
@@ -61,6 +64,10 @@ export async function placeOrder(
 
   onStage("announcing");
   await announceOrder(burner, orderId);
+  // The counter needs to know what to make. Sealed to its key, on the venue's topic.
+  if (plan.basket?.counterKey && plan.basket.items.size) {
+    await sendBasket(plan.venueId, plan.basket.counterKey, { orderId, items: plan.basket.items });
+  }
   onStage("placed");
   return { orderId, burner, record };
 }

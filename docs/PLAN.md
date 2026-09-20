@@ -377,6 +377,7 @@ Each phase ends with something that runs on a phone.
       1.4625 PAS after the fee) — and neither the drop, its salt nor any coordinate appears in what
       was sent.
 - [ ] A map for choosing the drop, instead of typing coordinates.
+- [ ] Order messages between the three parties (§6), on the same sealed-envelope footing.
 - [x] Photo evidence: the driver photographs the delivery, it's sealed to the two of them, stored on
       Bulletin, and its key is committed on-chain (`commitEvidence`) before the order settles — a
       disputed order never settles, which is when the photo matters. The sealing key is the ECDH
@@ -388,7 +389,10 @@ Each phase ends with something that runs on a phone.
 - [x] Venue menus on Bulletin: a small public JSON document, pointed at by the venue's on-chain
       metadata, read by customers before they have any account. The basket sets the order's goods
       value. **Not sealed**, deliberately — a menu says nothing about who orders from it.
-- [ ] The kitchen view: what the counter sees per order, and the basket travelling to the venue.
+- [x] The kitchen view: the basket travels to the counter sealed to the key its menu publishes, on the
+      venue's own topic, so the kitchen sees its orders and nobody else sees either the items or who
+      asked. The chain still says only which venue and how much. 12 bytes for an order with two items,
+      before sealing.
 
 ### Phase 5 — Messaging
 
