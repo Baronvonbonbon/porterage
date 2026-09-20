@@ -24,7 +24,9 @@ import { fileDisputeAsDriver } from "../order/dispute";
 import { driverRating, ratingText } from "../order/ratings";
 import { Camera } from "./Camera";
 import { commitPhoto } from "../order/evidence";
-import { formatDegrees } from "../order/geo";
+import { formatDegrees, metresBetween, type Position } from "../order/geo";
+import { watchAreas } from "../order/area";
+import { HerePin, useHere } from "./Here";
 import { tell } from "../notify";
 import { errorText, pasWei } from "../format";
 
@@ -59,6 +61,9 @@ export function Jobs({
     order: Order;
     text: string;
   } | null>(null);
+  const [here, setHere] = useHere();
+  /** Coarse drop areas, for the orders whose customers chose to publish one. */
+  const [areas, setAreas] = useState<Map<string, Position>>(new Map());
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -134,6 +139,25 @@ export function Jobs({
       setBusy(null);
     }
   }
+
+  // Customers may publish a coarse area with an order. Most won't, and those
+  // orders show nothing rather than a guess.
+  useEffect(() => {
+    if (!open.length) return;
+    let stop: (() => void) | null = null;
+    let gone = false;
+    watchAreas(
+      open.map((o) => o.id),
+      (orderId, cell) =>
+        setAreas((all) => new Map(all).set(orderId.toString(), cell))
+    )
+      .then((s) => (gone ? s() : (stop = s)))
+      .catch(() => undefined);
+    return () => {
+      gone = true;
+      stop?.();
+    };
+  }, [open]);
 
   useEffect(() => {
     refresh();
@@ -299,23 +323,65 @@ export function Jobs({
     );
   }
 
+  /** How far the pickup is, and the trip when the customer said. */
+  const jobs = open
+    .map((o) => {
+      const venue = venues.get(o.venueId.toString());
+      const area = areas.get(o.id.toString());
+      const pickup =
+        here && venue
+          ? metresBetween({ lat: here.lat, lon: here.lon }, venue.at)
+          : null;
+      return {
+        order: o,
+        venue,
+        area,
+        pickup,
+        trip: venue && area ? metresBetween(venue.at, area) : null,
+      };
+    })
+    .filter((j) => !here || (j.pickup !== null && j.pickup <= here.metres))
+    .sort((a, b) => (a.pickup ?? 0) - (b.pickup ?? 0));
+
+  const far = (metres: number) =>
+    metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${metres} m`;
+
   return (
     <div>
       <h3>Work</h3>
       <p className="muted">Your rating: {rating}</p>
+      <HerePin
+        here={here}
+        onChange={setHere}
+        start={venues.values().next().value?.at ?? { lat: 0, lon: 0 }}
+        what="jobs"
+      />
       {open.length === 0 && (
         <p className="muted">No orders are open right now.</p>
       )}
-      {open.map((o) => {
-        const v = venues.get(o.venueId.toString());
+      {open.length > 0 && jobs.length === 0 && (
+        <p className="muted">
+          Nothing within {((here?.metres ?? 0) / 1000).toFixed(1)} km —{" "}
+          {open.length} open further out.
+        </p>
+      )}
+      {jobs.map(({ order: o, venue: v, pickup, trip }) => {
         return (
           <div key={o.id.toString()} className="actions">
             <p>
               <b>#{o.id.toString()}</b> — collect from venue #
               {o.venueId.toString()}
-              {v &&
-                ` at ${formatDegrees(v.at.lat)}, ${formatDegrees(v.at.lon)}`}
+              {pickup !== null
+                ? `, ${far(pickup)} from you`
+                : v &&
+                  ` at ${formatDegrees(v.at.lat)}, ${formatDegrees(v.at.lon)}`}
               , goods {pasWei(o.orderValue)}, pays up to {pasWei(o.maxFare)}
+              <br />
+              <span className="muted">
+                {trip !== null
+                  ? `drop: about ${far(trip)} from the venue`
+                  : "drop: not said — you'll learn it at the door"}
+              </span>
             </p>
             <label>
               Bid{" "}

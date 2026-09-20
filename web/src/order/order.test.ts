@@ -17,6 +17,14 @@ import { TILE, latToY, lonToX, panned, wrapX, xToLon, yToLat } from "./tiles";
 import { openWithKey, photoKeyOf } from "./evidence";
 import { decodeCase, encodeCase } from "./dispute";
 import { ratingText } from "./ratings";
+import {
+  CELL,
+  cellOf,
+  cellVagueness,
+  cellWidth,
+  decodeArea,
+  encodeArea,
+} from "./area";
 import { decodeSignal, encodeSignal, readSdp, writeSdp } from "./live";
 import { slashExceedsStake, splitEscrow } from "../ops/ruling";
 import {
@@ -567,5 +575,61 @@ describe("live signalling", () => {
     // Trailing rubbish means it isn't ours, not that it's a short signal.
     const bytes = encodeSignal(readSdp(SDP)!);
     expect(decodeSignal(Uint8Array.from([...bytes, 0]))).toBe(null);
+  });
+});
+
+describe("coarse areas", () => {
+  const drop = { lat: 37_784_900, lon: -122_419_400 }; // San Francisco
+
+  it("put everything in a cell in the same cell, whichever corner you start from", () => {
+    const cell = cellOf(drop);
+    // A metre away is the same square; that is the whole point.
+    expect(cellOf({ lat: drop.lat + 100, lon: drop.lon + 100 })).toEqual(cell);
+    expect(cellOf({ lat: drop.lat - 100, lon: drop.lon - 100 })).toEqual(cell);
+    // The centre of a cell is in its own cell.
+    expect(cellOf(cell)).toEqual(cell);
+  });
+
+  it("never move a home around, so repeated orders can't be averaged down", () => {
+    // The danger with a fuzzed position is that many samples converge on the
+    // truth. A grid gives the identical answer every time instead.
+    const answers = new Set(
+      Array.from({ length: 50 }, () => JSON.stringify(cellOf(drop)))
+    );
+    expect(answers.size).toBe(1);
+  });
+
+  it("keep a cell about a kilometre across, even far from the equator", () => {
+    // 0.01° of longitude is much narrower at 60° than at the equator, so the
+    // grid widens to compensate rather than quietly revealing more.
+    expect(cellWidth(0)).toBe(CELL);
+    expect(cellWidth(60_000_000)).toBeGreaterThan(CELL * 1.9);
+    for (const lat of [0, 37_000_000, 60_000_000, 75_000_000]) {
+      const off = cellVagueness(lat);
+      expect(off).toBeGreaterThan(600);
+      expect(off).toBeLessThan(900);
+    }
+  });
+
+  it("carry an area in a statement, and refuse anything else", () => {
+    const bytes = encodeArea(42n, cellOf(drop));
+    expect(bytes.length).toBe(18);
+    const back = decodeArea(bytes)!;
+    expect(back.orderId).toBe(42n);
+    expect(back.cell).toEqual(cellOf(drop));
+    // Southern and western positions are negative, and must survive.
+    const sydney = cellOf({ lat: -33_868_800, lon: 151_209_300 });
+    expect(decodeArea(encodeArea(7n, sydney))!.cell).toEqual(sydney);
+    expect(decodeArea(bytes.slice(0, 17))).toBe(null);
+    expect(decodeArea(new Uint8Array(18))).toBe(null);
+  });
+
+  it("tell a driver roughly how far a job goes, without telling it where", () => {
+    const cell = cellOf(drop);
+    const venue = { lat: 37_774_900, lon: -122_419_400 };
+    const roughly = metresBetween(venue, cell);
+    const truth = metresBetween(venue, drop);
+    // Useful for deciding whether to bid, and wrong by less than the cell.
+    expect(Math.abs(roughly - truth)).toBeLessThan(cellVagueness(cell.lat));
   });
 });

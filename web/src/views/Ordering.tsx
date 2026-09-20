@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Wallet } from "ethers";
 import { deployed } from "../contracts";
 import { allVenues, venueOf, type Venue } from "../order/venue";
-import { formatDegrees, parseDegrees } from "../order/geo";
+import { formatDegrees, metresBetween, parseDegrees } from "../order/geo";
 import {
   acceptBid,
   cancelOrder,
@@ -42,6 +42,8 @@ import {
 import { PHASE_DROPOFF } from "../order/handoff";
 import { basketTotal, basketText, menuOf, type Menu } from "../order/menu";
 import { watchIntros } from "../order/chat";
+import { cellOf, cellVagueness, publishArea } from "../order/area";
+import { HerePin, useHere } from "./Here";
 import { disputeOf, fileDispute, type Filed } from "../order/dispute";
 import {
   driverRating,
@@ -104,6 +106,9 @@ export function Ordering() {
   const [filed, setFiled] = useState<Filed | null>(null);
   /** Reputation, read on demand: venue id or driver address to its text. */
   const [stars, setStars] = useState<Map<string, string>>(new Map());
+  const [here, setHere] = useHere();
+  /** Publish a coarse area with the order, so drivers can judge the trip. */
+  const [tellArea, setTellArea] = useState(false);
   const stop = useRef<(() => void) | null>(null);
 
   const refresh = useCallback(async () => {
@@ -280,6 +285,11 @@ export function Ordering() {
     setError(null);
     try {
       const { record } = await placeOrder(plan, setStage);
+      if (tellArea) {
+        // After the order exists, and never as part of placing it: a failed
+        // area must not lose an order that already went through.
+        await publishArea(BigInt(record.id), plan.drop).catch(() => undefined);
+      }
       await refresh();
       await openOrder(record);
     } catch (e) {
@@ -399,6 +409,23 @@ export function Ordering() {
     }
   }
 
+  /** Distance from the saved pin, nearest first, and only what's in range. */
+  const near = (() => {
+    const rows = venues.map((v) => ({
+      ...v,
+      away: here ? metresBetween({ lat: here.lat, lon: here.lon }, v.at) : null,
+    }));
+    if (!here) return rows;
+    return rows
+      .filter((v) => v.away !== null && v.away <= here.metres)
+      .sort((a, b) => (a.away ?? 0) - (b.away ?? 0));
+  })();
+
+  const fromHere = (metres: number) =>
+    metres >= 1000
+      ? `${(metres / 1000).toFixed(1)} km away`
+      : `${metres} m away`;
+
   const chosenVenue = venues.find((v) => v.id.toString() === venueId);
 
   if (mapping && chosenVenue) {
@@ -442,6 +469,14 @@ export function Ordering() {
 
       {!live && (
         <>
+          {near.length === 0 && venues.length > 0 ? (
+            <p className="notice">
+              No venues within {((here?.metres ?? 0) / 1000).toFixed(1)} km.{" "}
+              <button className="link" onClick={() => setHere(null)}>
+                Show them all
+              </button>
+            </p>
+          ) : null}
           {venues.length === 0 ? (
             <p className="notice">
               No venues have registered yet. Open Sell on another phone to add
@@ -449,17 +484,23 @@ export function Ordering() {
             </p>
           ) : (
             <div className="actions">
+              <HerePin
+                here={here}
+                onChange={setHere}
+                start={venues[0].at}
+                what="venues"
+              />
               <p className="muted">From</p>
               <Choose
                 label="Venue"
                 value={venueId}
                 onPick={setVenueId}
-                choices={venues.map((v) => ({
+                choices={near.map((v) => ({
                   value: v.id.toString(),
                   label: `#${v.id.toString()}`,
-                  note: `at ${formatDegrees(v.at.lat)}, ${formatDegrees(
-                    v.at.lon
-                  )}`,
+                  note: `${stars.get(v.id.toString()) ?? "…"}${
+                    v.away === null ? "" : ` — ${fromHere(v.away)}`
+                  }`,
                 }))}
               />
               {menu ? (
@@ -537,6 +578,26 @@ export function Ordering() {
                   size={11}
                 />
               </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={tellArea}
+                  onChange={(e) => setTellArea(e.target.checked)}
+                />{" "}
+                Let drivers see roughly where this goes
+              </label>
+              {tellArea && drop.lat !== null && drop.lon !== null && (
+                <p className="warn">
+                  Publishes a square about a kilometre across —{" "}
+                  {formatDegrees(cellOf({ lat: drop.lat, lon: drop.lon }).lat)},{" "}
+                  {formatDegrees(cellOf({ lat: drop.lat, lon: drop.lon }).lon)},
+                  give or take {cellVagueness(drop.lat)} m — so drivers can see
+                  how far the trip is before bidding. It is public, and it is
+                  the same square every time you deliver here, so a home that
+                  orders often is a home in a known square. Your exact drop
+                  still never leaves this phone.
+                </p>
+              )}
               <button
                 className="link"
                 disabled={!chosenVenue}

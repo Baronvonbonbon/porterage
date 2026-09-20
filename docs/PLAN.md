@@ -411,6 +411,22 @@ Each phase ends with something that runs on a phone.
       asked. The chain still says only which venue and how much. 12 bytes for an order with two items,
       before sealing.
 
+- [x] Distance filtering, both sides (2026-09-20). A pin kept in the device's encrypted storage,
+      set on the map or typed, with a radius — never published, because the filtering happens here on
+      a list the device already has, so nobody learns what anyone searched for. Customers see venues
+      within the radius, nearest first, with their ratings; drivers see jobs whose **pickup** is
+      within it, which costs nothing because a venue's pin is already public on-chain.
+      Drop distance is the interesting half. An order carries only Poseidon(lat, lon, salt), so a
+      driver bidding has no idea whether the trip is round the corner or across the city. A customer
+      MAY publish a coarse area — opt-in, per order, never automatic (`web/src/order/area.ts`), shown
+      with what it costs before it is sent. It is a **fixed grid, not a fuzzed position**: a published
+      point of "the drop plus a random kilometre" would be an independent sample each time, and
+      several orders from one address would average down to the doorstep. A grid gives the same
+      square every time, however many orders are placed, and it never narrows. Cells are about 1.1 km
+      and the longitude step is scaled by latitude, so a cell doesn't quietly shrink to 500 m up north
+      while still claiming a kilometre. Drivers see "drop: about 2.3 km from the venue", or "not said
+      — you'll learn it at the door" for the customers who didn't opt in.
+
 ### Phase 5 — Messaging
 
 - [x] Statement Store channels with expiry, sealed. Every publish sets one, and every party's

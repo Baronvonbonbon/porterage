@@ -88,6 +88,8 @@ interface Book {
   /** Burners handed out so far; burner n's key is deriveEntropy("porterage:burner:<n>"). */
   burners?: number;
   threads?: ThreadRecord[];
+  /** Where this device says it is, and how far it cares to look. Never sent. */
+  here?: { lat: number; lon: number; metres: number };
 }
 
 const KEY = "porterage.notes.v1";
@@ -317,6 +319,28 @@ export function rememberSaid(
     // for messages that can no longer reach the other side.
     if (t.mine.length > 32) t.mine = t.mine.slice(-32);
     return t.mine;
+  });
+}
+
+/**
+ * The pin this device filters by, and the radius. It is kept in the encrypted
+ * book and never published: a driver's own position is nobody's business, and
+ * the filtering it drives all happens here.
+ */
+export function savedHere(): Promise<{
+  lat: number;
+  lon: number;
+  metres: number;
+} | null> {
+  return queue.then(load).then((b) => b.here ?? null);
+}
+
+export function saveHere(
+  here: { lat: number; lon: number; metres: number } | null
+): Promise<void> {
+  return update((book) => {
+    if (here) book.here = here;
+    else delete book.here;
   });
 }
 
