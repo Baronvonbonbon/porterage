@@ -1,0 +1,132 @@
+# Improvements
+
+A working list, kept next to `PLAN.md` rather than inside it: the plan is what the product is,
+this is how well it does it. Written 2026-09-20, after the delivery, money, dispute and messaging
+phases were all in place and before any of it had been used in anger on a phone.
+
+Each item says what it touches and what it costs, and each is meant to be buildable on its own.
+Where something can be swapped out later, the seam is named.
+
+---
+
+## 0. The drop never reaches the driver — a blocker, not a polish item
+
+**The bug.** A driver can bid, win, collect from the venue and then has nowhere to go. The order
+carries only `Poseidon(lat, lon, salt)`; the coarse area is opt-in and a kilometre wide; the exact
+drop is revealed at the door, by which time the driver has to already be at it. The proximity proof
+works. The delivery does not.
+
+**The fix.** When a bid is accepted, the customer seals the exact drop to the winning driver and
+nobody else. The driver's key is already in hand — it introduces itself on the order topic the
+moment it has the job (`order/chat.ts` `introduce`) — so this is one more sealed envelope on the
+pair thread that already exists, kind 13.
+
+- The chain still sees only the commitment. The public record does not change at all.
+- One party learns the address: the one delivering to it. That is inherent to delivery, and the
+  protection that remains is the one that matters — the order is placed by a burner, so the driver
+  learns a place, not a person, and a different order uses a different account.
+- It should be automatic on assignment, not a button. A driver stuck outside with no address is a
+  failed delivery, and "did you remember to send it" is not a design.
+- Until it lands, the coarse area is the only hint a driver has, and that is not good enough.
+
+**Touches** `order/drop.ts` (new), `views/Ordering.tsx` (send on acceptance), `views/Jobs.tsx`
+(show it, with navigation). **Costs** nothing on-chain; one statement per order.
+
+---
+
+## 1. A visual pass over the whole app
+
+The app is deliberately plain: one stylesheet, semantic elements, no framework. That was right for
+getting here and is now the thing holding it back. The pass should stay within that constraint —
+no UI library — and fix what plainness cost:
+
+- **A type and spacing scale.** Sizes are currently ad hoc. Six steps, one rhythm, applied through
+  the existing custom properties in `styles.css` so nothing else has to change.
+- **States, not just happy paths.** Every screen needs a loading, empty, error and finished look.
+  Several currently render nothing while they wait, which reads as broken on a slow phone.
+- **Hierarchy on the order and job screens.** Both are flat runs of `<dl>` and `<p>`. The one thing
+  someone needs next should be the largest thing on the screen.
+- **Money and distance formatting in one place.** `format.ts` has some of it; `pasWei`, the ad hoc
+  `far()` in Jobs and the `KM()` in Here should be one module.
+- **Dark mode**, since the host has a theme provider (`getThemeProvider`) and the app ignores it.
+
+**Seam:** all of it lands in `styles.css` custom properties and a handful of small components. No
+view logic changes.
+
+## 2. Forms and pickers that behave inside the app
+
+The `<select>` bug — the list rendered, nothing could be picked, ordering was impossible on a phone
+— is unlikely to be the only one. `views/Choose.tsx` fixed that case. What is left:
+
+- **Audit every input.** Numbers, decimals, checkboxes, the camera, the textareas in the QR
+  fallback. Each needs to be confirmed on a device, not assumed.
+- **Amount entry.** Typing "1.5" into a bare text box is how people fund the wrong thing by a
+  factor of ten. Steppers and preset chips for the common amounts.
+- **A picker module** (`views/pickers/`) holding Choose, Stars, the amount field and the map pick,
+  so the next thing that turns out to be broken in the WebView is fixed in one place.
+- **Validation that says what is wrong** next to the field, rather than an error at the bottom
+  after the tap.
+
+**Seam:** one directory, one export per control. Views import controls, never raw inputs.
+
+## 3. Venue labels and filtering
+
+A fixed vocabulary in the menu JSON on Bulletin — free to change, no contract work, and it filters
+cleanly because everybody uses the same words. Free text was considered and rejected: "coffee",
+"Coffee" and "espresso bar" are three filters.
+
+- Starting set: `coffee`, `bakery`, `hot-food`, `groceries`, `pharmacy`, `alcohol`, `hardware`,
+  `other`. Enough to be useful, short enough to show as chips.
+- The venue picks up to two when publishing its menu (`views/Venue.tsx`), and they ride in the menu
+  document (`order/menu.ts`).
+- Customers filter by label beside the distance filter already there, using the same `Choose`
+  control.
+- **The cost, and it is real:** filtering by label means fetching every venue's menu from Bulletin
+  before the list can be drawn. Today the app only fetches the chosen venue's. Either accept the
+  delay, cache menus in the encrypted book, or move the category on-chain later.
+
+**Seam:** `order/labels.ts` holds the vocabulary. Moving it on-chain later changes that module and
+the filter's data source, not the UI.
+
+## 4. Open a location in a map app
+
+**What is known:** the host exposes `navigateTo(url)`, and sonde measured it passing on the phone
+in 28–44 ms. **What is not known:** whether it hands a `geo:` URI to the OS so a real map app
+opens, or navigates the WebView. That is one probe away and should be measured before the UI
+promises anything.
+
+The ladder, in `order/directions.ts`:
+
+1. `geo:<lat>,<lon>?q=<lat>,<lon>` through `navigateTo` — the OS picks the map app.
+2. An `https://` map URL if that fails. **This tells a third party where someone is going**, so it
+   is a fallback with a warning, never the first choice.
+3. Coordinates with a copy button, which sends nothing anywhere.
+
+Offered for: the venue (public, safe, useful to both customer and driver), the drop **for the
+driver once item 0 has sent it**, and the coarse area when that is all there is.
+
+**Seam:** one module, one function, three strategies behind it. The probe's result changes which
+strategy runs first and nothing else.
+
+---
+
+## Smaller things worth doing
+
+- **Order history.** `allOrders()` is in the book; nothing shows a finished order.
+- **A "what is happening" line** on the order screen. Stages exist (`PlaceStage`) but only during
+  placement.
+- **Retry the things that can half-fail.** `resumeFunding` does this for tips; the basket, the
+  area and the intro do not.
+- **The venue's own rating and takings** on one screen. Both exist, neither is prominent.
+- **Cache venue menus** in the encrypted book with the menu's Bulletin key as the cache key.
+- **Copy for the privacy warnings.** There are now six or seven of them, written at different
+  times. They should read as one voice and be one module, not string literals in views.
+
+## Needs a phone before it can be built honestly
+
+- Does `navigateTo` open a map app from `geo:`?
+- Does a Bulletin write cost a tap each time, or only the first? This decides how freely the
+  archive in `order/chat.ts` can be written.
+- Do the QR handoffs, the camera, the basket to the counter and the swap work on a device at all?
+  None have been run outside a test.
+- Does a host notification actually arrive when the app is backgrounded?
