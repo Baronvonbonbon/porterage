@@ -376,7 +376,11 @@ Each phase ends with something that runs on a phone.
       acceptance, pickup (venue paid 1.0 PAS), a 923 ms proximity proof, settlement (driver paid
       1.4625 PAS after the fee) — and neither the drop, its salt nor any coordinate appears in what
       was sent.
-- [ ] A map for choosing the drop, instead of typing coordinates.
+- [x] A map for choosing the drop, instead of typing coordinates. Raster OSM tiles
+      in plain `<img>` tags (`views/MapPick.tsx`, arithmetic in `order/tiles.ts`),
+      no map library: the pin is the centre of the view, so dropping it is panning.
+      It starts at the venue, because the WebView won't give a position. Opt-in and
+      labelled: the tile server sees the rough area, typing coordinates sends nothing.
 - [ ] Order messages between the three parties (§6), on the same sealed-envelope footing.
 - [x] Photo evidence: the driver photographs the delivery, it's sealed to the two of them, stored on
       Bulletin, and its key is committed on-chain (`commitEvidence`) before the order settles — a
