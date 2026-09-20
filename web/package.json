@@ -10,7 +10,8 @@
     "build": "node tools/abi.mjs && tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "relay": "vite-node tools/relay.ts"
+    "relay": "vite-node tools/relay.ts",
+    "test:rtc": "node tools/rtc-loopback.mjs"
   },
   "dependencies": {
     "@parity/product-sdk-host": "0.19.1",

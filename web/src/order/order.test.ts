@@ -17,6 +17,7 @@ import { TILE, latToY, lonToX, panned, wrapX, xToLon, yToLat } from "./tiles";
 import { openWithKey, photoKeyOf } from "./evidence";
 import { decodeCase, encodeCase } from "./dispute";
 import { ratingText } from "./ratings";
+import { decodeSignal, encodeSignal, readSdp, writeSdp } from "./live";
 import { slashExceedsStake, splitEscrow } from "../ops/ruling";
 import {
   MAX_TEXT,
@@ -473,5 +474,98 @@ describe("ruling arithmetic", () => {
   it("notice a slash bigger than the stake, which the contract silently clamps", () => {
     expect(slashExceedsStake(5n, 4n)).toBe(true);
     expect(slashExceedsStake(4n, 4n)).toBe(false);
+  });
+});
+
+describe("live signalling", () => {
+  // A non-trickle offer of the shape the app's WebView produces — 684 B of SDP
+  // measured on a phone (polkadot-host-capabilities web.limits.webrtcLoopback).
+  const SDP = [
+    "v=0",
+    "o=- 8365371654873 2 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "a=group:BUNDLE 0",
+    "a=extmap-allow-mixed",
+    "a=msid-semantic: WMS",
+    "m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
+    "c=IN IP4 0.0.0.0",
+    "a=candidate:1829696681 1 udp 2122260223 192.168.1.42 49923 typ host generation 0",
+    "a=candidate:1829696681 2 udp 2122260223 192.168.1.42 49924 typ host generation 0",
+    "a=candidate:842163049 1 udp 1686052607 90.155.12.7 49923 typ srflx raddr 192.168.1.42 rport 49923",
+    "a=ice-ufrag:4ZcD",
+    "a=ice-pwd:by/2VVi9vUNLuNNRPFXYzOLZ",
+    "a=ice-options:trickle",
+    "a=fingerprint:sha-256 AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89",
+    "a=setup:actpass",
+    "a=mid:0",
+    "a=sctp-port:5000",
+    "a=max-message-size:262144",
+    "",
+  ].join("\r\n");
+
+  it("cut an offer down to what a statement can carry", () => {
+    const signal = readSdp(SDP)!;
+    expect(signal.ufrag).toBe("4ZcD");
+    expect(signal.fingerprint.length).toBe(32);
+    // The second component is dropped: a data channel carries no RTCP.
+    expect(signal.candidates.length).toBe(2);
+    expect(signal.candidates[0]).toEqual({
+      protocol: "udp",
+      priority: 2122260223,
+      address: "192.168.1.42",
+      port: 49923,
+      type: "host",
+    });
+    const bytes = encodeSignal(signal);
+    // 684 B of SDP, 387 as trimmed text, and this as binary — the point of the
+    // exercise being that a statement holds 512 and sealing costs 63 of them.
+    expect(bytes.length).toBeLessThan(150);
+    expect(bytes.length + 63).toBeLessThan(512);
+  });
+
+  it("round-trip a signal, IPv6 and mDNS names included", () => {
+    const signal = readSdp(SDP)!;
+    expect(decodeSignal(encodeSignal(signal))).toEqual(signal);
+
+    const odd = {
+      ...signal,
+      candidates: [
+        {
+          protocol: "tcp" as const,
+          priority: 1,
+          address: "fe80::1c2b:3d4e",
+          port: 9,
+          type: "relay",
+        },
+        {
+          protocol: "udp" as const,
+          priority: 2,
+          address: "e1b2c3d4-0000.local",
+          port: 5000,
+          type: "host",
+        },
+      ],
+    };
+    expect(decodeSignal(encodeSignal(odd))).toEqual(odd);
+  });
+
+  it("rebuild an SDP the other side can use", () => {
+    const signal = readSdp(SDP)!;
+    const rebuilt = writeSdp(signal, "offer");
+    // What matters is that the parts that differ survived, and that reading the
+    // rebuilt SDP gives back the same signal.
+    expect(readSdp(rebuilt)).toEqual(signal);
+    expect(rebuilt).toContain("a=ice-ufrag:4ZcD");
+    expect(rebuilt).toContain("webrtc-datachannel");
+    expect(writeSdp(signal, "answer")).toContain("a=setup:active");
+  });
+
+  it("refuse a signal that isn't one", () => {
+    expect(readSdp("v=0\r\n")).toBe(null);
+    expect(decodeSignal(new Uint8Array([1, 2, 3]))).toBe(null);
+    // Trailing rubbish means it isn't ours, not that it's a short signal.
+    const bytes = encodeSignal(readSdp(SDP)!);
+    expect(decodeSignal(Uint8Array.from([...bytes, 0]))).toBe(null);
   });
 });

@@ -25,6 +25,7 @@ import { driverRating, ratingText } from "../order/ratings";
 import { Camera } from "./Camera";
 import { commitPhoto } from "../order/evidence";
 import { formatDegrees } from "../order/geo";
+import { tell } from "../notify";
 import { errorText, pasWei } from "../format";
 
 export function Jobs({

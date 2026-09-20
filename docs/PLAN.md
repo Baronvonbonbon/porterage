@@ -413,9 +413,32 @@ Each phase ends with something that runs on a phone.
 
 ### Phase 5 — Messaging
 
-- [ ] Statement Store channels with expiry, sealed.
-- [ ] WebRTC chat over statement signalling; Bulletin store-and-forward for offline peers.
-- [ ] Host notifications for bids, acceptance and arrival.
+- [x] Statement Store channels with expiry, sealed. Every publish sets one, and every party's
+      statement goes on its own channel so a new one replaces the old rather than filling the
+      account. Done as the bids, baskets and threads were built.
+- [x] WebRTC chat over statement signalling. A data channel opens beside the thread when both sides
+      are online, and messages go down it at once while the statement window is still published, so
+      an absent peer catches up — the statements stay the transport of record rather than a fallback
+      nobody maintains. The signalling fits because an SDP is nearly all boilerplate between two runs
+      of the SAME app: cut to ice-ufrag, ice-pwd, the fingerprint and the candidates, and written as
+      binary (a fingerprint is 32 bytes, not 95 characters of hex; an IPv4 candidate is 11, not 60),
+      a 587-byte offer becomes **113 bytes, 176 sealed** — a statement holds 512. The peer rebuilds
+      the rest from a template. Which side calls is settled by comparing public keys, so both agree
+      without a message. `npm run test:rtc` bundles `web/tools/rtc-entry.ts` and runs a real
+      handshake in headless Chromium — the same engine family as the app's WebView — through the
+      encode/decode/rebuild path, and a message crosses it.
+      **Not proven and cannot be here:** that two phones can reach each other. There is no STUN or
+      TURN, so this connects peers on the same network and otherwise fails silently into statements.
+      A relay would fix it (Phase 8), and needing one is exactly why it is optional.
+- [ ] Bulletin store-and-forward for offline peers. The statement window covers a short absence; a
+      long one needs the sealed blob and a pointer.
+- [x] Host notifications for bids, acceptance and arrival (`web/src/notify.ts`), through the host's
+      own surface since the app has no Push API. **A notification names a kind of event and nothing
+      else** — no order, no amount, no address, no venue. It goes through the host, and the host
+      knows which person it is delivering to, so "your order #7 has a bid of 1.5 PAS" would hand over
+      the one link the rest of this design spends everything avoiding. Whoever taps it sees the
+      detail in the app, where it is nobody else's business. Each kind fires once per order per run,
+      or the polling the order screens already do would repeat it every few seconds.
 
 ### Phase 6 — Disputes, ratings, operations
 

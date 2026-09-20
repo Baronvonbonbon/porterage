@@ -25,6 +25,7 @@ import {
 } from "../order/kitchen";
 import { watchIntros, type Intro } from "../order/chat";
 import { ratingText, venueRating } from "../order/ratings";
+import { tell } from "../notify";
 import { Thread } from "./Thread";
 import { errorText, pasWei, short } from "../format";
 

@@ -52,6 +52,7 @@ import {
 } from "../order/ratings";
 import { Stars } from "./Stars";
 import { rememberOrder } from "../shield/notes";
+import { tell } from "../notify";
 import { errorText, pasWei, short } from "../format";
 
 const PAS = 10n ** 18n;
@@ -130,13 +131,14 @@ export function Ordering() {
       orderBurner(record),
     ]);
     setLive({ record, order, burner });
-    stop.current = await watchBids(burner, BigInt(record.id), (bid) =>
+    stop.current = await watchBids(burner, BigInt(record.id), (bid) => {
+      tell("bid", bid.bidHash);
       setBids((all) =>
         [...all.filter((b) => b.bidHash !== bid.bidHash), bid].sort((a, b) =>
           a.amount < b.amount ? -1 : 1
         )
-      )
-    );
+      );
+    });
   }, []);
 
   // The venue's menu lives on Bulletin; its pointer is the venue's metadata.
@@ -188,6 +190,14 @@ export function Ordering() {
       on = false;
     };
   }, [bids]);
+
+  // Say when the order moves, since the screen may not be in front of anyone.
+  useEffect(() => {
+    if (!live) return;
+    const id = live.record.id;
+    if (live.order.status === 3) tell("picked-up", id);
+    if (live.order.status >= 4) tell("delivered", id);
+  }, [live]);
 
   // Whether this order has already been rated or disputed: both are one-shot,
   // and the contract is the only place that knows.
