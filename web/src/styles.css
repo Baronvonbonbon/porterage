@@ -44,3 +44,4 @@ code { font-size: 0.85em; overflow-wrap: anywhere; }
 .qr img { width: 100%; max-width: 320px; image-rendering: pixelated; background: #fff; }
 .qr textarea, .qr-scan textarea { width: 100%; font-family: monospace; font-size: 0.8em; }
 .qr-scan video { width: 100%; max-width: 360px; background: #000; border-radius: 4px; }
+.evidence { width: 100%; max-width: 360px; border-radius: 4px; }

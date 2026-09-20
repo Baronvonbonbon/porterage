@@ -32,3 +32,4 @@ signed. Registering an unowned label needs `--register` and the label typed back
 | 2026-09-20 | Published token top-ups | `bafybeic4rvhmfgqar7lazji2d5x24jpmdr3lyz4a567j77ekwnkbvoceii` (1.5 MB incremental) |
 | 2026-09-20 | Published ordering, venues and the auction | `bafybeif2e3e4rmjvfpaiuc5uszchc4wihvh2efzvv3vjf7p5jzbhzjiike` |
 | 2026-09-20 | Published the QR handoffs and the proximity proof | `bafybeiaztukjm2b3rdfir6wd2iyfohjwvhpus6jxl5q2caomsgaxad464q` |
+| 2026-09-20 | Published menus and photo evidence | `bafybeicefnhlydlxbxkxckqywpz4yog5k4yhssb4nexnhhay7j24nde6ne` |

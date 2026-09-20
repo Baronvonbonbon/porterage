@@ -10,6 +10,7 @@ import { formatDegrees, parseDegrees } from "../order/geo";
 import { recentOrders, Status, statusName, type Order } from "../order/orders";
 import { encodePickup, nowSeconds, signPickup } from "../order/handoff";
 import { QrShow } from "./Qr";
+import { menuOf, publishMenu, type Menu, type MenuItem } from "../order/menu";
 import { errorText, pasWei, short } from "../format";
 
 export function Venue() {
@@ -22,6 +23,8 @@ export function Venue() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [code, setCode] = useState<{ id: string; text: string } | null>(null);
+  const [menu, setMenu] = useState<Menu>({ name: "", items: [] });
+  const [menuFor, setMenuFor] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -32,6 +35,12 @@ export function Venue() {
       if (deployed()) {
         const rows = await myVenues(acct.evm);
         setMine(rows);
+        const first = rows[0];
+        if (first && menuFor !== first.id.toString()) {
+          setMenuFor(first.id.toString());
+          const published = first.metadataURI ? await menuOf(first.metadataURI) : null;
+          setMenu(published ?? { name: "", items: [{ id: "a", name: "", price: 10n ** 18n }] });
+        }
         const ids = new Set(rows.map((v) => v.id.toString()));
         setOrders((await recentOrders()).filter((o) => ids.has(o.venueId.toString())));
         if (!rows.length) await allVenues(1); // warms the read path
@@ -39,11 +48,14 @@ export function Venue() {
     } catch (e) {
       setError(errorText(e));
     }
-  }, []);
+  }, [menuFor]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  const setItem = (n: number, patch: Partial<MenuItem>) =>
+    setMenu({ ...menu, items: menu.items.map((it, i) => (i === n ? { ...it, ...patch } : it)) });
 
   async function run(label: string, fn: () => Promise<unknown>) {
     setBusy(label);
@@ -114,6 +126,56 @@ export function Venue() {
 
       {mine.length > 0 && (
         <>
+          <h3>Menu</h3>
+          <p className="muted">
+            The menu is a small public document on Bulletin, and the venue points at it. Customers read it before
+            they have an account, which is why it isn't sealed. Bulletin keeps it about two weeks, so republish
+            now and then.
+          </p>
+          <div className="actions">
+            <label>
+              Called <input value={menu.name} onChange={(e) => setMenu({ ...menu, name: e.target.value })} size={16} />
+            </label>
+            {menu.items.map((it, i) => (
+              <label key={it.id}>
+                <input
+                  placeholder="item"
+                  value={it.name}
+                  onChange={(e) => setItem(i, { name: e.target.value })}
+                  size={14}
+                />{" "}
+                <input
+                  inputMode="decimal"
+                  size={4}
+                  value={(Number(it.price) / 1e18).toString()}
+                  onChange={(e) => setItem(i, { price: BigInt(Math.round((Number(e.target.value) || 0) * 1e6)) * 10n ** 12n })}
+                />{" "}
+                PAS
+              </label>
+            ))}
+            <button
+              className="link"
+              onClick={() =>
+                setMenu({
+                  ...menu,
+                  items: [...menu.items, { id: String.fromCharCode(97 + menu.items.length), name: "", price: 10n ** 18n }],
+                })
+              }
+            >
+              Add another item
+            </button>
+            <button
+              disabled={!!busy || !menu.items.some((i) => i.name.trim())}
+              onClick={() =>
+                run("Publishing the menu", () =>
+                  publishMenu(mine[0].id, { ...menu, items: menu.items.filter((i) => i.name.trim()) }),
+                )
+              }
+            >
+              Publish the menu
+            </button>
+          </div>
+
           <h3>Orders</h3>
           {orders.length === 0 && <p className="muted">No orders yet.</p>}
           <ul>

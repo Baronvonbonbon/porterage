@@ -90,3 +90,45 @@ describe("handoff codes", () => {
     expect(decodePayload(encodeDropSignature({ orderId: 1n, timestamp: 1n, signature })).kind).toBe("dropSignature");
   });
 });
+
+import { SigningKey } from "ethers";
+import { basketText, basketTotal, decodeMenu, encodeMenu } from "./menu";
+import { openPhoto, sealPhoto } from "./evidence";
+
+describe("menus", () => {
+  const menu = {
+    name: "Corner counter",
+    items: [
+      { id: "a", name: "Coffee", price: 10n ** 18n },
+      { id: "b", name: "Bun", price: 5n * 10n ** 17n },
+    ],
+  };
+
+  it("survive a trip through Bulletin", () => {
+    const bytes = encodeMenu(menu);
+    expect(bytes.length).toBeLessThan(512);
+    expect(decodeMenu(bytes)).toEqual(menu);
+    expect(() => decodeMenu(new TextEncoder().encode("{}"))).toThrow();
+  });
+
+  it("total a basket", () => {
+    const picked = new Map([["a", 2], ["b", 1]]);
+    expect(basketTotal(menu, picked)).toBe(25n * 10n ** 17n);
+    expect(basketText(menu, picked)).toBe("2× Coffee, 1× Bun");
+    expect(basketTotal(menu, new Map())).toBe(0n);
+  });
+});
+
+describe("delivery photos", () => {
+  it("open for the two parties and nobody else", async () => {
+    const driver = new SigningKey(hexlify(new Uint8Array(32).fill(5)));
+    const customer = new SigningKey(hexlify(new Uint8Array(32).fill(9)));
+    const stranger = new SigningKey(hexlify(new Uint8Array(32).fill(11)));
+    const photo = new Uint8Array(64).fill(200);
+
+    const sealed = await sealPhoto(driver, customer.publicKey, photo);
+    expect(sealed.length).toBeGreaterThan(photo.length); // nonce and tag
+    expect(await openPhoto(customer, driver.publicKey, sealed)).toEqual(photo);
+    await expect(openPhoto(stranger, driver.publicKey, sealed)).rejects.toThrow();
+  });
+});

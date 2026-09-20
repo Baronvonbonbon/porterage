@@ -49,6 +49,8 @@ export interface OrderRecord {
   lon: number;
   salt: string;
   placedAt: number;
+  /** The driver's signing key, recovered at the door: it opens the sealed photo. */
+  driverKey?: string;
 }
 
 interface Book {

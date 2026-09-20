@@ -18,6 +18,8 @@ import {
   signDropCommit,
 } from "../order/handoff";
 import { QrScan, QrShow } from "./Qr";
+import { Camera } from "./Camera";
+import { commitPhoto } from "../order/evidence";
 import { formatDegrees } from "../order/geo";
 import { errorText, pasWei } from "../format";
 
@@ -31,6 +33,7 @@ export function Jobs({ sessionKey, driver }: { sessionKey: Wallet; driver: strin
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState<null | { order: Order; kind: "pickup" | "dropRequest" }>(null);
   const [handback, setHandback] = useState<{ id: string; text: string } | null>(null);
+  const [photoFor, setPhotoFor] = useState<Order | null>(null);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -101,12 +104,42 @@ export function Jobs({ sessionKey, driver }: { sessionKey: Wallet; driver: strin
       const timestamp = nowSeconds();
       const signature = await signDropCommit(sessionKey, o.id, driver, code.posCommit, timestamp);
       setHandback({ id: o.id.toString(), text: encodeDropSignature({ orderId: o.id, timestamp, signature }) });
+      setPhotoFor(o);
       setNote("Show this back to the customer. You signed their code without learning the address.");
     } catch (e) {
       setError(errorText(e));
     } finally {
       setBusy(null);
     }
+  }
+
+  async function photographed(o: Order, jpeg: Uint8Array) {
+    setPhotoFor(null);
+    setBusy("Storing the photo");
+    setError(null);
+    try {
+      const key = await customerKeyOf(o.id);
+      if (!key) throw new Error("this order's account hasn't published a key");
+      const { bytes } = await commitPhoto(sessionKey, o.id, key, jpeg);
+      setNote(`Photo stored, sealed to the customer (${(bytes / 1024).toFixed(0)} kB), and its key is on-chain.`);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (photoFor) {
+    return (
+      <div>
+        <h3>Photograph the delivery</h3>
+        <p className="muted">
+          Only you and this customer can open it. Its key goes on-chain now, before the order settles, so it counts
+          as evidence if anything is disputed later.
+        </p>
+        <Camera onCancel={() => setPhotoFor(null)} onTaken={(jpeg) => photographed(photoFor, jpeg)} />
+      </div>
+    );
   }
 
   if (scanning) {

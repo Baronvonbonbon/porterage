@@ -377,8 +377,18 @@ Each phase ends with something that runs on a phone.
       1.4625 PAS after the fee) — and neither the drop, its salt nor any coordinate appears in what
       was sent.
 - [ ] A map for choosing the drop, instead of typing coordinates.
-- [ ] Photo evidence to Bulletin, keyed into the dropoff attestation.
-- [ ] Venue menus on Bulletin, the kitchen view.
+- [x] Photo evidence: the driver photographs the delivery, it's sealed to the two of them, stored on
+      Bulletin, and its key is committed on-chain (`commitEvidence`) before the order settles — a
+      disputed order never settles, which is when the photo matters. The sealing key is the ECDH
+      secret between the driver's session key and the order account, and **nothing extra is sent**:
+      the driver already has the order account's key from the auction, and the customer recovers the
+      driver's from the signature it was handed at the door. Verified live on 2026-09-20 (the
+      recovery, the sealing, and the commitment); the Bulletin write itself needs a phone.
+      Still open: a copy of the key sealed to an arbiter, for Phase 6.
+- [x] Venue menus on Bulletin: a small public JSON document, pointed at by the venue's on-chain
+      metadata, read by customers before they have any account. The basket sets the order's goods
+      value. **Not sealed**, deliberately — a menu says nothing about who orders from it.
+- [ ] The kitchen view: what the counter sees per order, and the basket travelling to the venue.
 
 ### Phase 5 — Messaging
 

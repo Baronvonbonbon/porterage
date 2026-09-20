@@ -20,6 +20,10 @@ import {
   type DropRequest,
 } from "../order/handoff";
 import { QrScan, QrShow } from "./Qr";
+import { driverKeyFromDropSignature, fetchPhoto } from "../order/evidence";
+import { PHASE_DROPOFF } from "../order/handoff";
+import { basketTotal, basketText, menuOf, type Menu } from "../order/menu";
+import { rememberOrder } from "../shield/notes";
 import { errorText, pasWei, short } from "../format";
 
 const PAS = 10n ** 18n;
@@ -52,6 +56,9 @@ export function Ordering() {
   const [door, setDoor] = useState<DropRequest | null>(null);
   const [scanning, setScanning] = useState(false);
   const [proveMs, setProveMs] = useState<number | null>(null);
+  const [menu, setMenu] = useState<Menu | null>(null);
+  const [picked, setPicked] = useState<Map<string, number>>(new Map());
+  const [photo, setPhoto] = useState<string | null>(null);
   const stop = useRef<(() => void) | null>(null);
 
   const refresh = useCallback(async () => {
@@ -81,13 +88,29 @@ export function Ordering() {
     );
   }, []);
 
+  // The venue's menu lives on Bulletin; its pointer is the venue's metadata.
+  useEffect(() => {
+    setMenu(null);
+    setPicked(new Map());
+    const v = venues.find((x) => x.id.toString() === venueId);
+    if (!v?.metadataURI) return;
+    let live = true;
+    menuOf(v.metadataURI)
+      .then((m) => live && setMenu(m))
+      .catch(() => live && setMenu(null));
+    return () => {
+      live = false;
+    };
+  }, [venueId, venues]);
+
   const drop = { lat: parseDegrees(lat), lon: parseDegrees(lon) };
+  const basket = menu ? basketTotal(menu, picked) : null;
   const plan =
     venueId && drop.lat !== null && drop.lon !== null
       ? {
           venueId: BigInt(venueId),
           drop: { lat: drop.lat, lon: drop.lon },
-          orderValue: BigInt(Math.round(Number(goods) * 1e6)) * 10n ** 12n,
+          orderValue: basket !== null && basket > 0n ? basket : BigInt(Math.round(Number(goods) * 1e6)) * 10n ** 12n,
           tip: 0n,
           maxFare: BigInt(Math.round(Number(maxFare) * 1e6)) * 10n ** 12n,
         }
@@ -131,6 +154,16 @@ export function Ordering() {
       if (code.kind !== "dropSignature" || code.orderId !== BigInt(live.record.id)) {
         throw new Error("that code is for another order");
       }
+      const driverKey = await driverKeyFromDropSignature(
+        {
+          orderId: BigInt(live.record.id),
+          actor: live.order.driver,
+          posCommit: door.payload.posCommit,
+          timestamp: code.timestamp,
+        },
+        code.signature,
+      );
+      await rememberOrder({ ...live.record, driverKey });
       const { proveMs: ms } = await confirmDropoff({
         burner: live.burner,
         orderId: BigInt(live.record.id),
@@ -181,9 +214,32 @@ export function Ordering() {
                   ))}
                 </select>
               </label>
-              <label>
-                Goods worth <input inputMode="decimal" value={goods} onChange={(e) => setGoods(e.target.value)} size={5} /> PAS
-              </label>
+              {menu ? (
+                <>
+                  <p>
+                    <b>{menu.name || `Venue #${venueId}`}</b>
+                  </p>
+                  {menu.items.map((i) => (
+                    <label key={i.id}>
+                      <input
+                        inputMode="numeric"
+                        size={2}
+                        value={picked.get(i.id) ?? 0}
+                        onChange={(e) => setPicked(new Map(picked).set(i.id, Math.max(0, Number(e.target.value) || 0)))}
+                      />{" "}
+                      {i.name} — {pasWei(i.price)}
+                    </label>
+                  ))}
+                  <p className="muted">
+                    {basket && basket > 0n ? `${basketText(menu, picked)} — ${pasWei(basket)}` : "Pick something from the menu."}
+                  </p>
+                </>
+              ) : (
+                <label>
+                  Goods worth <input inputMode="decimal" value={goods} onChange={(e) => setGoods(e.target.value)} size={5} />{" "}
+                  PAS{venueId && <span className="muted"> (this venue has published no menu)</span>}
+                </label>
+              )}
               <label>
                 Pay up to <input inputMode="decimal" value={maxFare} onChange={(e) => setMaxFare(e.target.value)} size={5} /> PAS
                 to deliver
@@ -304,9 +360,25 @@ export function Ordering() {
           )}
 
           {live.order.status >= 4 && (
-            <p className="ok">
-              Delivered and paid.{proveMs !== null && ` The proof took ${(proveMs / 1000).toFixed(1)} s on this phone.`}
-            </p>
+            <>
+              <p className="ok">
+                Delivered and paid.{proveMs !== null && ` The proof took ${(proveMs / 1000).toFixed(1)} s on this phone.`}
+              </p>
+              {live.record.driverKey && !photo && (
+                <button
+                  className="link"
+                  disabled={!!busy}
+                  onClick={() =>
+                    fetchPhoto(live.burner.signingKey, live.record.driverKey!, BigInt(live.record.id), live.order.driver)
+                      .then((p) => setPhoto(p ?? null))
+                      .catch((e) => setError(errorText(e)))
+                  }
+                >
+                  See the driver's photo
+                </button>
+              )}
+              {photo && <img className="evidence" src={photo} alt="the delivery" />}
+            </>
           )}
 
           <button

@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Contract, JsonRpcProvider, Wallet, formatEther, keccak256, AbiCoder } from "ethers";
+import { Contract, JsonRpcProvider, SigningKey, Wallet, formatEther, keccak256, AbiCoder } from "ethers";
 import { CHAIN } from "../src/config";
 import DEPLOYED from "../src/deployed.json";
 import ORDERS_ABI from "../src/abi/PorterOrders.json";
@@ -16,6 +16,8 @@ import VENUES_ABI from "../src/abi/PorterVenues.json";
 import DRIVERS_ABI from "../src/abi/PorterDrivers.json";
 import { b32, dropNullifier, encLat, encLon, positionCommit, randomSalt } from "../src/order/geo";
 import { decodePayload, encodeDropRequest, encodeDropSignature, encodePickup, makeDropRequest } from "../src/order/handoff";
+import { driverKeyFromDropSignature, openPhoto, sealPhoto } from "../src/order/evidence";
+import DISPUTES_ABI from "../src/abi/PorterDisputes.json";
 import SETTLEMENT_ABI from "../src/abi/PorterSettlement.json";
 import { sealOpening, openSealed } from "../src/order/bids";
 
@@ -116,6 +118,26 @@ const drvAtt = { orderId, phase: 2, actor: driver.address, posCommit: request.pa
 const drvSig = await session.signTypedData(domain, DRIVER_COMMIT_TYPES, drvAtt);
 const backCode = encodeDropSignature({ orderId, timestamp: signedAt, signature: drvSig });
 console.log(`7. door code ${reqCode.length} chars, driver's reply ${backCode.length} chars`);
+
+// 7b. the photo: sealed to the customer, its key committed before settlement
+const photo = new Uint8Array(2048).fill(7); // stands in for a JPEG
+const sealedPhoto = await sealPhoto(session.signingKey, customer.signingKey.publicKey, photo);
+// The customer never receives the driver's key: it recovers it from the signature it was handed.
+const recovered = await driverKeyFromDropSignature(
+  { orderId, actor: driver.address, posCommit: request.payload.posCommit, timestamp: signedAt }, drvSig,
+);
+if (SigningKey.computePublicKey(recovered, false) !== SigningKey.computePublicKey(session.signingKey.publicKey, false)) {
+  throw new Error("the driver's key didn't come back out of the signature");
+}
+const opened = await openPhoto(customer.signingKey, recovered, sealedPhoto);
+if (opened.length !== photo.length || opened[0] !== photo[0]) throw new Error("the customer couldn't open the photo");
+// On a phone the sealed bytes go to Bulletin and this is their key; here, their hash stands in.
+const evidenceKey = keccak256(sealedPhoto);
+await wait("committed the photo's key", new Contract(book.disputes, DISPUTES_ABI as never, session)
+  .commitEvidence(orderId, evidenceKey));
+const onChain = await new Contract(book.disputes, DISPUTES_ABI as never, eth).evidenceOf(orderId, driver.address);
+console.log(`7b. photo sealed to ${sealedPhoto.length} B, key ${String(onChain[0]).slice(0, 12)}… committed at ${onChain[1]}`);
+if (String(onChain[0]).toLowerCase() !== evidenceKey.toLowerCase()) throw new Error("the committed key doesn't match");
 
 // 8. the customer proves and settles, from the order's own account
 const settlementRead = new Contract(book.settlement, SETTLEMENT_ABI as never, eth);
