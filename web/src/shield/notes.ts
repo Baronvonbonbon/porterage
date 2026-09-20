@@ -77,6 +77,10 @@ export interface ThreadRecord {
   /** The thread's topic, which only the two parties can derive. */
   id: string;
   mine: { at: number; text: string }[];
+  /** The Bulletin key of the last full transcript put there, if any. */
+  archive?: string;
+  /** How many of `mine` that transcript covered. */
+  archivedUpTo?: number;
 }
 
 interface Book {
@@ -298,6 +302,28 @@ export function threadOf(id: string): Promise<{ at: number; text: string }[]> {
   return queue
     .then(load)
     .then((b) => b.threads?.find((t) => t.id === id)?.mine ?? []);
+}
+
+export function threadRecord(id: string): Promise<ThreadRecord | null> {
+  return queue
+    .then(load)
+    .then((b) => b.threads?.find((t) => t.id === id) ?? null);
+}
+
+/** Note that the whole transcript so far is on Bulletin under this key. */
+export function rememberArchive(
+  id: string,
+  archive: string,
+  archivedUpTo: number
+): Promise<void> {
+  return update((book) => {
+    for (const t of book.threads ?? []) {
+      if (t.id === id) {
+        t.archive = archive;
+        t.archivedUpTo = archivedUpTo;
+      }
+    }
+  });
 }
 
 /**

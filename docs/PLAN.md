@@ -446,8 +446,15 @@ Each phase ends with something that runs on a phone.
       **Not proven and cannot be here:** that two phones can reach each other. There is no STUN or
       TURN, so this connects peers on the same network and otherwise fails silently into statements.
       A relay would fix it (Phase 8), and needing one is exactly why it is optional.
-- [ ] Bulletin store-and-forward for offline peers. The statement window covers a short absence; a
-      long one needs the sealed blob and a pointer.
+- [x] Bulletin store-and-forward for a conversation that outgrows a statement. The window drops its
+      oldest messages once the transcript passes 448 bytes; before that happens the whole transcript
+      goes to Bulletin, sealed to the same reader, and the statement carries its 32-byte key. The
+      reader fetches it once and merges, keyed by time and text so the overlap doesn't double up.
+      Deliberately **not per message**: a Bulletin write goes through the host and may cost a tap, so
+      it happens only when the window is about to lose something not yet stored — and it stores
+      everything said so far, which buys another windowful before the next write. If Bulletin isn't
+      there or the host refuses, the message still goes and the oldest still age out, exactly as
+      before.
 - [x] Host notifications for bids, acceptance and arrival (`web/src/notify.ts`), through the host's
       own surface since the app has no Push API. **A notification names a kind of event and nothing
       else** — no order, no amount, no address, no venue. It goes through the host, and the host

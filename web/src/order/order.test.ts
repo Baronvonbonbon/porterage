@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { dropsFrom, encodeArchive } from "./chat";
 import { Wallet, hexlify, toUtf8String } from "ethers";
 import {
   decodeAnnounce,
@@ -631,5 +632,46 @@ describe("coarse areas", () => {
     const truth = metresBetween(venue, drop);
     // Useful for deciding whether to bid, and wrong by less than the cell.
     expect(Math.abs(roughly - truth)).toBeLessThan(cellVagueness(cell.lat));
+  });
+});
+
+describe("long threads", () => {
+  const many = Array.from({ length: 40 }, (_, i) => ({
+    at: 1_758_300_000_000 + i * 1000,
+    text: `message ${i} `.repeat(3),
+  }));
+  const key = `0x${"ab".repeat(32)}`;
+
+  it("carry a pointer to the whole transcript, and still fit", () => {
+    const bytes = encodeThread(1n, many, key);
+    expect(bytes.length).toBeLessThanOrEqual(448);
+    const back = decodeThread(bytes)!;
+    expect(back.archive).toBe(key);
+    expect(back.said.at(-1)!.text).toBe(many.at(-1)!.text);
+    // The pointer costs 32 bytes, so one fewer message rides along.
+    expect(back.said.length).toBeLessThan(
+      decodeThread(encodeThread(1n, many))!.said.length
+    );
+  });
+
+  it("say nothing about an archive when there isn't one", () => {
+    expect(decodeThread(encodeThread(1n, many))!.archive).toBe(undefined);
+    expect(() => encodeThread(1n, many, "0xdead")).toThrow();
+  });
+
+  it("know when the window is about to lose something", () => {
+    expect(dropsFrom(1n, many.slice(0, 2))).toBe(0);
+    expect(dropsFrom(1n, many)).toBeGreaterThan(0);
+    // The pointer takes room, so it drops at least as much as without one.
+    expect(dropsFrom(1n, many, key)).toBeGreaterThanOrEqual(
+      dropsFrom(1n, many)
+    );
+  });
+
+  it("hold the whole conversation in an archive, window or no window", () => {
+    const whole = decodeThread(encodeArchive(1n, many))!;
+    expect(whole.said.length).toBe(many.length);
+    expect(whole.said[0].text).toBe(many[0].text);
+    expect(whole.orderId).toBe(1n);
   });
 });

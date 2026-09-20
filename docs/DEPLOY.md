@@ -41,3 +41,4 @@ signed. Registering an unowned label needs `--register` and the label typed back
 | 2026-09-20 | Published the operations console | `bafybeig6l26y3o4utzieunckbcjjvl3cct3qik4xxz7pnymeqp7hdg4eei`. Read-only unless the device holds the arbiter key; `npx vite-node tools/ops.ts -- list \| show \| rule` is the arbiter's command line. |
 | 2026-09-20 | Published live chat and notifications | `bafybeihhtroi3bp6jwpbd3xtgvskebb5air2tt7momctyzsceymfnqumxm`. `npm run test:rtc` checks the signalling rebuild against a real WebRTC stack. |
 | 2026-09-20 | Published distance filtering | `bafybeia66uhny2pqkocs74jglbesixhy3q2utlz43suinbdheue5hpzbhq`. Saved pin never leaves the device; the opt-in drop area is a fixed ~1.1 km grid cell. |
+| 2026-09-20 | Published thread archives | `bafybeie4opv7id6dcwyzav4fhjb4zo5nyvdkn56qdwfyz5lp4nqemwymuy`. A long conversation's transcript goes to Bulletin once per windowful, not per message. |
