@@ -46,3 +46,4 @@ signed. Registering an unowned label needs `--register` and the label typed back
 | 2026-09-20 | Published directions | `bafybeibmmnyth46txr3spc6lj5xqqiocsrb5iigxcorz3vbtvhjamt2oma`. `geo:` through `navigateTo`, then a web map or the clipboard by choice. |
 | 2026-09-20 | Published menu caching and venue labels | `bafybeifr3pmtpygxyn5mzrofds2kxzr5j3ogce5vukm24ota56snmrs7ri` |
 | 2026-09-20 | Published the visual pass | `bafybeihvfjquhslmygvlmu3lc3oakqidt7cwhwmc3nareu7avegrn5drmi`. Type and space scale, tokens with dark values, marked primary actions, host theme followed. |
+| 2026-09-20 | Published the picker module | `bafybeihdflnqtdgyoge5kjmb73m7biwwrv2iugebo2zlprnwef5j2jyigu`. One amount parser, presets, steppers, validation beside the field. |

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseCount, parsePas } from "../money/amount";
 import { poseidon2 } from "poseidon-lite";
 import { LADDER_PAS, cover, decompose, sum } from "./ladder";
 import { authPath, batchNotePaths, commitmentOf, rootFrom } from "./pool";
@@ -265,5 +266,46 @@ describe("tokens", () => {
     expect(parseUnits("", 6)).toBe(null);
     expect(parseUnits("abc", 6)).toBe(null);
     expect(formatUnits(12_345_678n, 6, 4)).toBe("12.3456");
+  });
+});
+
+describe("amounts someone typed", () => {
+  it("read a plain amount", () => {
+    expect(parsePas("1.5")).toEqual({ ok: true, wei: 15n * 10n ** 17n });
+    expect(parsePas("10")).toEqual({ ok: true, wei: 10n * 10n ** 18n });
+    expect(parsePas(" 0.0001 ")).toEqual({ ok: true, wei: 10n ** 14n });
+  });
+
+  it("say what is wrong, in words that can go next to the field", () => {
+    // The old inline parse turned each of these into "Cannot convert NaN to a
+    // BigInt", or into a transaction.
+    expect(parsePas("one")).toEqual({ ok: false, why: "Numbers only." });
+    expect(parsePas("")).toEqual({ ok: false, why: "Enter an amount." });
+    expect(parsePas("-5")).toEqual({ ok: false, why: "Numbers only." });
+    expect(parsePas("0")).toEqual({
+      ok: false,
+      why: "More than zero, please.",
+    });
+    expect(parsePas("1.5", { max: 10n ** 18n })).toEqual({
+      ok: false,
+      why: "More than you have.",
+    });
+  });
+
+  it("keep every decimal the chain can hold, and refuse the ones it can't", () => {
+    // The old parse rounded at six places and said nothing about it.
+    expect(parsePas("1.2345678")).toEqual({
+      ok: true,
+      wei: 1_234_567_800_000_000_000n,
+    });
+    expect(parsePas(`0.${"1".repeat(19)}`).ok).toBe(false);
+  });
+
+  it("read a whole number only when it is one, and in range", () => {
+    expect(parseCount("5000", { max: 10_000 })).toBe(5000);
+    expect(parseCount("10001", { max: 10_000 })).toBe(null);
+    expect(parseCount("2.5")).toBe(null);
+    expect(parseCount("-1")).toBe(null);
+    expect(parseCount("")).toBe(null);
   });
 });

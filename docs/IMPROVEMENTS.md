@@ -78,7 +78,7 @@ by reading the CSS — which is how the missing heading on the label filter was 
 **Seam:** all of it lands in `styles.css` custom properties and a handful of small components. No
 view logic changes.
 
-## 2. Forms and pickers that behave inside the app
+## 2. Forms and pickers that behave inside the app — DONE 2026-09-20 (`views/pickers/`)
 
 The `<select>` bug — the list rendered, nothing could be picked, ordering was impossible on a phone
 — is unlikely to be the only one. `views/Choose.tsx` fixed that case. What is left:
@@ -91,6 +91,27 @@ The `<select>` bug — the list rendered, nothing could be picked, ordering was 
   so the next thing that turns out to be broken in the WebView is fixed in one place.
 - **Validation that says what is wrong** next to the field, rather than an error at the bottom
   after the tap.
+
+**Done.** `views/pickers/` now holds Choose, ChooseMany, Stars, MapPick, Amount and Count, exported
+from one index; views import controls rather than raw inputs, so the next thing that turns out to be
+broken on a device is fixed once.
+
+The amount parse was the real find. Every screen taking an amount ran this inline:
+
+    BigInt(Math.round(Number(text) * 1e6)) * 10n ** 12n
+
+which is three faults in one line. `Number("one")` is NaN and `BigInt(NaN)` throws a message about
+NaN half a second after the tap; the rounding silently dropped anything past six decimals, so
+1.2345678 became 1.234568 without saying so; and zero or a negative went straight into a
+transaction. `money/amount.ts` replaces it, says what is wrong in words that sit next to the field,
+and keeps all eighteen decimals the chain can hold. Four screens had their own parser; there is one
+now.
+
+Counts are a stepper, which is the one place a stepper beats a field: small numbers, changed one at
+a time, beside the thing being counted.
+
+An "all of it" chip was built and removed before publishing — on the bid field it would have read as
+"bid the maximum", which is not something a tool should suggest.
 
 **Seam:** one directory, one export per control. Views import controls, never raw inputs.
 

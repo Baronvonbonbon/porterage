@@ -15,8 +15,8 @@
 // coordinates instead sends nothing at all, which is why that stays available.
 
 import { useEffect, useRef, useState } from "react";
-import type { Position } from "../order/geo";
-import { formatDegrees, metresBetween } from "../order/geo";
+import type { Position } from "../../order/geo";
+import { formatDegrees, metresBetween } from "../../order/geo";
 
 import {
   MAX_ZOOM,
@@ -26,7 +26,7 @@ import {
   lonToX,
   panned,
   wrapX,
-} from "../order/tiles";
+} from "../../order/tiles";
 
 const TILES = "https://tile.openstreetmap.org";
 

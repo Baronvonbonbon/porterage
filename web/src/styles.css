@@ -418,3 +418,41 @@ code {
 .directions a {
   color: var(--accent);
 }
+
+/* Typing an amount, and counting things (views/pickers/). */
+.amount {
+  margin: var(--space-2) 0;
+}
+.amount .chooser {
+  margin-top: var(--space-1);
+}
+.amount .error,
+.amount .muted {
+  margin: var(--space-1) 0 0;
+}
+.amount input[aria-invalid="true"] {
+  border-color: var(--accent);
+}
+.count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.count .step {
+  padding: 0 var(--space-3);
+  min-width: 2.2rem;
+  line-height: 2;
+  border-radius: var(--radius-pill);
+  background: var(--card);
+}
+.count-value {
+  min-width: 1.2rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}

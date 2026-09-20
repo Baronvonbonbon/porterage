@@ -18,7 +18,7 @@ import { encodePickup, nowSeconds, signPickup } from "../order/handoff";
 import { QrShow } from "./Qr";
 import { menuOf, publishMenu, type Menu, type MenuItem } from "../order/menu";
 import { LABELS, MAX_LABELS, labelWord } from "../order/labels";
-import { ChooseMany } from "./Choose";
+import { ChooseMany } from "./pickers/Choose";
 import {
   basketLine,
   venueTopic,

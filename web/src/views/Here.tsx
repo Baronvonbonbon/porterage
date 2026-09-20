@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { formatDegrees, type Position } from "../order/geo";
 import { metres } from "../format";
 import { saveHere, savedHere } from "../shield/notes";
-import { MapPick } from "./MapPick";
+import { MapPick } from "./pickers/MapPick";
 
 export interface Here {
   lat: number;

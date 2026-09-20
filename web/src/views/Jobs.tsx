@@ -19,6 +19,8 @@ import {
 } from "../order/handoff";
 import { QrScan, QrShow } from "./Qr";
 import { Thread } from "./Thread";
+import { Amount } from "./pickers";
+import { pasOrNull } from "../money/amount";
 import { introduce } from "../order/chat";
 import { fileDisputeAsDriver } from "../order/dispute";
 import { driverRating, ratingText } from "../order/ratings";
@@ -200,12 +202,12 @@ export function Jobs({
   }, [refresh]);
 
   async function bid(o: Order) {
-    const text = amounts.get(o.id.toString()) ?? "";
-    const amount = BigInt(Math.round(Number(text) * 1e6)) * 10n ** 12n;
-    if (!(amount > 0n) || amount > o.maxFare) {
-      setError(`Bid something above zero and at most ${pasWei(o.maxFare)}.`);
-      return;
-    }
+    // The field has already said what is wrong with it; this is the guard, not
+    // the message.
+    const amount = pasOrNull(amounts.get(o.id.toString()) ?? "", {
+      max: o.maxFare,
+    });
+    if (amount === null) return;
     setBusy(`Bidding on #${o.id}`);
     setError(null);
     setNote(null);
@@ -428,23 +430,25 @@ export function Jobs({
                 </>
               )}
             </p>
-            <label>
-              Bid{" "}
-              <input
-                inputMode="decimal"
-                size={5}
-                value={amounts.get(o.id.toString()) ?? ""}
-                onChange={(e) =>
-                  setAmounts(
-                    new Map(amounts).set(o.id.toString(), e.target.value)
-                  )
-                }
-              />{" "}
-              PAS
-            </label>
+            <Amount
+              label="Bid"
+              value={amounts.get(o.id.toString()) ?? ""}
+              onChange={(text) =>
+                setAmounts(new Map(amounts).set(o.id.toString(), text))
+              }
+              max={o.maxFare}
+              hint={`Up to ${pasWei(
+                o.maxFare
+              )}. The customer sees your bid privately and may take any of them.`}
+            />
             <button
               className="primary"
-              disabled={!!busy}
+              disabled={
+                !!busy ||
+                pasOrNull(amounts.get(o.id.toString()) ?? "", {
+                  max: o.maxFare,
+                }) === null
+              }
               onClick={() => bid(o)}
             >
               Bid on #{o.id.toString()}

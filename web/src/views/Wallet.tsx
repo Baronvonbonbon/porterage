@@ -22,18 +22,11 @@ import {
   type Funded,
 } from "../shield/fund";
 import { errorText, pas, pasWei, short } from "../format";
-import { Choose } from "./Choose";
+import { Choose } from "./pickers/Choose";
+import { Amount } from "./pickers/Amount";
+import { pasOrNull } from "../money/amount";
 
 const PLANCK_PER_WEI = 10n ** 8n;
-
-function parsePas(s: string): bigint | null {
-  try {
-    const v = parseEther(s.trim() || "0");
-    return v > 0n ? v : null;
-  } catch {
-    return null;
-  }
-}
 
 export function Wallet() {
   const [me, setMe] = useState<HostAccount | null>(null);
@@ -93,7 +86,7 @@ export function Wallet() {
   const byRung = new Map<string, number>();
   for (const n of unspent) byRung.set(n.value, (byRung.get(n.value) ?? 0) + 1);
 
-  const want = source ? parseUnits(amount, source.decimals) : parsePas(amount);
+  const want = source ? parseUnits(amount, source.decimals) : pasOrNull(amount);
   const plan =
     !source && want
       ? planTopUp(want)
@@ -145,7 +138,7 @@ export function Wallet() {
   }
 
   async function fund() {
-    const want = parsePas(fundAmount);
+    const want = pasOrNull(fundAmount);
     if (!want) return;
     setError(null);
     setFunded(null);
@@ -217,15 +210,12 @@ export function Wallet() {
       </dl>
 
       <div className="actions">
-        <label>
-          Shield{" "}
-          <input
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            size={6}
-          />
-        </label>
+        <Amount
+          label="Shield"
+          value={amount}
+          onChange={setAmount}
+          presets={[5, 10, 25]}
+        />
         <Choose
           label="What to shield"
           value={source?.id ?? 0}
@@ -289,18 +279,14 @@ export function Wallet() {
         {pasWei(DEFAULT_TIP)} tip for whoever submits the withdrawal.
       </p>
       <div className="actions">
-        <label>
-          Fund with{" "}
-          <input
-            inputMode="decimal"
-            value={fundAmount}
-            onChange={(e) => setFundAmount(e.target.value)}
-            size={6}
-          />{" "}
-          PAS
-        </label>
+        <Amount
+          label="Fund with"
+          value={fundAmount}
+          onChange={setFundAmount}
+          presets={[1, 5, 10]}
+        />
         <button
-          disabled={!!busy || !!stage || !parsePas(fundAmount)}
+          disabled={!!busy || !!stage || !pasOrNull(fundAmount)}
           onClick={fund}
         >
           Fund a private account

@@ -36,10 +36,12 @@ import {
   type DropRequest,
 } from "../order/handoff";
 import { QrScan, QrShow } from "./Qr";
-import { Choose, ChooseMany } from "./Choose";
+import { Choose, ChooseMany } from "./pickers/Choose";
+import { Amount, Count } from "./pickers";
+import { pasOrNull } from "../money/amount";
 import { Waiting } from "./State";
 import { Thread } from "./Thread";
-import { MapPick } from "./MapPick";
+import { MapPick } from "./pickers/MapPick";
 import {
   committedPhotoKey,
   driverKeyFromDropSignature,
@@ -61,7 +63,7 @@ import {
   venueRating,
   wasRated,
 } from "../order/ratings";
-import { Stars } from "./Stars";
+import { Stars } from "./pickers/Stars";
 import { rememberOrder } from "../shield/notes";
 import { tell } from "../notify";
 import { errorText, metres, pasWei, short } from "../format";
@@ -327,20 +329,26 @@ export function Ordering() {
 
   const drop = { lat: parseDegrees(lat), lon: parseDegrees(lon) };
   const basket = menu ? basketTotal(menu, picked) : null;
+  // The amounts are parsed once, here, and the button is off until both read.
+  // The inline `Number(x) * 1e6` this replaces turned "one" into a thrown NaN
+  // and quietly rounded away anything past six decimals.
+  const goodsWei = basket !== null && basket > 0n ? basket : pasOrNull(goods);
+  const maxFareWei = pasOrNull(maxFare);
   const plan =
-    venueId && drop.lat !== null && drop.lon !== null
+    venueId &&
+    drop.lat !== null &&
+    drop.lon !== null &&
+    goodsWei !== null &&
+    maxFareWei !== null
       ? {
           venueId: BigInt(venueId),
           drop: { lat: drop.lat, lon: drop.lon },
-          orderValue:
-            basket !== null && basket > 0n
-              ? basket
-              : BigInt(Math.round(Number(goods) * 1e6)) * 10n ** 12n,
+          orderValue: goodsWei,
           basket: menu
             ? { items: picked, counterKey: menu.counterKey }
             : undefined,
           tip: 0n,
-          maxFare: BigInt(Math.round(Number(maxFare) * 1e6)) * 10n ** 12n,
+          maxFare: maxFareWei,
         }
       : null;
 
@@ -590,22 +598,16 @@ export function Ordering() {
                     <b>{menu.name || `Venue #${venueId}`}</b>
                   </p>
                   {menu.items.map((i) => (
-                    <label key={i.id}>
-                      <input
-                        inputMode="numeric"
-                        size={2}
+                    <p key={i.id} className="line">
+                      <Count
+                        label={i.name}
                         value={picked.get(i.id) ?? 0}
-                        onChange={(e) =>
-                          setPicked(
-                            new Map(picked).set(
-                              i.id,
-                              Math.max(0, Number(e.target.value) || 0)
-                            )
-                          )
+                        onChange={(n) =>
+                          setPicked(new Map(picked).set(i.id, n))
                         }
                       />{" "}
                       {i.name} — {pasWei(i.price)}
-                    </label>
+                    </p>
                   ))}
                   <p className="muted">
                     {basket && basket > 0n
@@ -617,33 +619,23 @@ export function Ordering() {
                   </p>
                 </>
               ) : (
-                <label>
-                  Goods worth{" "}
-                  <input
-                    inputMode="decimal"
-                    value={goods}
-                    onChange={(e) => setGoods(e.target.value)}
-                    size={5}
-                  />{" "}
-                  PAS
-                  {venueId && (
-                    <span className="muted">
-                      {" "}
-                      (this venue has published no menu)
-                    </span>
-                  )}
-                </label>
+                <Amount
+                  label="Goods worth"
+                  value={goods}
+                  onChange={setGoods}
+                  presets={[1, 5, 10]}
+                  hint={
+                    venueId ? "This venue has published no menu." : undefined
+                  }
+                />
               )}
-              <label>
-                Pay up to{" "}
-                <input
-                  inputMode="decimal"
-                  value={maxFare}
-                  onChange={(e) => setMaxFare(e.target.value)}
-                  size={5}
-                />{" "}
-                PAS to deliver
-              </label>
+              <Amount
+                label="Pay up to"
+                value={maxFare}
+                onChange={setMaxFare}
+                presets={[1, 2, 5]}
+                hint="The most the delivery may cost. Drivers bid under it."
+              />
               <label>
                 Drop at{" "}
                 <input
