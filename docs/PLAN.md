@@ -368,7 +368,14 @@ Each phase ends with something that runs on a phone.
       the session key and send the terms encrypted to the order account's key over the Statement Store
       (ECDH, a fresh key per bid, 127 bytes). The customer may take any bid.
       Verified live on 2026-09-20: venue, driver with a session key, order, sealed bid, acceptance.
-- [ ] Pickup and dropoff handoffs by QR, with the proof on the phone.
+- [x] Pickup and dropoff handoffs by QR, with the proof on the phone. Codes are versioned binary in
+      base64url, so each also pastes as text when a camera is refused: pickup 122 characters, the
+      customer's door code 67, the driver's reply 111. The scanner uses the host's `BarcodeDetector`
+      and falls back to jsQR. The proximity artifacts are only 3 MB, unlike the pool's 35 MB.
+      Verified live on 2026-09-20 (`web/tools/live-order.ts`): venue, driver, order, sealed bid,
+      acceptance, pickup (venue paid 1.0 PAS), a 923 ms proximity proof, settlement (driver paid
+      1.4625 PAS after the fee) — and neither the drop, its salt nor any coordinate appears in what
+      was sent.
 - [ ] A map for choosing the drop, instead of typing coordinates.
 - [ ] Photo evidence to Bulletin, keyed into the dropoff attestation.
 - [ ] Venue menus on Bulletin, the kitchen view.

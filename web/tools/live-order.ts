@@ -14,7 +14,9 @@ import DEPLOYED from "../src/deployed.json";
 import ORDERS_ABI from "../src/abi/PorterOrders.json";
 import VENUES_ABI from "../src/abi/PorterVenues.json";
 import DRIVERS_ABI from "../src/abi/PorterDrivers.json";
-import { b32, positionCommit, randomSalt } from "../src/order/geo";
+import { b32, dropNullifier, encLat, encLon, positionCommit, randomSalt } from "../src/order/geo";
+import { decodePayload, encodeDropRequest, encodeDropSignature, encodePickup, makeDropRequest } from "../src/order/handoff";
+import SETTLEMENT_ABI from "../src/abi/PorterSettlement.json";
 import { sealOpening, openSealed } from "../src/order/bids";
 
 const PAS = 10n ** 18n;
@@ -80,5 +82,74 @@ console.log(`4. bid ${formatEther(amount)} PAS committed as ${bidHash.slice(0, 1
 await wait("accepted the bid", orders.acceptSealedBid(orderId, opening.driver, opening.amount, opening.salt, { value: opening.amount }));
 const o = await orders.orders(orderId);
 console.log(`5. status ${await orders.statusOf(orderId)}, driver ${o.driver}, fare ${formatEther(o.fare)} PAS`);
-console.log(`   order account ${customer.address} holds ${formatEther(await eth.getBalance(customer.address))} PAS`);
+
+// 6. pickup: the counter signs its own registered pin; the driver signs the same
+const settlement = new Contract(book.settlement, SETTLEMENT_ABI as never, session);
+const { chainId } = await eth.getNetwork();
+const domain = { name: "PorterSettlement", version: "1", chainId, verifyingContract: book.settlement };
+const LOCATION_TYPES = { LocationAttestation: [
+  { name: "orderId", type: "uint256" }, { name: "phase", type: "uint8" }, { name: "actor", type: "address" },
+  { name: "lat", type: "int32" }, { name: "lon", type: "int32" }, { name: "timestamp", type: "uint64" },
+] };
+const DRIVER_COMMIT_TYPES = { DriverCommitAttestation: [
+  { name: "orderId", type: "uint256" }, { name: "phase", type: "uint8" }, { name: "actor", type: "address" },
+  { name: "posCommit", type: "bytes32" }, { name: "timestamp", type: "uint64" },
+] };
+const now = BigInt(Math.floor(Date.now() / 1000));
+const vAtt = { orderId, phase: 1, actor: session.address, lat: VENUE.lat, lon: VENUE.lon, timestamp: now };
+const dAtt = { orderId, phase: 1, actor: driver.address, lat: VENUE.lat, lon: VENUE.lon, timestamp: now };
+const vSig = await session.signTypedData(domain, LOCATION_TYPES, vAtt);
+const dSig = await session.signTypedData(domain, LOCATION_TYPES, dAtt);
+// The QR carries exactly this, at 90 bytes.
+const pickupCode = encodePickup({ orderId, at: VENUE, timestamp: now, signature: vSig });
+const readBack = decodePayload(pickupCode);
+if (readBack.kind !== "pickup" || readBack.signature !== vSig) throw new Error("the pickup code didn't survive its QR");
+console.log(`6. pickup code ${pickupCode.length} chars of text`);
+await wait("confirmed the pickup", settlement.confirmPickup(dAtt, dSig, vAtt, vSig));
+console.log(`   status ${await orders.statusOf(orderId)} (venue paid)`);
+
+// 7. dropoff: the customer commits to its own drop, the driver signs it blind
+const request = makeDropRequest(orderId, drop);
+const reqCode = encodeDropRequest(request.payload);
+const signedAt = BigInt(Math.floor(Date.now() / 1000));
+const drvAtt = { orderId, phase: 2, actor: driver.address, posCommit: request.payload.posCommit, timestamp: signedAt };
+const drvSig = await session.signTypedData(domain, DRIVER_COMMIT_TYPES, drvAtt);
+const backCode = encodeDropSignature({ orderId, timestamp: signedAt, signature: drvSig });
+console.log(`7. door code ${reqCode.length} chars, driver's reply ${backCode.length} chars`);
+
+// 8. the customer proves and settles, from the order's own account
+const settlementRead = new Contract(book.settlement, SETTLEMENT_ABI as never, eth);
+const radius = Number(await settlementRead.dropoffRadiusMeters());
+const shield = (f: string) => join(import.meta.dirname, "..", "public", "zk", f);
+const snarkjs = await import("snarkjs");
+const t0 = Date.now();
+const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+  {
+    orderId: orderId.toString(),
+    dropCommit: positionCommit(drop, salt).toString(),
+    driverCommit: BigInt(request.payload.posCommit).toString(),
+    radiusMeters: String(radius),
+    nullifier: dropNullifier(salt, orderId).toString(),
+    custLatEnc: encLat(drop.lat).toString(), custLonEnc: encLon(drop.lon).toString(), salt: salt.toString(),
+    drvLatEnc: encLat(drop.lat).toString(), drvLonEnc: encLon(drop.lon).toString(), drvSalt: request.driverSalt.toString(),
+  },
+  shield("proximity.wasm"), shield("proximity.zkey"),
+);
+console.log(`8. proved proximity in ${Date.now() - t0} ms`);
+const packed = AbiCoder.defaultAbiCoder().encode(Array(8).fill("uint256"), [
+  proof.pi_a[0], proof.pi_a[1], proof.pi_b[0][1], proof.pi_b[0][0],
+  proof.pi_b[1][1], proof.pi_b[1][0], proof.pi_c[0], proof.pi_c[1],
+]);
+await wait("settled the delivery", new Contract(book.settlement, SETTLEMENT_ABI as never, customer)
+  .confirmDropoffZK(drvAtt, drvSig, packed, publicSignals));
+console.log(`   status ${await orders.statusOf(orderId)} (driver paid)`);
+
+// 9. nothing about the drop reached the chain
+const vault = new Contract(book.vault, ["function balanceOf(address) view returns (uint256)"], eth);
+console.log(`9. vault: venue ${formatEther(await vault.balanceOf(venueOp.address))} PAS, driver ${formatEther(await vault.balanceOf(driver.address))} PAS`);
+const calldata = packed + publicSignals.join("");
+for (const secret of [encLat(drop.lat).toString(16), encLon(drop.lon).toString(16), salt.toString(16)]) {
+  if (calldata.toLowerCase().includes(secret.toLowerCase())) throw new Error("the drop leaked into the settlement");
+}
+console.log("   the drop, its salt and the coordinates appear nowhere in what was sent");
 process.exit(0);

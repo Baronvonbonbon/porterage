@@ -7,7 +7,9 @@ import { sessionKey } from "../keys";
 import { deployed } from "../contracts";
 import { allVenues, myVenues, registerVenue, setVenueSigner, type Venue as VenueRow } from "../order/venue";
 import { formatDegrees, parseDegrees } from "../order/geo";
-import { recentOrders, statusName, type Order } from "../order/orders";
+import { recentOrders, Status, statusName, type Order } from "../order/orders";
+import { encodePickup, nowSeconds, signPickup } from "../order/handoff";
+import { QrShow } from "./Qr";
 import { errorText, pasWei, short } from "../format";
 
 export function Venue() {
@@ -19,6 +21,7 @@ export function Venue() {
   const [lon, setLon] = useState("-122.419400");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [code, setCode] = useState<{ id: string; text: string } | null>(null);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -114,14 +117,47 @@ export function Venue() {
           <h3>Orders</h3>
           {orders.length === 0 && <p className="muted">No orders yet.</p>}
           <ul>
-            {orders.map((o) => (
-              <li key={o.id.toString()}>
-                #{o.id.toString()} — {statusName(o.status)}, goods {pasWei(o.orderValue)}
-                {o.driver !== "0x0000000000000000000000000000000000000000" && ` — driver ${short(o.driver)}`}
-              </li>
-            ))}
+            {orders.map((o) => {
+              const venue = mine.find((v) => v.id === o.venueId)!;
+              return (
+                <li key={o.id.toString()}>
+                  #{o.id.toString()} — {statusName(o.status)}, goods {pasWei(o.orderValue)}
+                  {o.driver !== "0x0000000000000000000000000000000000000000" && ` — driver ${short(o.driver)}`}
+                  {o.status === Status.Assigned && key && (
+                    <>
+                      {" "}
+                      <button
+                        className="link"
+                        disabled={!!busy}
+                        onClick={() =>
+                          run("Signing the handover", async () => {
+                            const timestamp = nowSeconds();
+                            const signature = await signPickup(key, o.id, key.address, venue.at, timestamp);
+                            setCode({
+                              id: o.id.toString(),
+                              text: encodePickup({ orderId: o.id, at: venue.at, timestamp, signature }),
+                            });
+                          })
+                        }
+                      >
+                        hand it over
+                      </button>
+                    </>
+                  )}
+                </li>
+              );
+            })}
           </ul>
-          <p className="muted">Handing orders over by QR arrives next.</p>
+
+          {code && (
+            <>
+              <h3>Order #{code.id}</h3>
+              <QrShow value={code.text} caption="Let the driver scan this. It's the counter's signature, and it's good for a few minutes." />
+              <button className="link" onClick={() => setCode(null)}>
+                Done
+              </button>
+            </>
+          )}
         </>
       )}
 

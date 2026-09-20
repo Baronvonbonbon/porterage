@@ -54,3 +54,39 @@ describe("sealed bids", () => {
     expect(hexlify(a)).not.toBe(hexlify(b));
   });
 });
+
+import { decodePayload, encodeDropRequest, encodeDropSignature, encodePickup, makeDropRequest } from "./handoff";
+
+describe("handoff codes", () => {
+  const signature = hexlify(new Uint8Array(65).fill(3));
+
+  it("carry a pickup in about 120 characters", () => {
+    const p = { orderId: 42n, at: { lat: 37_774_900, lon: -122_419_400 }, timestamp: 1_800_000_000n, signature };
+    const text = encodePickup(p);
+    expect(text.length).toBeLessThan(140);
+    expect(decodePayload(text)).toEqual({ kind: "pickup", ...p });
+  });
+
+  it("carry a door request with no coordinate in it", () => {
+    const drop = { lat: 37_784_900, lon: -122_419_400 };
+    const req = makeDropRequest(7n, drop);
+    const text = encodeDropRequest(req.payload);
+    expect(decodePayload(text)).toEqual({ kind: "dropRequest", ...req.payload });
+    // The salt and the position are only on the phone that made it.
+    const raw = atob(text.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(text.length / 4) * 4, "="));
+    expect(raw).not.toContain(String(drop.lat));
+    expect(req.driverSalt).toBeGreaterThan(0n);
+  });
+
+  it("carry the driver's reply", () => {
+    const p = { orderId: 7n, timestamp: 1_800_000_123n, signature };
+    expect(decodePayload(encodeDropSignature(p))).toEqual({ kind: "dropSignature", ...p });
+  });
+
+  it("refuse anything else", () => {
+    expect(() => decodePayload("hello")).toThrow();
+    expect(() => decodePayload("")).toThrow();
+    // A code of the right shape but the wrong kind still decodes as its own kind.
+    expect(decodePayload(encodeDropSignature({ orderId: 1n, timestamp: 1n, signature })).kind).toBe("dropSignature");
+  });
+});

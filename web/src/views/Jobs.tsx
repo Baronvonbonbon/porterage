@@ -10,6 +10,14 @@ import type { Wallet } from "ethers";
 import { customerKeyOf, placeBid } from "../order/bids";
 import { recentOrders, Status, type Order } from "../order/orders";
 import { venueOf, type Venue } from "../order/venue";
+import {
+  confirmPickup,
+  decodePayload,
+  encodeDropSignature,
+  nowSeconds,
+  signDropCommit,
+} from "../order/handoff";
+import { QrScan, QrShow } from "./Qr";
 import { formatDegrees } from "../order/geo";
 import { errorText, pasWei } from "../format";
 
@@ -21,6 +29,8 @@ export function Jobs({ sessionKey, driver }: { sessionKey: Wallet; driver: strin
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState<null | { order: Order; kind: "pickup" | "dropRequest" }>(null);
+  const [handback, setHandback] = useState<{ id: string; text: string } | null>(null);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -62,6 +72,74 @@ export function Jobs({ sessionKey, driver }: { sessionKey: Wallet; driver: strin
     }
   }
 
+  async function collected(o: Order, text: string) {
+    setScanning(null);
+    setBusy(`Collecting #${o.id}`);
+    setError(null);
+    try {
+      const code = decodePayload(text);
+      if (code.kind !== "pickup" || code.orderId !== o.id) throw new Error("that code is for another order");
+      const venue = venues.get(o.venueId.toString());
+      if (!venue) throw new Error("couldn't read the venue");
+      await confirmPickup(sessionKey, driver, code, venue.signer);
+      setNote(`Collected #${o.id}. The venue has been paid.`);
+      await refresh();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function atTheDoor(o: Order, text: string) {
+    setScanning(null);
+    setBusy(`Signing for #${o.id}`);
+    setError(null);
+    try {
+      const code = decodePayload(text);
+      if (code.kind !== "dropRequest" || code.orderId !== o.id) throw new Error("that code is for another order");
+      const timestamp = nowSeconds();
+      const signature = await signDropCommit(sessionKey, o.id, driver, code.posCommit, timestamp);
+      setHandback({ id: o.id.toString(), text: encodeDropSignature({ orderId: o.id, timestamp, signature }) });
+      setNote("Show this back to the customer. You signed their code without learning the address.");
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (scanning) {
+    return (
+      <div>
+        <h3>{scanning.kind === "pickup" ? "Scan the counter's code" : "Scan the customer's code"}</h3>
+        <QrScan
+          expect={scanning.kind}
+          onCancel={() => setScanning(null)}
+          onRead={(text) => (scanning.kind === "pickup" ? collected(scanning.order, text) : atTheDoor(scanning.order, text))}
+        />
+      </div>
+    );
+  }
+
+  if (handback) {
+    return (
+      <div>
+        <h3>Order #{handback.id}</h3>
+        <QrShow value={handback.text} caption="The customer scans this to finish the delivery and release your fare." />
+        <button
+          className="link"
+          onClick={() => {
+            setHandback(null);
+            refresh();
+          }}
+        >
+          Done
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div>
       <h3>Work</h3>
@@ -99,10 +177,26 @@ export function Jobs({ sessionKey, driver }: { sessionKey: Wallet; driver: strin
             {mine.map((o) => (
               <li key={o.id.toString()}>
                 #{o.id.toString()} — {pasWei(o.fare)} from venue #{o.venueId.toString()}
+                {o.status === Status.Assigned && (
+                  <>
+                    {" "}
+                    <button className="link" disabled={!!busy} onClick={() => setScanning({ order: o, kind: "pickup" })}>
+                      collect it
+                    </button>
+                  </>
+                )}
+                {o.status === Status.PickedUp && (
+                  <>
+                    {" "}
+                    <button className="link" disabled={!!busy} onClick={() => setScanning({ order: o, kind: "dropRequest" })}>
+                      deliver it
+                    </button>
+                  </>
+                )}
+                {o.status >= Status.Delivered && " — delivered"}
               </li>
             ))}
           </ul>
-          <p className="muted">Collection and handover by QR arrive next.</p>
         </>
       )}
 

@@ -12,6 +12,14 @@ import { acceptBid, cancelOrder, orderOf, statusName, type Order } from "../orde
 import { watchBids, type Bid } from "../order/bids";
 import { fundingFor, orderBurner, placeOrder, type PlaceStage } from "../order/flow";
 import { allOrders, type OrderRecord } from "../shield/notes";
+import {
+  confirmDropoff,
+  decodePayload,
+  encodeDropRequest,
+  makeDropRequest,
+  type DropRequest,
+} from "../order/handoff";
+import { QrScan, QrShow } from "./Qr";
 import { errorText, pasWei, short } from "../format";
 
 const PAS = 10n ** 18n;
@@ -41,6 +49,9 @@ export function Ordering() {
   const [stage, setStage] = useState<PlaceStage | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [door, setDoor] = useState<DropRequest | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [proveMs, setProveMs] = useState<number | null>(null);
   const stop = useRef<(() => void) | null>(null);
 
   const refresh = useCallback(async () => {
@@ -108,6 +119,45 @@ export function Ordering() {
     } finally {
       setBusy(null);
     }
+  }
+
+  async function finish(text: string) {
+    if (!live || !door) return;
+    setScanning(false);
+    setBusy("Proving the delivery on this phone");
+    setError(null);
+    try {
+      const code = decodePayload(text);
+      if (code.kind !== "dropSignature" || code.orderId !== BigInt(live.record.id)) {
+        throw new Error("that code is for another order");
+      }
+      const { proveMs: ms } = await confirmDropoff({
+        burner: live.burner,
+        orderId: BigInt(live.record.id),
+        driver: live.order.driver,
+        drop: { lat: live.record.lat, lon: live.record.lon },
+        dropSalt: BigInt(live.record.salt),
+        request: door,
+        signature: code.signature,
+        signedAt: code.timestamp,
+      });
+      setProveMs(ms);
+      setDoor(null);
+      await openOrder(live.record);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (live && scanning) {
+    return (
+      <section>
+        <h2>Scan the driver's code</h2>
+        <QrScan expect="dropSignature" onCancel={() => setScanning(false)} onRead={finish} />
+      </section>
+    );
   }
 
   return (
@@ -223,7 +273,41 @@ export function Ordering() {
             </>
           )}
 
-          {live.order.status >= 2 && <p className="muted">Collection and handover by QR arrive next.</p>}
+          {live.order.status === 2 && (
+            <p className="muted">Assigned. The driver collects it from the counter next.</p>
+          )}
+
+          {live.order.status === 3 && (
+            <>
+              <h3>At the door</h3>
+              {!door && (
+                <div className="actions">
+                  <button onClick={() => setDoor(makeDropRequest(BigInt(live.record.id), { lat: live.record.lat, lon: live.record.lon }))}>
+                    Show the driver a code
+                  </button>
+                </div>
+              )}
+              {door && (
+                <>
+                  <QrShow
+                    value={encodeDropRequest(door.payload)}
+                    caption="The driver scans this and signs it. It carries no address — only a commitment to where you are."
+                  />
+                  <div className="actions">
+                    <button disabled={!!busy} onClick={() => setScanning(true)}>
+                      Scan the driver's code back
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {live.order.status >= 4 && (
+            <p className="ok">
+              Delivered and paid.{proveMs !== null && ` The proof took ${(proveMs / 1000).toFixed(1)} s on this phone.`}
+            </p>
+          )}
 
           <button
             className="link"
