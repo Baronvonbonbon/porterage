@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { formatDegrees, type Position } from "../order/geo";
+import { metres } from "../format";
 import { saveHere, savedHere } from "../shield/notes";
 import { MapPick } from "./MapPick";
 
@@ -35,8 +36,7 @@ export function useHere(): [Here | null, (h: Here | null) => void] {
   return [here, put];
 }
 
-const KM = (metres: number) =>
-  metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${metres} m`;
+const KM = metres;
 
 export function HerePin({
   here,

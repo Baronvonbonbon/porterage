@@ -38,7 +38,7 @@ Navigation to it is §4.
 
 ---
 
-## 1. A visual pass over the whole app
+## 1. A visual pass over the whole app — DONE 2026-09-20
 
 The app is deliberately plain: one stylesheet, semantic elements, no framework. That was right for
 getting here and is now the thing holding it back. The pass should stay within that constraint —
@@ -53,6 +53,27 @@ no UI library — and fix what plainness cost:
 - **Money and distance formatting in one place.** `format.ts` has some of it; `pasWei`, the ad hoc
   `far()` in Jobs and the `KM()` in Here should be one module.
 - **Dark mode**, since the host has a theme provider (`getThemeProvider`) and the app ignores it.
+
+**Done**, and it found two bugs that only existed in the dark:
+
+- A message bubble was hardcoded `#fff` and the map's backdrop `#ddd`. Both looked deliberate in
+  daylight and wrong at night. Every colour is a token now, and every token has a dark value.
+- **A quiet button inside `.actions` was accent text on an accent fill** — invisible. `.actions
+  button` set the background and `button.link`, at equal specificity but later in the file, set only
+  the colour. The map picker's Cancel was one of these.
+
+Hierarchy is marked by hand (`.primary`), not taken as "the first button in the group": the bids on
+an order live in `.actions` and are sorted cheapest first, so filling the first would recommend the
+cheapest when the point is that the customer picks whichever it likes.
+
+`format.ts` now holds the one distance formatter; the three screens that had grown their own
+disagreed about when to switch to kilometres. The host's theme is followed (`theme.ts`), with
+`prefers-color-scheme` as the fallback rather than the authority. `views/State.tsx` gives waiting a
+shape, since a screen that renders nothing while it fetches is the commonest way a working app looks
+broken.
+
+Checked by rendering the built app in headless Chromium at phone width, light and dark, rather than
+by reading the CSS — which is how the missing heading on the label filter was spotted.
 
 **Seam:** all of it lands in `styles.css` custom properties and a handful of small components. No
 view logic changes.

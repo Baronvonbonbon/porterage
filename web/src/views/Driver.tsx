@@ -135,6 +135,7 @@ export function Driver() {
         <div className="actions">
           {!chain.registered && (
             <button
+              className="primary"
               disabled={!!busy}
               onClick={() =>
                 run("Registering", () =>

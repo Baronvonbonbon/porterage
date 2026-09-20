@@ -305,7 +305,11 @@ export function Ops() {
                       Mark the driver at fault
                     </label>
                     <div className="actions">
-                      <button disabled={!!busy || !preview} onClick={rule}>
+                      <button
+                        className="primary"
+                        disabled={!!busy || !preview}
+                        onClick={rule}
+                      >
                         Rule on #{r.disputeId.toString()}
                       </button>
                     </div>

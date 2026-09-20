@@ -37,6 +37,7 @@ import {
 } from "../order/handoff";
 import { QrScan, QrShow } from "./Qr";
 import { Choose, ChooseMany } from "./Choose";
+import { Waiting } from "./State";
 import { Thread } from "./Thread";
 import { MapPick } from "./MapPick";
 import {
@@ -63,7 +64,7 @@ import {
 import { Stars } from "./Stars";
 import { rememberOrder } from "../shield/notes";
 import { tell } from "../notify";
-import { errorText, pasWei, short } from "../format";
+import { errorText, metres, pasWei, short } from "../format";
 
 const PAS = 10n ** 18n;
 
@@ -125,6 +126,8 @@ export function Ordering() {
     new Map()
   );
   const stop = useRef<(() => void) | null>(null);
+  /** Distinguishes "still looking" from "there are none", which look the same. */
+  const [loadingVenues, setLoadingVenues] = useState(true);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -135,6 +138,9 @@ export function Ordering() {
       setMine(records.sort((a, b) => b.placedAt - a.placedAt));
     } catch (e) {
       setError(errorText(e));
+    } finally {
+      // In the finally, or a load that failed would spin for ever.
+      setLoadingVenues(false);
     }
   }, []);
 
@@ -482,10 +488,7 @@ export function Ordering() {
       .sort((a, b) => (a.away ?? 0) - (b.away ?? 0));
   })();
 
-  const fromHere = (metres: number) =>
-    metres >= 1000
-      ? `${(metres / 1000).toFixed(1)} km away`
-      : `${metres} m away`;
+  const fromHere = (away: number) => `${metres(away)} away`;
 
   const chosenVenue = venues.find((v) => v.id.toString() === venueId);
 
@@ -539,10 +542,14 @@ export function Ordering() {
             </p>
           ) : null}
           {venues.length === 0 ? (
-            <p className="notice">
-              No venues have registered yet. Open Sell on another phone to add
-              one.
-            </p>
+            loadingVenues ? (
+              <Waiting what="Looking for venues" />
+            ) : (
+              <p className="notice">
+                No venues have registered yet. Open Sell on another phone to add
+                one.
+              </p>
+            )
           ) : (
             <div className="actions">
               <HerePin
@@ -551,6 +558,7 @@ export function Ordering() {
                 start={venues[0].at}
                 what="venues"
               />
+              <p className="muted">Looking for</p>
               <ChooseMany
                 label="What are you looking for"
                 values={wanted}
@@ -687,7 +695,11 @@ export function Ordering() {
                   carries only a commitment to it.
                 </p>
               )}
-              <button disabled={!plan || !!stage} onClick={place}>
+              <button
+                className="primary"
+                disabled={!plan || !!stage}
+                onClick={place}
+              >
                 Place the order
               </button>
             </div>
@@ -754,7 +766,7 @@ export function Ordering() {
             <>
               <h3>Bids</h3>
               {bids.length === 0 && (
-                <p className="muted">Waiting for drivers to bid…</p>
+                <Waiting what="Waiting for drivers to bid" />
               )}
               <div className="actions">
                 {bids.map((b) => (
@@ -891,6 +903,7 @@ export function Ordering() {
                     with it — that key opens this photo and nothing else.
                   </p>
                   <button
+                    className="primary"
                     disabled={!!busy || !complaint.trim()}
                     onClick={fileComplaint}
                   >
@@ -957,6 +970,7 @@ export function Ordering() {
                     onPick={setVenueStars}
                   />
                   <button
+                    className="primary"
                     disabled={!!busy || (!driverStars && !venueStars)}
                     onClick={sendRating}
                   >

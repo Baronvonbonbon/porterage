@@ -114,7 +114,11 @@ export function Thread({
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !busy && send()}
         />
-        <button disabled={busy || !text.trim()} onClick={send}>
+        <button
+          className="primary"
+          disabled={busy || !text.trim()}
+          onClick={send}
+        >
           {busy ? "Sending…" : "Send"}
         </button>
       </div>

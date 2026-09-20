@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { inHost } from "./host";
+import { followHostTheme } from "./theme";
 import { deployed } from "./contracts";
 import { Driver } from "./views/Driver";
 import { Ordering } from "./views/Ordering";
@@ -27,6 +28,12 @@ export function App() {
 
   useEffect(() => {
     inHost().then(setHost);
+  }, []);
+
+  useEffect(() => {
+    let stop: (() => void) | null = null;
+    followHostTheme().then((s) => (stop = s));
+    return () => stop?.();
   }, []);
 
   const choose = (r: Role | null) => {

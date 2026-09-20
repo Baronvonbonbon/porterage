@@ -45,3 +45,4 @@ signed. Registering an unowned label needs `--register` and the label typed back
 | 2026-09-20 | Published the drop hand-off | `bafybeia74t5ffmzn37xu5dilebflhqx6g7ntdzqjxt7oru6rsmnfmh2spu`. The chosen driver is sent the exact drop, sealed to it alone. |
 | 2026-09-20 | Published directions | `bafybeibmmnyth46txr3spc6lj5xqqiocsrb5iigxcorz3vbtvhjamt2oma`. `geo:` through `navigateTo`, then a web map or the clipboard by choice. |
 | 2026-09-20 | Published menu caching and venue labels | `bafybeifr3pmtpygxyn5mzrofds2kxzr5j3ogce5vukm24ota56snmrs7ri` |
+| 2026-09-20 | Published the visual pass | `bafybeihvfjquhslmygvlmu3lc3oakqidt7cwhwmc3nareu7avegrn5drmi`. Type and space scale, tokens with dark values, marked primary actions, host theme followed. |

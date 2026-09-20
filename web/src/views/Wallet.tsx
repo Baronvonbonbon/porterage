@@ -264,7 +264,11 @@ export function Wallet() {
               )} over, to fit the fixed note sizes.`}
           </p>
         )}
-        <button disabled={!!busy || !affordable} onClick={shield}>
+        <button
+          className="primary"
+          disabled={!!busy || !affordable}
+          onClick={shield}
+        >
           {plan ? `Shield ${pasWei(plan.total)}` : "Shield"}
         </button>
         {plan && balance !== null && !affordable && (

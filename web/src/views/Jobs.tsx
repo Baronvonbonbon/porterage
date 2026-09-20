@@ -31,7 +31,7 @@ import { Directions } from "./Directions";
 import { knownDrops, rememberDrop } from "../shield/notes";
 import { HerePin, useHere } from "./Here";
 import { tell } from "../notify";
-import { errorText, pasWei } from "../format";
+import { errorText, metres, pasWei } from "../format";
 
 export function Jobs({
   sessionKey,
@@ -379,8 +379,7 @@ export function Jobs({
     .filter((j) => !here || (j.pickup !== null && j.pickup <= here.metres))
     .sort((a, b) => (a.pickup ?? 0) - (b.pickup ?? 0));
 
-  const far = (metres: number) =>
-    metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${metres} m`;
+  const far = metres;
 
   return (
     <div>
@@ -443,7 +442,11 @@ export function Jobs({
               />{" "}
               PAS
             </label>
-            <button disabled={!!busy} onClick={() => bid(o)}>
+            <button
+              className="primary"
+              disabled={!!busy}
+              onClick={() => bid(o)}
+            >
               Bid on #{o.id.toString()}
             </button>
           </div>
@@ -567,6 +570,7 @@ export function Jobs({
                       so it takes a tap.
                     </p>
                     <button
+                      className="primary"
                       disabled={!!busy || !complaint.text.trim()}
                       onClick={fileComplaint}
                     >

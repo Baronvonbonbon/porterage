@@ -138,7 +138,9 @@ export function MapPick({
             Zoom out
           </button>
         </div>
-        <button onClick={() => onPick(centre)}>Drop here</button>
+        <button className="primary" onClick={() => onPick(centre)}>
+          Drop here
+        </button>
         <button className="link" onClick={onCancel}>
           Cancel
         </button>

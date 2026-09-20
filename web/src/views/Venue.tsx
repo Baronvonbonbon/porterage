@@ -295,6 +295,7 @@ export function Venue() {
               choices={LABELS.map((l) => ({ value: l, label: labelWord(l) }))}
             />
             <button
+              className="primary"
               disabled={
                 !!busy || !key || !menu.items.some((i) => i.name.trim())
               }
