@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { asText, geoUrl, webMapUrl } from "./directions";
 import { decodeDrop, encodeDrop } from "./drop";
 import { dropsFrom, encodeArchive } from "./chat";
 import { Wallet, hexlify, toUtf8String } from "ethers";
@@ -723,5 +724,37 @@ describe("sending the drop to the driver", () => {
     const theirs = threadTopic(customer, driver.compressedPublicKey);
     expect(threadTopic(driver, customer.compressedPublicKey)).toBe(theirs);
     expect(threadTopic(nosey, driver.compressedPublicKey)).not.toBe(theirs);
+  });
+});
+
+describe("directions", () => {
+  const at = { lat: 37_784_900, lon: -122_419_400 };
+
+  it("build a geo URI a map app will put a pin on", () => {
+    // The query is repeated deliberately: without it some apps centre the map
+    // and drop no pin, losing the one thing being sent.
+    expect(geoUrl(at)).toBe(
+      "geo:37.784900,-122.419400?q=37.784900,-122.419400"
+    );
+    expect(geoUrl(at, "Venue #3")).toBe(
+      "geo:37.784900,-122.419400?q=37.784900,-122.419400(Venue%20%233)"
+    );
+  });
+
+  it("build a web map link with a pin, on OpenStreetMap", () => {
+    const url = webMapUrl(at);
+    expect(url.startsWith("https://www.openstreetmap.org/")).toBe(true);
+    expect(url).toContain("mlat=37.784900");
+    expect(url).toContain("mlon=-122.419400");
+    // Not Google: the app already draws OSM tiles, and this asks less of
+    // whoever follows the link.
+    expect(url).not.toContain("google");
+  });
+
+  it("write a position the same way everywhere", () => {
+    expect(asText(at)).toBe("37.784900,-122.419400");
+    expect(asText({ lat: -33_868_800, lon: 151_209_300 })).toBe(
+      "-33.868800,151.209300"
+    );
   });
 });

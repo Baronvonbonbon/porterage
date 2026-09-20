@@ -7,7 +7,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Wallet } from "ethers";
 import { deployed } from "../contracts";
 import { allVenues, venueOf, type Venue } from "../order/venue";
-import { formatDegrees, metresBetween, parseDegrees } from "../order/geo";
+import {
+  formatDegrees,
+  metresBetween,
+  parseDegrees,
+  type Position,
+} from "../order/geo";
 import {
   acceptBid,
   cancelOrder,
@@ -44,6 +49,7 @@ import { basketTotal, basketText, menuOf, type Menu } from "../order/menu";
 import { watchIntros } from "../order/chat";
 import { cellOf, cellVagueness, publishArea } from "../order/area";
 import { sendDrop } from "../order/drop";
+import { Directions } from "./Directions";
 import { HerePin, useHere } from "./Here";
 import { disputeOf, fileDispute, type Filed } from "../order/dispute";
 import {
@@ -101,6 +107,7 @@ export function Ordering() {
   const [driverKey, setDriverKey] = useState<string | null>(null);
   const [dropSent, setDropSent] = useState(false);
   const [liveMenu, setLiveMenu] = useState<Menu | null>(null);
+  const [liveVenueAt, setLiveVenueAt] = useState<Position | null>(null);
   const [driverStars, setDriverStars] = useState(0);
   const [venueStars, setVenueStars] = useState(0);
   const [rated, setRated] = useState(false);
@@ -249,10 +256,14 @@ export function Ordering() {
   // A live order's own venue, which isn't the one the form is pointing at.
   useEffect(() => {
     setLiveMenu(null);
+    setLiveVenueAt(null);
     if (!live) return;
     let on = true;
     venueOf(live.order.venueId)
-      .then((v) => (v.metadataURI ? menuOf(v.metadataURI) : null))
+      .then(async (v) => {
+        if (on) setLiveVenueAt(v.at);
+        return v.metadataURI ? menuOf(v.metadataURI) : null;
+      })
       .then((m) => on && setLiveMenu(m))
       .catch(() => on && setLiveMenu(null));
     return () => {
@@ -668,7 +679,19 @@ export function Ordering() {
             <dt>State</dt>
             <dd>{statusName(live.order.status)}</dd>
             <dt>From venue</dt>
-            <dd>#{live.order.venueId.toString()}</dd>
+            <dd>
+              #{live.order.venueId.toString()}
+              {liveVenueAt && (
+                <>
+                  {" "}
+                  <Directions
+                    at={liveVenueAt}
+                    label={`Venue #${live.order.venueId}`}
+                    what="the venue"
+                  />
+                </>
+              )}
+            </dd>
             <dt>Ordering account</dt>
             <dd title={live.burner.address}>{short(live.burner.address)}</dd>
             <dt>Drop</dt>

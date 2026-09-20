@@ -92,7 +92,7 @@ cleanly because everybody uses the same words. Free text was considered and reje
 **Seam:** `order/labels.ts` holds the vocabulary. Moving it on-chain later changes that module and
 the filter's data source, not the UI.
 
-## 4. Open a location in a map app
+## 4. Open a location in a map app — BUILT 2026-09-20 (`order/directions.ts`), rung 1 unmeasured
 
 **What is known:** the host exposes `navigateTo(url)`, and sonde measured it passing on the phone
 in 28–44 ms. **What is not known:** whether it hands a `geo:` URI to the OS so a real map app
@@ -109,8 +109,21 @@ The ladder, in `order/directions.ts`:
 Offered for: the venue (public, safe, useful to both customer and driver), the drop **for the
 driver once item 0 has sent it**, and the coarse area when that is all there is.
 
-**Seam:** one module, one function, three strategies behind it. The probe's result changes which
-strategy runs first and nothing else.
+**Built, with one change of order and the reason for it.** Rung 2 is NOT tried automatically. sonde
+measured `navigateTo` navigating the WebView — it pointed the call at its own page and watched it
+reload — so an https map URL would not open a tab, it would REPLACE the app and throw away an order
+someone is in the middle of. So rung 1 is one tap; if the host refuses it, rungs 2 and 3 both appear
+with what each costs written beside them, and the person chooses.
+
+Offered on the driver's job (the counter, and the drop once §0 has sent it) and on the customer's
+live order (the venue). `views/Directions.tsx` is the whole UI.
+
+**Still to measure on a phone:** whether `navigateTo` hands a `geo:` URI to the OS at all. The code
+reports "opened" or "refused" rather than assuming, so the phone will simply show which branch it
+took — if the extra links appear, rung 1 was refused.
+
+**Seam:** one module, three functions, and the UI reads the outcome. A measured answer changes
+`openInMapApp` and nothing else.
 
 ---
 

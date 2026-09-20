@@ -27,6 +27,7 @@ import { commitPhoto } from "../order/evidence";
 import { formatDegrees, metresBetween, type Position } from "../order/geo";
 import { watchAreas } from "../order/area";
 import { watchDrop } from "../order/drop";
+import { Directions } from "./Directions";
 import { knownDrops, rememberDrop } from "../shield/notes";
 import { HerePin, useHere } from "./Here";
 import { tell } from "../notify";
@@ -417,6 +418,16 @@ export function Jobs({
                   ? `drop: about ${far(trip)} from the venue`
                   : "drop: not said — you'll learn it at the door"}
               </span>
+              {v && (
+                <>
+                  {" "}
+                  <Directions
+                    at={v.at}
+                    label={`Venue #${o.venueId}`}
+                    what="the counter"
+                  />
+                </>
+              )}
             </p>
             <label>
               Bid{" "}
@@ -487,7 +498,12 @@ export function Jobs({
                               venues.get(o.venueId.toString())!.at,
                               drops.get(o.id.toString())!
                             )
-                          )} from the counter`}
+                          )} from the counter`}{" "}
+                        <Directions
+                          at={drops.get(o.id.toString())!}
+                          label={`Order #${o.id}`}
+                          what="the drop"
+                        />
                       </span>
                     ) : (
                       <span className="muted">

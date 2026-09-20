@@ -90,3 +90,7 @@ code { font-size: 0.85em; overflow-wrap: anywhere; }
 /* Where you are, and how far you care to look (views/Here.tsx). */
 .here { gap: 0.3rem; }
 .here input { width: 4rem; }
+
+/* "Take me there" (views/Directions.tsx). */
+.directions { white-space: normal; }
+.directions a { color: var(--accent); }
