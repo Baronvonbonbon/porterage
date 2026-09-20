@@ -67,3 +67,13 @@ code { font-size: 0.85em; overflow-wrap: anywhere; }
 }
 .chooser .chip.on { border-color: var(--accent); color: var(--accent); }
 .chooser .chip:disabled { opacity: 0.45; cursor: default; }
+
+/* A thread of order messages (views/Thread.tsx). */
+.thread { border-top: 1px solid var(--line); margin-top: 0.8rem; padding-top: 0.4rem; }
+.thread-log { max-height: 40vh; overflow-y: auto; }
+.thread .said {
+  margin: 0.3rem 0; padding: 0.4rem 0.6rem; border-radius: 10px;
+  background: #fff; border: 1px solid var(--line); overflow-wrap: anywhere;
+}
+.thread .said.mine { background: var(--bg); border-style: dashed; margin-left: 2rem; }
+.thread input { flex: 1; min-width: 8rem; }

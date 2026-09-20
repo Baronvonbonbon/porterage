@@ -20,6 +20,8 @@ import { driverKeyFromDropSignature, openPhoto, sealPhoto } from "../src/order/e
 import DISPUTES_ABI from "../src/abi/PorterDisputes.json";
 import SETTLEMENT_ABI from "../src/abi/PorterSettlement.json";
 import { sealOpening, openSealed } from "../src/order/bids";
+import { decodeIntro, decodeThread, encodeIntro, encodeThread, threadTopic } from "../src/order/chat";
+import { open as openEnvelope, seal } from "../src/order/seal";
 
 const PAS = 10n ** 18n;
 const book = DEPLOYED as Record<string, string>;
@@ -174,4 +176,33 @@ for (const secret of [encLat(drop.lat).toString(16), encLon(drop.lon).toString(1
   if (calldata.toLowerCase().includes(secret.toLowerCase())) throw new Error("the drop leaked into the settlement");
 }
 console.log("   the drop, its salt and the coordinates appear nowhere in what was sent");
+// 10. the three-party threads, on the keys this run actually produced
+const counter = Wallet.createRandom(); // the venue's counter key, published in its menu
+const custThread = threadTopic(customer.signingKey, session.signingKey.compressedPublicKey);
+const drvThread = threadTopic(session.signingKey, customer.signingKey.compressedPublicKey);
+if (custThread !== drvThread) throw new Error("the two sides derived different threads");
+if (threadTopic(counter.signingKey, customer.signingKey.compressedPublicKey) === custThread) {
+  throw new Error("a third party derived the customer's thread with the driver");
+}
+
+// The driver says hello on the order's topic, sealed to the order account.
+const intro = await seal(customer.signingKey.compressedPublicKey, 6, encodeIntro(orderId, session.signingKey.publicKey, "driver"));
+const heardIntro = decodeIntro((await openEnvelope({ signingKey: customer.signingKey }, 6, intro))!)!;
+if (heardIntro.publicKey !== session.signingKey.compressedPublicKey || heardIntro.role !== "driver") {
+  throw new Error("the introduction didn't carry the driver's key");
+}
+if (await openEnvelope({ signingKey: counter.signingKey }, 6, intro)) throw new Error("the counter could open the introduction");
+
+// Then a short conversation, each side as one replaced statement.
+const said = [
+  { at: Date.now(), text: "I'm at the gate — it's the blue door on the left." },
+  { at: Date.now() + 1000, text: "Leave it on the step if there's no answer 🙏" },
+];
+const statement = await seal(session.signingKey.compressedPublicKey, 7, encodeThread(orderId, said));
+if (statement.length > 512) throw new Error(`a statement of ${statement.length} B is over the store's limit`);
+const threadBack = decodeThread((await openEnvelope({ signingKey: session.signingKey }, 7, statement))!)!;
+if (threadBack.orderId !== orderId || threadBack.said[1].text !== said[1].text) throw new Error("the driver misread the thread");
+if (await openEnvelope({ signingKey: counter.signingKey }, 7, statement)) throw new Error("the counter could read the thread");
+console.log(`10. threads: customer↔driver agreed on ${custThread.slice(0, 12)}…, ${said.length} messages in ${statement.length} B, unreadable to the venue`);
+
 process.exit(0);

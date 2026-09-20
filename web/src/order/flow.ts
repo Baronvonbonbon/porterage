@@ -13,7 +13,8 @@ import { ethProvider } from "../contracts";
 import { DEFAULT_TIP, fundBurner, type FundStage } from "../shield/fund";
 import { allOrders, rememberOrder, type OrderRecord } from "../shield/notes";
 import { announceOrder } from "./bids";
-import { sendBasket } from "./kitchen";
+import { sendBasket, venueTopic } from "./kitchen";
+import { introduce } from "./chat";
 import { b32, positionCommit, randomSalt, type Position } from "./geo";
 import { ORDER_GAS_RESERVE, createOrder, escrowFor } from "./orders";
 
@@ -37,7 +38,7 @@ export const fundingFor = (p: OrderPlan): bigint =>
 
 export async function placeOrder(
   plan: OrderPlan,
-  onStage: (s: PlaceStage) => void,
+  onStage: (s: PlaceStage) => void
 ): Promise<{ orderId: bigint; burner: Wallet; record: OrderRecord }> {
   const funded = await fundBurner(fundingFor(plan), onStage, DEFAULT_TIP);
   const burner = funded.burner.connect(ethProvider());
@@ -66,7 +67,19 @@ export async function placeOrder(
   await announceOrder(burner, orderId);
   // The counter needs to know what to make. Sealed to its key, on the venue's topic.
   if (plan.basket?.counterKey && plan.basket.items.size) {
-    await sendBasket(plan.venueId, plan.basket.counterKey, { orderId, items: plan.basket.items });
+    await sendBasket(plan.venueId, plan.basket.counterKey, {
+      orderId,
+      items: plan.basket.items,
+    });
+    // And the key to answer on: a basket is sealed with a throwaway key, so
+    // without this the kitchen could read the order but not reply to it.
+    await introduce(
+      burner,
+      plan.basket.counterKey,
+      venueTopic(plan.venueId),
+      orderId,
+      "customer"
+    );
   }
   onStage("placed");
   return { orderId, burner, record };

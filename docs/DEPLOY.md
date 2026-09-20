@@ -35,3 +35,4 @@ signed. Registering an unowned label needs `--register` and the label typed back
 | 2026-09-20 | Published menus and photo evidence | `bafybeicefnhlydlxbxkxckqywpz4yog5k4yhssb4nexnhhay7j24nde6ne` |
 | 2026-09-20 | Published the kitchen view | `bafybeicr7f34iysz3r6nv77ficonpxy5ayfzu6epqlgqr7ai42ps4whgce` |
 | 2026-09-20 | Published the drop map, and buttons in place of dropdowns | `bafybeib2lzzmx5mj7vjhy3bydmhgwy5xd2les5zuxb5hphwwbyjg2lxs7a`. The app's WebView never opened `<select>` popups, so the venue and token lists couldn't be picked from on a phone. |
+| 2026-09-20 | Published order messages | `bafybeigmc2cq5vncrwrjtvmmk5qiculiuqiawamwo4uruiebz7bnjlr2ne` |

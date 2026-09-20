@@ -381,7 +381,20 @@ Each phase ends with something that runs on a phone.
       no map library: the pin is the centre of the view, so dropping it is panning.
       It starts at the venue, because the WebView won't give a position. Opt-in and
       labelled: the tile server sees the rough area, typing coordinates sends nothing.
-- [ ] Order messages between the three parties (§6), on the same sealed-envelope footing.
+- [x] Order messages between the three parties (§6), on the same sealed-envelope footing. A thread is a
+      PAIR, and its topic is the ECDH secret between the two parties' keys — so unlike the order topic,
+      which anyone can compute from an order id, **a thread can't be found at all without one of the two
+      private keys**, and what's on it is sealed as well. Each side keeps ONE statement, replaced in
+      place (§6.2): a rolling window of its own recent messages, so a thread costs two statements
+      however long it runs and the oldest messages age out. No message carries a sender — an envelope
+      is sealed with a throwaway key, so the statements a device can open are exactly the ones it did
+      not send, and its own side comes from encrypted local storage. Keys reach each other by a sealed
+      `introduce` on a topic the pair already share: the driver says hello on the order's topic once it
+      has the job, and the customer on the venue's topic with the basket (a basket alone can't be
+      replied to, being sealed with a throwaway key). `web/src/order/chat.ts`, one `Thread` component
+      for all three roles. Verified live on 2026-09-20 (`web/tools/live-order.ts` step 10): both sides
+      derived the same topic, a third party with both public keys did not, and two messages fit one
+      178-byte statement that the venue could not read.
 - [x] Photo evidence: the driver photographs the delivery, it's sealed to the two of them, stored on
       Bulletin, and its key is committed on-chain (`commitEvidence`) before the order settles — a
       disputed order never settles, which is when the photo matters. The sealing key is the ECDH

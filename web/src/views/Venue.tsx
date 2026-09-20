@@ -5,13 +5,26 @@ import type { Wallet } from "ethers";
 import { hostAccount, type HostAccount } from "../hostchain";
 import { sessionKey } from "../keys";
 import { deployed } from "../contracts";
-import { allVenues, myVenues, registerVenue, setVenueSigner, type Venue as VenueRow } from "../order/venue";
+import {
+  allVenues,
+  myVenues,
+  registerVenue,
+  setVenueSigner,
+  type Venue as VenueRow,
+} from "../order/venue";
 import { formatDegrees, parseDegrees } from "../order/geo";
 import { recentOrders, Status, statusName, type Order } from "../order/orders";
 import { encodePickup, nowSeconds, signPickup } from "../order/handoff";
 import { QrShow } from "./Qr";
 import { menuOf, publishMenu, type Menu, type MenuItem } from "../order/menu";
-import { basketLine, watchBaskets, type Basket } from "../order/kitchen";
+import {
+  basketLine,
+  venueTopic,
+  watchBaskets,
+  type Basket,
+} from "../order/kitchen";
+import { watchIntros, type Intro } from "../order/chat";
+import { Thread } from "./Thread";
 import { errorText, pasWei, short } from "../format";
 
 export function Venue() {
@@ -27,6 +40,9 @@ export function Venue() {
   const [menu, setMenu] = useState<Menu>({ name: "", items: [] });
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [baskets, setBaskets] = useState<Map<string, Basket>>(new Map());
+  /** Order id to whoever introduced themselves on it, and with which key. */
+  const [callers, setCallers] = useState<Map<string, Intro>>(new Map());
+  const [talkTo, setTalkTo] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -40,11 +56,20 @@ export function Venue() {
         const first = rows[0];
         if (first && menuFor !== first.id.toString()) {
           setMenuFor(first.id.toString());
-          const published = first.metadataURI ? await menuOf(first.metadataURI) : null;
-          setMenu(published ?? { name: "", items: [{ id: "a", name: "", price: 10n ** 18n }] });
+          const published = first.metadataURI
+            ? await menuOf(first.metadataURI)
+            : null;
+          setMenu(
+            published ?? {
+              name: "",
+              items: [{ id: "a", name: "", price: 10n ** 18n }],
+            }
+          );
         }
         const ids = new Set(rows.map((v) => v.id.toString()));
-        setOrders((await recentOrders()).filter((o) => ids.has(o.venueId.toString())));
+        setOrders(
+          (await recentOrders()).filter((o) => ids.has(o.venueId.toString()))
+        );
         if (!rows.length) await allVenues(1); // warms the read path
       }
     } catch (e) {
@@ -60,14 +85,32 @@ export function Venue() {
   useEffect(() => {
     if (!key || !mine.length) return;
     let stop: (() => void) | null = null;
-    watchBaskets(key, mine[0].id, (b) => setBaskets((all) => new Map(all).set(b.orderId.toString(), b)))
+    watchBaskets(key, mine[0].id, (b) =>
+      setBaskets((all) => new Map(all).set(b.orderId.toString(), b))
+    )
       .then((s) => (stop = s))
       .catch((e) => setError(errorText(e)));
     return () => stop?.();
   }, [key, mine]);
 
+  // A basket is sealed with a throwaway key, so whoever wants an answer says
+  // hello separately, on the same topic and sealed the same way.
+  useEffect(() => {
+    if (!key || !mine.length) return;
+    let stop: (() => void) | null = null;
+    watchIntros(key, venueTopic(mine[0].id), (intro) =>
+      setCallers((all) => new Map(all).set(intro.orderId.toString(), intro))
+    )
+      .then((s) => (stop = s))
+      .catch(() => undefined);
+    return () => stop?.();
+  }, [key, mine]);
+
   const setItem = (n: number, patch: Partial<MenuItem>) =>
-    setMenu({ ...menu, items: menu.items.map((it, i) => (i === n ? { ...it, ...patch } : it)) });
+    setMenu({
+      ...menu,
+      items: menu.items.map((it, i) => (i === n ? { ...it, ...patch } : it)),
+    });
 
   async function run(label: string, fn: () => Promise<unknown>) {
     setBusy(label);
@@ -92,19 +135,36 @@ export function Venue() {
       {mine.length === 0 && (
         <>
           <p className="muted">
-            Register the counter once, at its own position. Drivers prove they collected from here by both signing
-            that position, so it never needs the phone's location afterwards.
+            Register the counter once, at its own position. Drivers prove they
+            collected from here by both signing that position, so it never needs
+            the phone's location afterwards.
           </p>
           <div className="actions">
             <label>
-              Latitude <input inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} size={11} />
+              Latitude{" "}
+              <input
+                inputMode="decimal"
+                value={lat}
+                onChange={(e) => setLat(e.target.value)}
+                size={11}
+              />
             </label>
             <label>
-              Longitude <input inputMode="decimal" value={lon} onChange={(e) => setLon(e.target.value)} size={11} />
+              Longitude{" "}
+              <input
+                inputMode="decimal"
+                value={lon}
+                onChange={(e) => setLon(e.target.value)}
+                size={11}
+              />
             </label>
             <button
               disabled={!!busy || !valid || !key}
-              onClick={() => run("Registering", () => registerVenue({ lat: at.lat!, lon: at.lon! }, key!))}
+              onClick={() =>
+                run("Registering", () =>
+                  registerVenue({ lat: at.lat!, lon: at.lon! }, key!)
+                )
+              }
             >
               Register this venue
             </button>
@@ -127,7 +187,13 @@ export function Venue() {
             ) : (
               <>
                 {short(v.signer)}{" "}
-                <button className="link" disabled={!!busy || !key} onClick={() => run("Updating", () => setVenueSigner(v.id, key!))}>
+                <button
+                  className="link"
+                  disabled={!!busy || !key}
+                  onClick={() =>
+                    run("Updating", () => setVenueSigner(v.id, key!))
+                  }
+                >
                   use this phone
                 </button>
               </>
@@ -140,13 +206,19 @@ export function Venue() {
         <>
           <h3>Menu</h3>
           <p className="muted">
-            The menu is a small public document on Bulletin, and the venue points at it. Customers read it before
-            they have an account, which is why it isn't sealed. Bulletin keeps it about two weeks, so republish
-            now and then.
+            The menu is a small public document on Bulletin, and the venue
+            points at it. Customers read it before they have an account, which
+            is why it isn't sealed. Bulletin keeps it about two weeks, so
+            republish now and then.
           </p>
           <div className="actions">
             <label>
-              Called <input value={menu.name} onChange={(e) => setMenu({ ...menu, name: e.target.value })} size={16} />
+              Called{" "}
+              <input
+                value={menu.name}
+                onChange={(e) => setMenu({ ...menu, name: e.target.value })}
+                size={16}
+              />
             </label>
             {menu.items.map((it, i) => (
               <label key={it.id}>
@@ -160,7 +232,15 @@ export function Venue() {
                   inputMode="decimal"
                   size={4}
                   value={(Number(it.price) / 1e18).toString()}
-                  onChange={(e) => setItem(i, { price: BigInt(Math.round((Number(e.target.value) || 0) * 1e6)) * 10n ** 12n })}
+                  onChange={(e) =>
+                    setItem(i, {
+                      price:
+                        BigInt(
+                          Math.round((Number(e.target.value) || 0) * 1e6)
+                        ) *
+                        10n ** 12n,
+                    })
+                  }
                 />{" "}
                 PAS
               </label>
@@ -170,14 +250,23 @@ export function Venue() {
               onClick={() =>
                 setMenu({
                   ...menu,
-                  items: [...menu.items, { id: String.fromCharCode(97 + menu.items.length), name: "", price: 10n ** 18n }],
+                  items: [
+                    ...menu.items,
+                    {
+                      id: String.fromCharCode(97 + menu.items.length),
+                      name: "",
+                      price: 10n ** 18n,
+                    },
+                  ],
                 })
               }
             >
               Add another item
             </button>
             <button
-              disabled={!!busy || !key || !menu.items.some((i) => i.name.trim())}
+              disabled={
+                !!busy || !key || !menu.items.some((i) => i.name.trim())
+              }
               onClick={() =>
                 run("Publishing the menu", () =>
                   publishMenu(mine[0].id, {
@@ -185,7 +274,7 @@ export function Venue() {
                     items: menu.items.filter((i) => i.name.trim()),
                     // Customers seal their baskets to this, so only the counter reads them.
                     counterKey: key!.signingKey.compressedPublicKey,
-                  }),
+                  })
                 )
               }
             >
@@ -196,21 +285,53 @@ export function Venue() {
           <h3>Orders</h3>
           {orders.length === 0 && <p className="muted">No orders yet.</p>}
           <p className="muted">
-            What was ordered reaches only this counter: the chain says how much, never what.
+            What was ordered reaches only this counter: the chain says how much,
+            never what.
           </p>
           <ul>
             {orders.map((o) => {
               const venue = mine.find((v) => v.id === o.venueId)!;
               return (
                 <li key={o.id.toString()}>
-                  <b>#{o.id.toString()}</b> — {statusName(o.status)}, goods {pasWei(o.orderValue)}
+                  <b>#{o.id.toString()}</b> — {statusName(o.status)}, goods{" "}
+                  {pasWei(o.orderValue)}
                   {baskets.has(o.id.toString()) && (
                     <>
                       <br />
                       <b>{basketLine(menu, baskets.get(o.id.toString())!)}</b>
                     </>
                   )}
-                  {o.driver !== "0x0000000000000000000000000000000000000000" && ` — driver ${short(o.driver)}`}
+                  {o.driver !== "0x0000000000000000000000000000000000000000" &&
+                    ` — driver ${short(o.driver)}`}
+                  {callers.has(o.id.toString()) && key && (
+                    <>
+                      {" "}
+                      <button
+                        className="link"
+                        onClick={() =>
+                          setTalkTo(
+                            talkTo === o.id.toString() ? null : o.id.toString()
+                          )
+                        }
+                      >
+                        {talkTo === o.id.toString()
+                          ? "hide messages"
+                          : "messages"}
+                      </button>
+                    </>
+                  )}
+                  {talkTo === o.id.toString() &&
+                    key &&
+                    callers.has(o.id.toString()) && (
+                      <Thread
+                        mine={key}
+                        theirs={callers.get(o.id.toString())!.publicKey}
+                        orderId={o.id}
+                        title={`#${o.id} — the ${
+                          callers.get(o.id.toString())!.role
+                        }`}
+                      />
+                    )}
                   {o.status === Status.Assigned && key && (
                     <>
                       {" "}
@@ -220,10 +341,21 @@ export function Venue() {
                         onClick={() =>
                           run("Signing the handover", async () => {
                             const timestamp = nowSeconds();
-                            const signature = await signPickup(key, o.id, key.address, venue.at, timestamp);
+                            const signature = await signPickup(
+                              key,
+                              o.id,
+                              key.address,
+                              venue.at,
+                              timestamp
+                            );
                             setCode({
                               id: o.id.toString(),
-                              text: encodePickup({ orderId: o.id, at: venue.at, timestamp, signature }),
+                              text: encodePickup({
+                                orderId: o.id,
+                                at: venue.at,
+                                timestamp,
+                                signature,
+                              }),
                             });
                           })
                         }
@@ -240,7 +372,10 @@ export function Venue() {
           {code && (
             <>
               <h3>Order #{code.id}</h3>
-              <QrShow value={code.text} caption="Let the driver scan this. It's the counter's signature, and it's good for a few minutes." />
+              <QrShow
+                value={code.text}
+                caption="Let the driver scan this. It's the counter's signature, and it's good for a few minutes."
+              />
               <button className="link" onClick={() => setCode(null)}>
                 Done
               </button>
@@ -249,7 +384,9 @@ export function Venue() {
         </>
       )}
 
-      {me && !deployed() && <p className="notice">The contracts aren't deployed yet.</p>}
+      {me && !deployed() && (
+        <p className="notice">The contracts aren't deployed yet.</p>
+      )}
       {busy && <p className="muted">{busy}… approve it in the Polkadot app.</p>}
       {error && <p className="error">{error}</p>}
       <button className="link" onClick={refresh} disabled={!!busy}>

@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Wallet } from "ethers";
 import { deployed } from "../contracts";
-import { allVenues, type Venue } from "../order/venue";
+import { allVenues, venueOf, type Venue } from "../order/venue";
 import { formatDegrees, parseDegrees } from "../order/geo";
 import {
   acceptBid,
@@ -15,7 +15,7 @@ import {
   statusName,
   type Order,
 } from "../order/orders";
-import { watchBids, type Bid } from "../order/bids";
+import { orderTopic, watchBids, type Bid } from "../order/bids";
 import {
   fundingFor,
   orderBurner,
@@ -32,10 +32,12 @@ import {
 } from "../order/handoff";
 import { QrScan, QrShow } from "./Qr";
 import { Choose } from "./Choose";
+import { Thread } from "./Thread";
 import { MapPick } from "./MapPick";
 import { driverKeyFromDropSignature, fetchPhoto } from "../order/evidence";
 import { PHASE_DROPOFF } from "../order/handoff";
 import { basketTotal, basketText, menuOf, type Menu } from "../order/menu";
+import { watchIntros } from "../order/chat";
 import { rememberOrder } from "../shield/notes";
 import { errorText, pasWei, short } from "../format";
 
@@ -77,6 +79,10 @@ export function Ordering() {
   const [picked, setPicked] = useState<Map<string, number>>(new Map());
   const [photo, setPhoto] = useState<string | null>(null);
   const [mapping, setMapping] = useState(false);
+  // Who this order can talk to: the driver once it introduces itself, and the
+  // kitchen whose key the menu published.
+  const [driverKey, setDriverKey] = useState<string | null>(null);
+  const [liveMenu, setLiveMenu] = useState<Menu | null>(null);
   const stop = useRef<(() => void) | null>(null);
 
   const refresh = useCallback(async () => {
@@ -127,6 +133,43 @@ export function Ordering() {
       live = false;
     };
   }, [venueId, venues]);
+
+  // A live order's own venue, which isn't the one the form is pointing at.
+  useEffect(() => {
+    setLiveMenu(null);
+    if (!live) return;
+    let on = true;
+    venueOf(live.order.venueId)
+      .then((v) => (v.metadataURI ? menuOf(v.metadataURI) : null))
+      .then((m) => on && setLiveMenu(m))
+      .catch(() => on && setLiveMenu(null));
+    return () => {
+      on = false;
+    };
+  }, [live]);
+
+  // The driver introduces itself once it has the job; until then there is
+  // nobody to message. After the door, its key is already on the record.
+  useEffect(() => {
+    setDriverKey(live?.record.driverKey ?? null);
+    if (!live) return;
+    let stopping: (() => void) | null = null;
+    let on = true;
+    watchIntros(live.burner, orderTopic(BigInt(live.record.id)), (intro) => {
+      if (
+        on &&
+        intro.role === "driver" &&
+        intro.orderId === BigInt(live.record.id)
+      )
+        setDriverKey(intro.publicKey);
+    })
+      .then((s) => (on ? (stopping = s) : s()))
+      .catch(() => undefined);
+    return () => {
+      on = false;
+      stopping?.();
+    };
+  }, [live]);
 
   const drop = { lat: parseDegrees(lat), lon: parseDegrees(lon) };
   const basket = menu ? basketTotal(menu, picked) : null;
@@ -498,6 +541,33 @@ export function Ordering() {
                     </button>
                   </div>
                 </>
+              )}
+            </>
+          )}
+
+          {live.order.status >= 1 && live.order.status <= 3 && (
+            <>
+              {driverKey && (
+                <Thread
+                  mine={live.burner}
+                  theirs={driverKey}
+                  orderId={BigInt(live.record.id)}
+                  title="You and the driver"
+                />
+              )}
+              {liveMenu?.counterKey && (
+                <Thread
+                  mine={live.burner}
+                  theirs={liveMenu.counterKey}
+                  orderId={BigInt(live.record.id)}
+                  title={`You and ${liveMenu.name || "the kitchen"}`}
+                />
+              )}
+              {!driverKey && live.order.status >= 2 && (
+                <p className="muted">
+                  The driver can be messaged once it says hello — it does that
+                  itself when it picks up the job.
+                </p>
               )}
             </>
           )}

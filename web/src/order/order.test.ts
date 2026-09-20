@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Wallet, hexlify } from "ethers";
+import { Wallet, hexlify, toUtf8String } from "ethers";
 import {
   decodeAnnounce,
   encodeAnnounce,
@@ -14,6 +14,16 @@ import {
   randomSalt,
 } from "./geo";
 import { TILE, latToY, lonToX, panned, wrapX, xToLon, yToLat } from "./tiles";
+import {
+  MAX_TEXT,
+  clip,
+  decodeIntro,
+  decodeThread,
+  encodeIntro,
+  encodeThread,
+  sideChannel,
+  threadTopic,
+} from "./chat";
 
 describe("positions", () => {
   it("read and write degrees as microdegrees", () => {
@@ -289,5 +299,86 @@ describe("map tiles", () => {
     const down = panned(centre, 0, -200, z);
     expect(metresBetween(centre, down)).toBeGreaterThan(100);
     expect(metresBetween(centre, down)).toBeLessThan(1000);
+  });
+});
+
+describe("order messages", () => {
+  const alice = new SigningKey(hexlify(new Uint8Array(32).fill(5)));
+  const bob = new SigningKey(hexlify(new Uint8Array(32).fill(7)));
+  const eve = new SigningKey(hexlify(new Uint8Array(32).fill(9)));
+
+  it("both sides find the same thread, and nobody else can", () => {
+    const ours = threadTopic(alice, bob.compressedPublicKey);
+    expect(threadTopic(bob, alice.compressedPublicKey)).toBe(ours);
+    // Eve knows both public keys and still can't derive it.
+    expect(threadTopic(eve, alice.compressedPublicKey)).not.toBe(ours);
+    expect(threadTopic(eve, bob.compressedPublicKey)).not.toBe(ours);
+    // Each side writes to its own slot, so neither overwrites the other.
+    expect(sideChannel(ours, alice)).not.toBe(sideChannel(ours, bob));
+  });
+
+  it("carry an introduction with the order, the role and the key", () => {
+    const bytes = encodeIntro(9n, bob.publicKey, "driver");
+    expect(bytes.length).toBe(42);
+    const back = decodeIntro(bytes)!;
+    expect(back.orderId).toBe(9n);
+    expect(back.role).toBe("driver");
+    expect(back.publicKey).toBe(bob.compressedPublicKey);
+    expect(decodeIntro(bytes.slice(0, 41))).toBe(null);
+  });
+
+  it("round-trip a window of messages", () => {
+    const said = [
+      { at: 1_758_300_000_000, text: "at the gate" },
+      {
+        at: 1_758_300_060_000,
+        text: "leave it by the door — the dog is friendly 🐕",
+      },
+    ];
+    const back = decodeThread(encodeThread(7n, said))!;
+    expect(back.orderId).toBe(7n);
+    expect(back.said.map((m) => m.text)).toEqual(said.map((m) => m.text));
+    // Seconds on the wire, so times come back to the second.
+    expect(back.said[0].at).toBe(1_758_300_000_000);
+    expect(decodeThread(new Uint8Array(4))).toBe(null);
+  });
+
+  it("drop the oldest messages rather than overflow a statement", () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({
+      at: 1_758_300_000_000 + i * 1000,
+      text: `message ${i} `.repeat(3),
+    }));
+    const bytes = encodeThread(1n, many);
+    expect(bytes.length).toBeLessThanOrEqual(448);
+    const back = decodeThread(bytes)!;
+    // The recent tail survives; the start is gone.
+    expect(back.said.at(-1)!.text).toBe(many.at(-1)!.text);
+    expect(back.said.length).toBeLessThan(many.length);
+    expect(back.said[0].text).toBe(many[many.length - back.said.length].text);
+  });
+
+  it("stay readable at the longest message, and sealed to nobody else", async () => {
+    // Every character here is two bytes, so 120 of them is 240 — inside the
+    // length byte, which counting characters alone would have burst.
+    const long = [{ at: Date.now(), text: "é".repeat(MAX_TEXT) }];
+    expect(encodeThread(1n, long).length).toBeLessThanOrEqual(448);
+    const sealed = await seal(
+      bob.compressedPublicKey,
+      7,
+      encodeThread(1n, long)
+    );
+    expect(sealed.length).toBeLessThanOrEqual(512);
+    expect(
+      decodeThread((await openEnvelope({ signingKey: bob }, 7, sealed))!)!
+        .said[0].text
+    ).toBe(long[0].text);
+    expect(await openEnvelope({ signingKey: eve }, 7, sealed)).toBe(null);
+  });
+
+  it("clip by bytes, not characters, without splitting one", () => {
+    // 100 four-byte emoji are 400 bytes: too many for a length byte.
+    const body = clip("🐕".repeat(100));
+    expect(body.length).toBeLessThanOrEqual(255);
+    expect(toUtf8String(body)).toBe("🐕".repeat(63)); // whole dogs only
   });
 });

@@ -11,10 +11,23 @@
 // kept in the host's local storage, or localStorage outside the app.
 
 import { getHostLocalStorage } from "@parity/product-sdk-host";
-import { getBytes, keccak256, concat, toBigInt, hexlify, toUtf8Bytes } from "ethers";
+import {
+  getBytes,
+  keccak256,
+  concat,
+  toBigInt,
+  hexlify,
+  toUtf8Bytes,
+} from "ethers";
 import { entropy, LABEL } from "../keys";
 import { inHost } from "../host";
-import { BN254_R, NATIVE, commitmentOf, type Note, type NotePath } from "./pool";
+import {
+  BN254_R,
+  NATIVE,
+  commitmentOf,
+  type Note,
+  type NotePath,
+} from "./pool";
 
 export interface NoteRecord {
   n: number;
@@ -25,7 +38,13 @@ export interface NoteRecord {
   /** A deposit was sent and its outcome isn't known yet. Recoverable from the pool. */
   pendingSince?: number;
   /** A funding request spending this note is out; the burner it pays, and when. */
-  spending?: { burner: number; change: number; since: number; tip: string; tipped?: boolean };
+  spending?: {
+    burner: number;
+    change: number;
+    since: number;
+    tip: string;
+    tipped?: boolean;
+  };
   spent?: boolean;
 }
 
@@ -53,6 +72,13 @@ export interface OrderRecord {
   driverKey?: string;
 }
 
+/** One side of a message thread: what this device has said on it (order/chat.ts). */
+export interface ThreadRecord {
+  /** The thread's topic, which only the two parties can derive. */
+  id: string;
+  mine: { at: number; text: string }[];
+}
+
 interface Book {
   next: number;
   notes: NoteRecord[];
@@ -61,21 +87,36 @@ interface Book {
   orders?: OrderRecord[];
   /** Burners handed out so far; burner n's key is deriveEntropy("porterage:burner:<n>"). */
   burners?: number;
+  threads?: ThreadRecord[];
 }
 
 const KEY = "porterage.notes.v1";
 
 /** Note n's secrets. Pure given the entropy; exported for tests. */
-export function noteSecrets(material: Uint8Array): { nullifier: string; secret: string } {
-  const field = (tag: number) => (toBigInt(keccak256(concat([material, new Uint8Array([tag])]))) % BN254_R).toString();
+export function noteSecrets(material: Uint8Array): {
+  nullifier: string;
+  secret: string;
+} {
+  const field = (tag: number) =>
+    (
+      toBigInt(keccak256(concat([material, new Uint8Array([tag])]))) % BN254_R
+    ).toString();
   return { nullifier: field(0), secret: field(1) };
 }
 
-export async function noteOf(r: Pick<NoteRecord, "n" | "value" | "asset">): Promise<Note> {
-  return { ...noteSecrets(await entropy(LABEL.note(r.n))), value: r.value, asset: r.asset };
+export async function noteOf(
+  r: Pick<NoteRecord, "n" | "value" | "asset">
+): Promise<Note> {
+  return {
+    ...noteSecrets(await entropy(LABEL.note(r.n))),
+    value: r.value,
+    asset: r.asset,
+  };
 }
 
-export async function commitmentFor(r: Pick<NoteRecord, "n" | "value" | "asset">): Promise<bigint> {
+export async function commitmentFor(
+  r: Pick<NoteRecord, "n" | "value" | "asset">
+): Promise<bigint> {
   return commitmentOf(await noteOf(r));
 }
 
@@ -84,7 +125,10 @@ export async function commitmentFor(r: Pick<NoteRecord, "n" | "value" | "asset">
 let aes: Promise<CryptoKey> | null = null;
 const cipherKey = () =>
   (aes ??= entropy(LABEL.notes).then((m) =>
-    crypto.subtle.importKey("raw", m as BufferSource, "AES-GCM", false, ["encrypt", "decrypt"]),
+    crypto.subtle.importKey("raw", m as BufferSource, "AES-GCM", false, [
+      "encrypt",
+      "decrypt",
+    ])
   ));
 
 async function readRaw(): Promise<string> {
@@ -110,7 +154,7 @@ async function load(): Promise<Book> {
   const plain = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: bytes.slice(0, 12) as BufferSource },
     await cipherKey(),
-    bytes.slice(12) as BufferSource,
+    bytes.slice(12) as BufferSource
   );
   return JSON.parse(new TextDecoder().decode(plain)) as Book;
 }
@@ -118,7 +162,11 @@ async function load(): Promise<Book> {
 async function save(book: Book): Promise<void> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const body = new Uint8Array(
-    await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await cipherKey(), toUtf8Bytes(JSON.stringify(book))),
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      await cipherKey(),
+      toUtf8Bytes(JSON.stringify(book))
+    )
   );
   await writeRaw(hexlify(concat([iv, body])));
 }
@@ -144,7 +192,10 @@ export function allNotes(): Promise<NoteRecord[]> {
 }
 
 /** Reserve note numbers for new notes, recorded as pending before anything is sent. */
-export function reserveNotes(values: bigint[], asset = NATIVE): Promise<NoteRecord[]> {
+export function reserveNotes(
+  values: bigint[],
+  asset = NATIVE
+): Promise<NoteRecord[]> {
   return update((book) => {
     const recs = values.map((v) => ({
       n: book.next++,
@@ -184,7 +235,10 @@ export function nextBurner(): Promise<number> {
   });
 }
 
-export function markSpending(n: number, spending: NoteRecord["spending"]): Promise<void> {
+export function markSpending(
+  n: number,
+  spending: NoteRecord["spending"]
+): Promise<void> {
   return update((book) => {
     for (const r of book.notes) if (r.n === n) r.spending = spending;
   });
@@ -199,7 +253,9 @@ export function markSpent(n: number): Promise<void> {
 /** Unspent, settled notes of one asset, smallest first. */
 export async function spendable(asset = NATIVE): Promise<NoteRecord[]> {
   return (await allNotes())
-    .filter((r) => !r.spent && !r.spending && r.path && BigInt(r.asset) === asset)
+    .filter(
+      (r) => !r.spent && !r.spending && r.path && BigInt(r.asset) === asset
+    )
     .sort((a, b) => (BigInt(a.value) < BigInt(b.value) ? -1 : 1));
 }
 
@@ -227,9 +283,40 @@ export function reservePayout(bucket: bigint): Promise<PayoutRecord> {
   });
 }
 
-export function updatePayout(n: number, patch: Partial<PayoutRecord>): Promise<void> {
+export function updatePayout(
+  n: number,
+  patch: Partial<PayoutRecord>
+): Promise<void> {
   return update((book) => {
     for (const r of book.payouts ?? []) if (r.n === n) Object.assign(r, patch);
+  });
+}
+
+export function threadOf(id: string): Promise<{ at: number; text: string }[]> {
+  return queue
+    .then(load)
+    .then((b) => b.threads?.find((t) => t.id === id)?.mine ?? []);
+}
+
+/**
+ * Record something this device said, and return the whole side back.
+ * Kept locally because a sealed envelope can't be opened by the one who sealed
+ * it, so a device can't read its own statements off the topic.
+ */
+export function rememberSaid(
+  id: string,
+  text: string,
+  at = Date.now()
+): Promise<{ at: number; text: string }[]> {
+  return update((book) => {
+    book.threads ??= [];
+    const t = book.threads.find((x) => x.id === id) ?? { id, mine: [] };
+    if (!book.threads.includes(t)) book.threads.push(t);
+    t.mine.push({ at, text });
+    // Only the recent tail is ever republished; keeping more would grow storage
+    // for messages that can no longer reach the other side.
+    if (t.mine.length > 32) t.mine = t.mine.slice(-32);
+    return t.mine;
   });
 }
 
