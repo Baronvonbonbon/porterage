@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MAX_LABELS, cleanLabels, matchesLabels, type Label } from "./labels";
 import { asText, geoUrl, webMapUrl } from "./directions";
 import { decodeDrop, encodeDrop } from "./drop";
 import { dropsFrom, encodeArchive } from "./chat";
@@ -756,5 +757,46 @@ describe("directions", () => {
     expect(asText({ lat: -33_868_800, lon: 151_209_300 })).toBe(
       "-33.868800,151.209300"
     );
+  });
+});
+
+describe("venue labels", () => {
+  it("keep only words this version knows, and only as many as allowed", () => {
+    expect(cleanLabels(["coffee", "bakery"])).toEqual(["coffee", "bakery"]);
+    // A venue claiming everything is claiming nothing.
+    expect(cleanLabels(["coffee", "bakery", "pharmacy"]).length).toBe(
+      MAX_LABELS
+    );
+    // A word from a newer version of the app is dropped, not shown: an unknown
+    // label can't be filtered on, so displaying it would mislead.
+    expect(cleanLabels(["coffee", "florist"])).toEqual(["coffee"]);
+    expect(cleanLabels(["coffee", "coffee"])).toEqual(["coffee"]);
+    expect(cleanLabels("coffee")).toEqual([]);
+    expect(cleanLabels(undefined)).toEqual([]);
+  });
+
+  it("match nothing in particular when nothing was asked for", () => {
+    expect(matchesLabels(["coffee"], [])).toBe(true);
+    expect(matchesLabels([], [])).toBe(true);
+    // A venue that said nothing about itself is hidden once a filter is on.
+    expect(matchesLabels([], ["coffee"])).toBe(false);
+    expect(matchesLabels(["bakery", "coffee"], ["coffee"])).toBe(true);
+    expect(matchesLabels(["bakery"], ["coffee", "pharmacy"])).toBe(false);
+  });
+
+  it("carry labels through a menu, and survive one that has none", () => {
+    const menu = {
+      name: "Corner counter",
+      items: [{ id: "a", name: "Coffee", price: 10n ** 18n }],
+      labels: ["coffee", "bakery"] as Label[],
+    };
+    expect(decodeMenu(encodeMenu(menu)).labels).toEqual(["coffee", "bakery"]);
+    expect(decodeMenu(encodeMenu({ ...menu, labels: [] })).labels).toBe(
+      undefined
+    );
+    // An older menu, written before labels existed, still reads.
+    expect(
+      decodeMenu(encodeMenu({ name: "x", items: menu.items })).labels
+    ).toBe(undefined);
   });
 });

@@ -36,7 +36,7 @@ import {
   type DropRequest,
 } from "../order/handoff";
 import { QrScan, QrShow } from "./Qr";
-import { Choose } from "./Choose";
+import { Choose, ChooseMany } from "./Choose";
 import { Thread } from "./Thread";
 import { MapPick } from "./MapPick";
 import {
@@ -46,6 +46,7 @@ import {
 } from "../order/evidence";
 import { PHASE_DROPOFF } from "../order/handoff";
 import { basketTotal, basketText, menuOf, type Menu } from "../order/menu";
+import { LABELS, labelWord, matchesLabels, type Label } from "../order/labels";
 import { watchIntros } from "../order/chat";
 import { cellOf, cellVagueness, publishArea } from "../order/area";
 import { sendDrop } from "../order/drop";
@@ -118,6 +119,11 @@ export function Ordering() {
   const [here, setHere] = useHere();
   /** Publish a coarse area with the order, so drivers can judge the trip. */
   const [tellArea, setTellArea] = useState(false);
+  /** What the customer is looking for, and what each venue says it is. */
+  const [wanted, setWanted] = useState<Label[]>([]);
+  const [venueLabels, setVenueLabels] = useState<Map<string, Label[]>>(
+    new Map()
+  );
   const stop = useRef<(() => void) | null>(null);
 
   const refresh = useCallback(async () => {
@@ -169,6 +175,25 @@ export function Ordering() {
       live = false;
     };
   }, [venueId, venues]);
+
+  // Every venue's labels, which live in its menu. The first pass costs a
+  // Bulletin fetch each; after that the cache answers (order/menu.ts).
+  useEffect(() => {
+    let on = true;
+    Promise.all(
+      venues.map(async (v) => {
+        const m = v.metadataURI
+          ? await menuOf(v.metadataURI).catch(() => null)
+          : null;
+        return [v.id.toString(), m?.labels ?? []] as const;
+      })
+    )
+      .then((rows) => on && setVenueLabels(new Map(rows)))
+      .catch(() => undefined);
+    return () => {
+      on = false;
+    };
+  }, [venues]);
 
   // Venue reputations, so a venue can be chosen on more than its distance.
   useEffect(() => {
@@ -448,8 +473,11 @@ export function Ordering() {
       ...v,
       away: here ? metresBetween({ lat: here.lat, lon: here.lon }, v.at) : null,
     }));
-    if (!here) return rows;
-    return rows
+    const wantedOnly = rows.filter((v) =>
+      matchesLabels(venueLabels.get(v.id.toString()) ?? [], wanted)
+    );
+    if (!here) return wantedOnly;
+    return wantedOnly
       .filter((v) => v.away !== null && v.away <= here.metres)
       .sort((a, b) => (a.away ?? 0) - (b.away ?? 0));
   })();
@@ -523,6 +551,12 @@ export function Ordering() {
                 start={venues[0].at}
                 what="venues"
               />
+              <ChooseMany
+                label="What are you looking for"
+                values={wanted}
+                onPick={setWanted}
+                choices={LABELS.map((l) => ({ value: l, label: labelWord(l) }))}
+              />
               <p className="muted">From</p>
               <Choose
                 label="Venue"
@@ -531,9 +565,15 @@ export function Ordering() {
                 choices={near.map((v) => ({
                   value: v.id.toString(),
                   label: `#${v.id.toString()}`,
-                  note: `${stars.get(v.id.toString()) ?? "…"}${
-                    v.away === null ? "" : ` — ${fromHere(v.away)}`
-                  }`,
+                  note: [
+                    (venueLabels.get(v.id.toString()) ?? [])
+                      .map(labelWord)
+                      .join(", "),
+                    stars.get(v.id.toString()) ?? "…",
+                    v.away === null ? "" : fromHere(v.away),
+                  ]
+                    .filter(Boolean)
+                    .join(" — "),
                 }))}
               />
               {menu ? (

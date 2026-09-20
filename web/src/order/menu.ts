@@ -10,6 +10,8 @@
 import { ABI, addressOf } from "../contracts";
 import { hostCall } from "../hostchain";
 import { hostGet, hostPut } from "../host";
+import { cacheMenu, cachedMenu } from "../shield/notes";
+import { cleanLabels, type Label } from "./labels";
 
 export interface MenuItem {
   /** Short id, kept in the basket rather than the name. */
@@ -23,6 +25,8 @@ export interface Menu {
   items: MenuItem[];
   /** The counter's key, so a customer can seal its basket to it (kitchen.ts). */
   counterKey?: string;
+  /** What kind of place this is, from a fixed vocabulary (labels.ts). */
+  labels?: Label[];
 }
 
 const PREFIX = "bulletin:";
@@ -37,6 +41,7 @@ export function encodeMenu(menu: Menu): Uint8Array {
       p: i.price.toString(),
     })),
     ...(menu.counterKey ? { k: menu.counterKey } : {}),
+    ...(menu.labels?.length ? { l: cleanLabels(menu.labels) } : {}),
   };
   return new TextEncoder().encode(JSON.stringify(doc));
 }
@@ -47,6 +52,7 @@ export function decodeMenu(bytes: Uint8Array): Menu {
     name: string;
     items: { id: string; n: string; p: string }[];
     k?: string;
+    l?: string[];
   };
   if (doc.v !== 1 || !Array.isArray(doc.items)) throw new Error("not a menu");
   return {
@@ -57,6 +63,9 @@ export function decodeMenu(bytes: Uint8Array): Menu {
       price: BigInt(i.p),
     })),
     ...(doc.k ? { counterKey: String(doc.k) } : {}),
+    // Words this version doesn't know are dropped rather than shown: an
+    // unknown label can't be filtered on, so displaying it would mislead.
+    ...(doc.l ? { labels: cleanLabels(doc.l) } : {}),
   };
 }
 
@@ -74,13 +83,31 @@ export async function publishMenu(
   return uri;
 }
 
-/** Read a venue's menu. Null when it has none, or Bulletin has let it go. */
+/**
+ * Read a venue's menu. Null when it has none, or Bulletin has let it go.
+ *
+ * Cached by URI, which is safe because the URI is the hash of the content: a
+ * changed menu is a different URI. Without this, showing a list of venues meant
+ * a Bulletin round trip each, every time the screen opened.
+ */
 export async function menuOf(metadataURI: string): Promise<Menu | null> {
   if (!metadataURI.startsWith(PREFIX)) return null;
+  const kept = await cachedMenu(metadataURI).catch(() => null);
+  if (kept) {
+    try {
+      return decodeMenu(new TextEncoder().encode(kept));
+    } catch {
+      /* a cached document that no longer parses: fetch it again */
+    }
+  }
   const bytes = await hostGet(metadataURI.slice(PREFIX.length));
   if (!bytes) return null;
   try {
-    return decodeMenu(bytes);
+    const menu = decodeMenu(bytes);
+    await cacheMenu(metadataURI, new TextDecoder().decode(bytes)).catch(
+      () => undefined
+    );
+    return menu;
   } catch {
     return null;
   }

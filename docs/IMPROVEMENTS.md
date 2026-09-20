@@ -73,7 +73,7 @@ The `<select>` bug — the list rendered, nothing could be picked, ordering was 
 
 **Seam:** one directory, one export per control. Views import controls, never raw inputs.
 
-## 3. Venue labels and filtering
+## 3. Venue labels and filtering — DONE 2026-09-20 (`order/labels.ts`)
 
 A fixed vocabulary in the menu JSON on Bulletin — free to change, no contract work, and it filters
 cleanly because everybody uses the same words. Free text was considered and rejected: "coffee",
@@ -88,6 +88,16 @@ cleanly because everybody uses the same words. Free text was considered and reje
 - **The cost, and it is real:** filtering by label means fetching every venue's menu from Bulletin
   before the list can be drawn. Today the app only fetches the chosen venue's. Either accept the
   delay, cache menus in the encrypted book, or move the category on-chain later.
+
+**Done**, with the menu cache built first so the cost above is paid once rather than on every
+screen. A Bulletin URI is the hash of its content, so a cached menu can never be stale — a changed
+menu is a different URI, and the venue's on-chain pointer changes with it. The cache lives in the
+encrypted book, 60 menus, oldest use first out: a menu is public, but WHICH menus a device has
+fetched says where its owner shops, and the book is already encrypted.
+
+A label this version doesn't know is dropped when a menu is read, rather than displayed — an unknown
+word can't be filtered on, so showing it would mislead. Venues claim up to two; a venue claiming
+everything is claiming nothing.
 
 **Seam:** `order/labels.ts` holds the vocabulary. Moving it on-chain later changes that module and
 the filter's data source, not the UI.
@@ -135,7 +145,6 @@ took — if the extra links appear, rung 1 was refused.
 - **Retry the things that can half-fail.** `resumeFunding` does this for tips; the basket, the
   area and the intro do not.
 - **The venue's own rating and takings** on one screen. Both exist, neither is prominent.
-- **Cache venue menus** in the encrypted book with the menu's Bulletin key as the cache key.
 - **Copy for the privacy warnings.** There are now six or seven of them, written at different
   times. They should read as one voice and be one module, not string literals in views.
 

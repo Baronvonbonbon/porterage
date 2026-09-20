@@ -17,6 +17,8 @@ import { recentOrders, Status, statusName, type Order } from "../order/orders";
 import { encodePickup, nowSeconds, signPickup } from "../order/handoff";
 import { QrShow } from "./Qr";
 import { menuOf, publishMenu, type Menu, type MenuItem } from "../order/menu";
+import { LABELS, MAX_LABELS, labelWord } from "../order/labels";
+import { ChooseMany } from "./Choose";
 import {
   basketLine,
   venueTopic,
@@ -281,6 +283,17 @@ export function Venue() {
             >
               Add another item
             </button>
+            <p className="muted">
+              What kind of place is this? Up to {MAX_LABELS}, so customers can
+              find you.
+            </p>
+            <ChooseMany
+              label="What kind of place"
+              values={menu.labels ?? []}
+              max={MAX_LABELS}
+              onPick={(labels) => setMenu({ ...menu, labels })}
+              choices={LABELS.map((l) => ({ value: l, label: labelWord(l) }))}
+            />
             <button
               disabled={
                 !!busy || !key || !menu.items.some((i) => i.name.trim())

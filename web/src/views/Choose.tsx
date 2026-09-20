@@ -42,3 +42,49 @@ export function Choose<T extends string | number>({
     </div>
   );
 }
+
+/**
+ * The same chips, but several can be on at once. Kept beside Choose so the two
+ * look identical — a control that filters and a control that picks should not
+ * be different shapes.
+ */
+export function ChooseMany<T extends string | number>({
+  values,
+  choices,
+  onPick,
+  label,
+  max,
+}: {
+  values: T[];
+  choices: Choice<T>[];
+  onPick: (values: T[]) => void;
+  label?: string;
+  /** Ignore a tap that would go past this many. Unlimited when absent. */
+  max?: number;
+}) {
+  return (
+    <div className="chooser" role="group" aria-label={label}>
+      {choices.map((c) => {
+        const on = values.includes(c.value);
+        const full = !on && max !== undefined && values.length >= max;
+        return (
+          <button
+            key={String(c.value)}
+            type="button"
+            className={on ? "chip on" : "chip"}
+            aria-pressed={on}
+            disabled={c.disabled || full}
+            onClick={() =>
+              onPick(
+                on ? values.filter((v) => v !== c.value) : [...values, c.value]
+              )
+            }
+          >
+            {c.label}
+            {c.note && <span className="muted"> {c.note}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}

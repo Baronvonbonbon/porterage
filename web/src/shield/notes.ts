@@ -96,6 +96,8 @@ interface Book {
   here?: { lat: number; lon: number; metres: number };
   /** Drops this device has been given as the driver, by order id. */
   drops?: Record<string, { lat: number; lon: number }>;
+  /** Menus already fetched, by the Bulletin URI they came from. */
+  menus?: { uri: string; doc: string; used: number }[];
 }
 
 const KEY = "porterage.notes.v1";
@@ -390,6 +392,37 @@ export function knownDrops(): Promise<
   Record<string, { lat: number; lon: number }>
 > {
   return queue.then(load).then((b) => b.drops ?? {});
+}
+
+/**
+ * Menus already fetched, kept by the URI they came from.
+ *
+ * A Bulletin URI is the hash of its content, so a cached menu can never be
+ * stale — a changed menu is a different URI, and the venue's on-chain pointer
+ * changes with it. That is what makes this safe to keep indefinitely.
+ *
+ * It lives in the encrypted book even though a menu is public: WHICH menus a
+ * device has fetched says something about where its owner shops, and the book
+ * is already encrypted, so the discretion is free.
+ */
+const MENU_CACHE = 60;
+
+export function cachedMenu(uri: string): Promise<string | null> {
+  return update((book) => {
+    const hit = book.menus?.find((m) => m.uri === uri);
+    if (hit) hit.used = Date.now();
+    return hit?.doc ?? null;
+  });
+}
+
+export function cacheMenu(uri: string, doc: string): Promise<void> {
+  return update((book) => {
+    const menus = (book.menus ?? []).filter((m) => m.uri !== uri);
+    menus.push({ uri, doc, used: Date.now() });
+    // Oldest use first out, so a phone that has browsed a city doesn't grow
+    // without bound.
+    book.menus = menus.sort((a, b) => b.used - a.used).slice(0, MENU_CACHE);
+  });
 }
 
 export async function shieldedBalance(asset = NATIVE): Promise<bigint> {
