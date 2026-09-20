@@ -11,7 +11,13 @@
 // checked against its SHA-256 before use.
 
 import type { Provider } from "ethers";
-import { contextFor, reconstructPath, type BlockInserts, type Note, type NotePath } from "./pool";
+import {
+  contextFor,
+  reconstructPath,
+  type BlockInserts,
+  type Note,
+  type NotePath,
+} from "./pool";
 
 export interface WithdrawalProof {
   pA: [string, string];
@@ -36,24 +42,34 @@ interface Manifest {
   parts: { name: string; bytes: number }[];
 }
 
-const hexOf = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+const hexOf = (b: ArrayBuffer) =>
+  [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
 
 let cache: Promise<{ wasm: Uint8Array; zkey: Uint8Array }> | null = null;
 
 /** The circuit and proving key, fetched once and verified. A failure clears the cache so the next try refetches. */
 export function loadArtifacts(get: ArtifactSource = fetchArtifact) {
   return (cache ??= (async () => {
-    const manifest = JSON.parse(new TextDecoder().decode(await get("withdraw_v7.zkey.json"))) as Manifest;
-    const [wasm, ...parts] = await Promise.all([get("withdraw_v7.wasm"), ...manifest.parts.map((p) => get(p.name))]);
+    const manifest = JSON.parse(
+      new TextDecoder().decode(await get("withdraw_v7.zkey.json"))
+    ) as Manifest;
+    const [wasm, ...parts] = await Promise.all([
+      get("withdraw_v7.wasm"),
+      ...manifest.parts.map((p) => get(p.name)),
+    ]);
     const zkey = new Uint8Array(manifest.bytes);
     let off = 0;
     for (const p of parts) {
       zkey.set(p, off);
       off += p.length;
     }
-    if (off !== manifest.bytes) throw new Error(`proving key: ${off} bytes, expected ${manifest.bytes}`);
-    const digest = hexOf(await crypto.subtle.digest("SHA-256", zkey as BufferSource));
-    if (digest !== manifest.sha256) throw new Error("proving key: checksum mismatch");
+    if (off !== manifest.bytes)
+      throw new Error(`proving key: ${off} bytes, expected ${manifest.bytes}`);
+    const digest = hexOf(
+      await crypto.subtle.digest("SHA-256", zkey as BufferSource)
+    );
+    if (digest !== manifest.sha256)
+      throw new Error("proving key: checksum mismatch");
     return { wasm, zkey };
   })()).catch((e) => {
     cache = null;
@@ -77,12 +93,21 @@ export async function proveWithdrawal(args: {
   artifacts?: ArtifactSource;
 }): Promise<WithdrawalProof> {
   const { note, change, withdrawnValue, recipient } = args;
-  if (withdrawnValue <= 0n || withdrawnValue > BigInt(note.value)) throw new Error("withdrawal must be within the note's value");
-  if (BigInt(change.value) !== BigInt(note.value) - withdrawnValue) throw new Error("change must be the note's remainder");
-  if (change.asset !== note.asset) throw new Error("change must be in the note's asset");
+  if (withdrawnValue <= 0n || withdrawnValue > BigInt(note.value))
+    throw new Error("withdrawal must be within the note's value");
+  if (BigInt(change.value) !== BigInt(note.value) - withdrawnValue)
+    throw new Error("change must be the note's remainder");
+  if (change.asset !== note.asset)
+    throw new Error("change must be in the note's asset");
 
   const [{ siblings, root }, { wasm, zkey }, snarkjs] = await Promise.all([
-    reconstructPath(args.provider, args.pool, note, args.path, args.fromSubstrate),
+    reconstructPath(
+      args.provider,
+      args.pool,
+      note,
+      args.path,
+      args.fromSubstrate
+    ),
     loadArtifacts(args.artifacts),
     import("snarkjs"),
   ]);
@@ -100,7 +125,11 @@ export async function proveWithdrawal(args: {
     siblings,
     leafIndex: args.path.index.toString(),
   };
-  const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, wasm as never, zkey as never);
+  const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+    input,
+    wasm as never,
+    zkey as never
+  );
   return {
     pA: [proof.pi_a[0], proof.pi_a[1]],
     pB: [

@@ -16,17 +16,34 @@ import { JsonRpcProvider, Wallet, formatEther, getBytes } from "ethers";
 import { CHAIN, SHIELD_POOL } from "../src/config";
 import DEPLOYED from "../src/deployed.json";
 import { decodeStatement } from "../src/market/scale";
-import { FUND_TOPIC, PAYOUT_BYTES, PAYOUT_TOPIC, REQUEST_BYTES, decodePayout, decodeRequest } from "../src/market/request";
+import {
+  FUND_TOPIC,
+  PAYOUT_BYTES,
+  PAYOUT_TOPIC,
+  REQUEST_BYTES,
+  decodePayout,
+  decodeRequest,
+} from "../src/market/request";
 import { submitPayout, submitRequest } from "../src/market/submit";
 
 // The devnet Polkadot app keeps statements on People Next; the public Paseo
 // People chain is watched too, in case a host uses it.
-const STORES = ["wss://paseo-people-next-system-rpc.polkadot.io", "wss://people-paseo.rotko.net"];
+const STORES = [
+  "wss://paseo-people-next-system-rpc.polkadot.io",
+  "wss://people-paseo.rotko.net",
+];
 
-const eth = new JsonRpcProvider(CHAIN.ethRpc, Number(CHAIN.chainId), { staticNetwork: true });
-const key = readFileSync(process.env.RELAY_KEY_FILE ?? join(homedir(), ".config", "porterage", "deploy-key"), "utf8").trim();
+const eth = new JsonRpcProvider(CHAIN.ethRpc, Number(CHAIN.chainId), {
+  staticNetwork: true,
+});
+const key = readFileSync(
+  process.env.RELAY_KEY_FILE ??
+    join(homedir(), ".config", "porterage", "deploy-key"),
+  "utf8"
+).trim();
 const signer = new Wallet(key, eth);
-const log = (...a: unknown[]) => console.log(new Date().toISOString().slice(11, 19), ...a);
+const log = (...a: unknown[]) =>
+  console.log(new Date().toISOString().slice(11, 19), ...a);
 
 let queue = Promise.resolve();
 function handle(hex: string, from: string) {
@@ -36,19 +53,39 @@ function handle(hex: string, from: string) {
   } catch {
     return;
   }
-  if (!bytes || (bytes.length !== REQUEST_BYTES && bytes.length !== PAYOUT_BYTES)) return;
+  if (
+    !bytes ||
+    (bytes.length !== REQUEST_BYTES && bytes.length !== PAYOUT_BYTES)
+  )
+    return;
   queue = queue.then(async () => {
     try {
       if (bytes!.length === REQUEST_BYTES) {
         const req = decodeRequest(bytes!);
         const r = await submitRequest(req, SHIELD_POOL, signer);
-        if (r.status === "sent") log(`funded ${req.proof.recipient} with ${formatEther(req.withdrawn)} PAS, tx ${r.hash} (via ${from})`);
-        else if (r.reason !== "already handled") log(`skipped ${req.proof.recipient}: ${r.reason}`);
+        if (r.status === "sent")
+          log(
+            `funded ${req.proof.recipient} with ${formatEther(
+              req.withdrawn
+            )} PAS, tx ${r.hash} (via ${from})`
+          );
+        else if (r.reason !== "already handled")
+          log(`skipped ${req.proof.recipient}: ${r.reason}`);
       } else {
         const req = decodePayout(bytes!);
-        const r = await submitPayout(req, (DEPLOYED as { vault: string }).vault, signer);
-        if (r.status === "sent") log(`released a payout of ${formatEther(req.bucket)} PAS, tx ${r.hash} (via ${from})`);
-        else if (r.reason !== "already handled") log(`skipped a payout: ${r.reason}`);
+        const r = await submitPayout(
+          req,
+          (DEPLOYED as { vault: string }).vault,
+          signer
+        );
+        if (r.status === "sent")
+          log(
+            `released a payout of ${formatEther(req.bucket)} PAS, tx ${
+              r.hash
+            } (via ${from})`
+          );
+        else if (r.reason !== "already handled")
+          log(`skipped a payout: ${r.reason}`);
       }
     } catch (e) {
       log("failed:", (e as Error).message);
@@ -70,7 +107,14 @@ function watch(url: string, backoffMs = 10_000) {
   };
   ws.onopen = () => {
     backoffMs = 10_000;
-    ws.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "statement_subscribeStatement", params: [{ matchAny: [FUND_TOPIC, PAYOUT_TOPIC] }] }));
+    ws.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "statement_subscribeStatement",
+        params: [{ matchAny: [FUND_TOPIC, PAYOUT_TOPIC] }],
+      })
+    );
     log(`listening on ${name}`);
   };
   ws.onmessage = (m) => {
@@ -81,5 +125,9 @@ function watch(url: string, backoffMs = 10_000) {
   ws.onerror = () => again("errored");
 }
 
-log(`relay ${signer.address}, ${formatEther(await eth.getBalance(signer.address))} PAS for gas`);
+log(
+  `relay ${signer.address}, ${formatEther(
+    await eth.getBalance(signer.address)
+  )} PAS for gas`
+);
 STORES.forEach(watch);

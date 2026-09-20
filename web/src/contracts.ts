@@ -37,7 +37,9 @@ export function addressOf(name: ContractName): string {
 
 let provider: JsonRpcProvider | null = null;
 export function ethProvider(): JsonRpcProvider {
-  provider ??= new JsonRpcProvider(CHAIN.ethRpc, Number(CHAIN.chainId), { staticNetwork: true });
+  provider ??= new JsonRpcProvider(CHAIN.ethRpc, Number(CHAIN.chainId), {
+    staticNetwork: true,
+  });
   return provider;
 }
 
@@ -47,6 +49,10 @@ export function read(name: ContractName): Contract {
 }
 
 /** Calldata for `fn(args)` on `name`. */
-export function encode(name: ContractName, fn: string, args: unknown[] = []): string {
+export function encode(
+  name: ContractName,
+  fn: string,
+  args: unknown[] = []
+): string {
   return ABI[name].encodeFunctionData(fn, args);
 }

@@ -60,7 +60,8 @@ export async function recentOrders(limit = 20): Promise<Order[]> {
   const orders = read("orders");
   const next = Number(await orders.nextOrderId());
   const ids: bigint[] = [];
-  for (let id = next - 1; id >= 1 && ids.length < limit; id--) ids.push(BigInt(id));
+  for (let id = next - 1; id >= 1 && ids.length < limit; id--)
+    ids.push(BigInt(id));
   return Promise.all(ids.map(orderOf));
 }
 
@@ -74,13 +75,17 @@ export interface NewOrder {
   deliveryWindowSecs?: bigint;
 }
 
-const orderContract = (signer: Wallet) => new Contract(addressOf("orders"), ABI.orders.fragments as never, signer);
+const orderContract = (signer: Wallet) =>
+  new Contract(addressOf("orders"), ABI.orders.fragments as never, signer);
 
 /** What a burner must hold to place this order: the escrow plus room for gas. */
 export const escrowFor = (o: NewOrder): bigint => o.orderValue + o.tip;
 
 /** Create an order from the burner. Returns the new order's id. */
-export async function createOrder(burner: Wallet, o: NewOrder): Promise<bigint> {
+export async function createOrder(
+  burner: Wallet,
+  o: NewOrder
+): Promise<bigint> {
   const orders = orderContract(burner);
   const id = (await read("orders").nextOrderId()) as bigint;
   const tx = await orders.createOrder(
@@ -91,7 +96,7 @@ export async function createOrder(burner: Wallet, o: NewOrder): Promise<bigint> 
     o.maxFare,
     o.pickupWindowSecs ?? 0n,
     o.deliveryWindowSecs ?? 0n,
-    { value: escrowFor(o) },
+    { value: escrowFor(o) }
   );
   await tx.wait();
   return id;
@@ -103,14 +108,23 @@ export async function acceptBid(
   orderId: bigint,
   driver: string,
   amount: bigint,
-  salt: string,
+  salt: string
 ): Promise<void> {
-  const tx = await orderContract(burner).acceptSealedBid(orderId, driver, amount, salt, { value: amount });
+  const tx = await orderContract(burner).acceptSealedBid(
+    orderId,
+    driver,
+    amount,
+    salt,
+    { value: amount }
+  );
   await tx.wait();
 }
 
 /** Cancel an order nobody has taken, refunding the escrow to the burner. */
-export async function cancelOrder(burner: Wallet, orderId: bigint): Promise<void> {
+export async function cancelOrder(
+  burner: Wallet,
+  orderId: bigint
+): Promise<void> {
   await (await orderContract(burner).cancelOpen(orderId)).wait();
 }
 

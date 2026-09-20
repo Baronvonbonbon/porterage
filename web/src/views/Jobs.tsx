@@ -20,6 +20,8 @@ import {
 import { QrScan, QrShow } from "./Qr";
 import { Thread } from "./Thread";
 import { introduce } from "../order/chat";
+import { fileDisputeAsDriver } from "../order/dispute";
+import { driverRating, ratingText } from "../order/ratings";
 import { Camera } from "./Camera";
 import { commitPhoto } from "../order/evidence";
 import { formatDegrees } from "../order/geo";
@@ -51,6 +53,11 @@ export function Jobs({
   const [talking, setTalking] = useState<Map<string, string>>(new Map());
   const [talkTo, setTalkTo] = useState<Order | null>(null);
   const greeted = useRef(new Set<string>());
+  const [rating, setRating] = useState<string>("…");
+  const [complaint, setComplaint] = useState<{
+    order: Order;
+    text: string;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -103,6 +110,27 @@ export function Jobs({
       } catch {
         greeted.current.delete(id); // offline, or the store refused: try again next refresh
       }
+    }
+  }
+
+  /**
+   * A driver disputes from its OWN address, not the session key: the contract
+   * asks for a party to the order, and the session key acts for the driver only
+   * where it was given that right. It costs a tap, which a dispute is worth.
+   */
+  async function fileComplaint() {
+    if (!complaint?.text.trim()) return;
+    setBusy(`Filing on #${complaint.order.id}`);
+    setError(null);
+    try {
+      await fileDisputeAsDriver(complaint.order.id, { reason: complaint.text });
+      setComplaint(null);
+      setNote("Filed. The escrow is held until an arbiter rules.");
+      await refresh();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -273,6 +301,7 @@ export function Jobs({
   return (
     <div>
       <h3>Work</h3>
+      <p className="muted">Your rating: {rating}</p>
       {open.length === 0 && (
         <p className="muted">No orders are open right now.</p>
       )}
@@ -356,7 +385,53 @@ export function Jobs({
                       </button>
                     </>
                   )}
+                {o.status < Status.Delivered && (
+                  <>
+                    {" "}
+                    <button
+                      className="link"
+                      disabled={!!busy}
+                      onClick={() =>
+                        setComplaint(
+                          complaint?.order.id === o.id
+                            ? null
+                            : { order: o, text: "" }
+                        )
+                      }
+                    >
+                      {complaint?.order.id === o.id
+                        ? "never mind"
+                        : "something's wrong"}
+                    </button>
+                  </>
+                )}
                 {o.status >= Status.Delivered && " — delivered"}
+                {complaint?.order.id === o.id && (
+                  <div className="actions">
+                    <label>
+                      What happened{" "}
+                      <input
+                        value={complaint.text}
+                        maxLength={200}
+                        onChange={(e) =>
+                          setComplaint({ order: o, text: e.target.value })
+                        }
+                        placeholder="Nobody at the address"
+                      />
+                    </label>
+                    <p className="muted">
+                      This freezes the money until an arbiter rules, and only
+                      the arbiter can read it. It's signed by your own account,
+                      so it takes a tap.
+                    </p>
+                    <button
+                      disabled={!!busy || !complaint.text.trim()}
+                      onClick={fileComplaint}
+                    >
+                      File it
+                    </button>
+                  </div>
+                )}
                 {talkTo?.id === o.id && talking.get(o.id.toString()) && (
                   <Thread
                     mine={sessionKey}

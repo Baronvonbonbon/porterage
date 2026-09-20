@@ -14,7 +14,15 @@
 // The resulting pool note is derived from this device's entropy like every other
 // note, so it spends through exactly the customer's path.
 
-import { AbiCoder, Contract, keccak256, toBeHex, toBigInt, toUtf8Bytes, type Provider } from "ethers";
+import {
+  AbiCoder,
+  Contract,
+  keccak256,
+  toBeHex,
+  toBigInt,
+  toUtf8Bytes,
+  type Provider,
+} from "ethers";
 import { poseidon1, poseidon2 } from "poseidon-lite";
 import { entropy, LABEL } from "../keys";
 import { BN254_R } from "./pool";
@@ -35,11 +43,22 @@ export interface PayoutNote {
 
 /** leaf = Poseidon(Poseidon(nullifier, secret), bucket): the bucket is bound in. */
 export const payoutCommitment = (n: PayoutNote): bigint =>
-  poseidon2([poseidon2([BigInt(n.nullifier), BigInt(n.secret)]), BigInt(n.bucket)]);
-export const payoutNullifierHash = (n: PayoutNote): bigint => poseidon1([BigInt(n.nullifier)]);
+  poseidon2([
+    poseidon2([BigInt(n.nullifier), BigInt(n.secret)]),
+    BigInt(n.bucket),
+  ]);
+export const payoutNullifierHash = (n: PayoutNote): bigint =>
+  poseidon1([BigInt(n.nullifier)]);
 
-export async function payoutNote(n: number, bucket: bigint): Promise<PayoutNote> {
-  return { n, bucket: bucket.toString(), ...noteSecrets(await entropy(LABEL.payout(n))) };
+export async function payoutNote(
+  n: number,
+  bucket: bigint
+): Promise<PayoutNote> {
+  return {
+    n,
+    bucket: bucket.toString(),
+    ...noteSecrets(await entropy(LABEL.payout(n))),
+  };
 }
 
 /** Empty-subtree roots; these must equal PorterVault.noteZeros. */
@@ -61,7 +80,10 @@ export class NoteTree {
     const key = `${level}:${index}`;
     const hit = this.memo.get(key);
     if (hit !== undefined) return hit;
-    const v = poseidon2([this.node(level - 1, index * 2), this.node(level - 1, index * 2 + 1)]);
+    const v = poseidon2([
+      this.node(level - 1, index * 2),
+      this.node(level - 1, index * 2 + 1),
+    ]);
     this.memo.set(key, v);
     return v;
   }
@@ -84,7 +106,9 @@ export class NoteTree {
 }
 
 /** Topic of PorterVault.ShieldNoteInserted(address,uint96,uint256,uint32). */
-export const INSERTED_TOPIC = keccak256(toUtf8Bytes("ShieldNoteInserted(address,uint96,uint256,uint32)"));
+export const INSERTED_TOPIC = keccak256(
+  toUtf8Bytes("ShieldNoteInserted(address,uint96,uint256,uint32)")
+);
 
 /**
  * Every leaf in the vault's native note tree, in insertion order.
@@ -98,19 +122,34 @@ export async function noteLeaves(
   provider: Provider,
   vaultAddress: string,
   fromBlock: number,
-  fromSubstrate: (block: number) => Promise<{ topics: string[]; data: string }[]>,
+  fromSubstrate: (
+    block: number
+  ) => Promise<{ topics: string[]; data: string }[]>
 ): Promise<bigint[]> {
-  const vault = new Contract(vaultAddress, ["function nextNoteIndex() view returns (uint32)"], provider);
+  const vault = new Contract(
+    vaultAddress,
+    ["function nextNoteIndex() view returns (uint32)"],
+    provider
+  );
   const head = await provider.getBlockNumber();
   const found = new Map<number, bigint>();
   const take = (data: string) => {
     // data = commitment (32 bytes) then index (32 bytes)
-    found.set(Number(toBigInt("0x" + data.slice(66, 130))), toBigInt(data.slice(0, 66)));
+    found.set(
+      Number(toBigInt("0x" + data.slice(66, 130))),
+      toBigInt(data.slice(0, 66))
+    );
   };
-  for (const l of await provider.getLogs({ address: vaultAddress, topics: [INSERTED_TOPIC], fromBlock, toBlock: head })) {
+  for (const l of await provider.getLogs({
+    address: vaultAddress,
+    topics: [INSERTED_TOPIC],
+    fromBlock,
+    toBlock: head,
+  })) {
     take(l.data);
   }
-  const size = async (b: number) => Number(await vault.nextNoteIndex({ blockTag: b }));
+  const size = async (b: number) =>
+    Number(await vault.nextNoteIndex({ blockTag: b }));
   const expected = await size(head);
   if (found.size < expected) {
     // Find the blocks that grew the tree but left no log, and read them whole.
@@ -118,7 +157,8 @@ export async function noteLeaves(
       const grew = (await size(b)) - (await size(a - 1));
       if (grew === 0) return;
       if (a === b) {
-        for (const e of await fromSubstrate(a)) if (e.topics[0] === INSERTED_TOPIC) take(e.data);
+        for (const e of await fromSubstrate(a))
+          if (e.topics[0] === INSERTED_TOPIC) take(e.data);
         return;
       }
       const m = (a + b) >> 1;
@@ -130,7 +170,8 @@ export async function noteLeaves(
   const leaves: bigint[] = [];
   for (let i = 0; i < expected; i++) {
     const leaf = found.get(i);
-    if (leaf === undefined) throw new Error(`the vault's note ${i} is missing from its events`);
+    if (leaf === undefined)
+      throw new Error(`the vault's note ${i} is missing from its events`);
     leaves.push(leaf);
   }
   return leaves;
@@ -156,7 +197,7 @@ export async function proveSpend(
   note: PayoutNote,
   leaves: bigint[],
   ksCommitment: bigint,
-  artifacts: SpendArtifacts = { wasm: WASM, zkey: ZKEY },
+  artifacts: SpendArtifacts = { wasm: WASM, zkey: ZKEY }
 ): Promise<SpendProof> {
   const commitment = payoutCommitment(note);
   const index = leaves.findIndex((l) => l === commitment);
@@ -178,16 +219,21 @@ export async function proveSpend(
       pathIndices: indices,
     },
     artifacts.wasm as never,
-    artifacts.zkey as never,
+    artifacts.zkey as never
   );
   return {
     proof: AbiCoder.defaultAbiCoder().encode(
       ["uint256[2]", "uint256[4]", "uint256[2]"],
       [
         [proof.pi_a[0], proof.pi_a[1]],
-        [proof.pi_b[0][1], proof.pi_b[0][0], proof.pi_b[1][1], proof.pi_b[1][0]],
+        [
+          proof.pi_b[0][1],
+          proof.pi_b[0][0],
+          proof.pi_b[1][1],
+          proof.pi_b[1][0],
+        ],
         [proof.pi_c[0], proof.pi_c[1]],
-      ],
+      ]
     ),
     root: publicSignals[0],
     nullifierHash: publicSignals[1],
@@ -199,11 +245,17 @@ export async function proveSpend(
 // ── the two steps, as the app runs them ──────────────────────────────────────
 
 /** The vault's payout buckets, ascending. */
-export async function buckets(provider: Provider, vaultAddress: string): Promise<bigint[]> {
+export async function buckets(
+  provider: Provider,
+  vaultAddress: string
+): Promise<bigint[]> {
   const vault = new Contract(
     vaultAddress,
-    ["function shieldBucketCount() view returns (uint256)", "function shieldBuckets(uint256) view returns (uint96)"],
-    provider,
+    [
+      "function shieldBucketCount() view returns (uint256)",
+      "function shieldBuckets(uint256) view returns (uint96)",
+    ],
+    provider
   );
   const n = Number(await vault.shieldBucketCount());
   const out: bigint[] = [];

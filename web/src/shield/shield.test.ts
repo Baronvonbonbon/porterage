@@ -12,7 +12,10 @@ describe("ladder", () => {
     expect(rungs).toEqual([5n * PAS, 5n * PAS, 1n * PAS, 1n * PAS]);
     expect(overshoot).toBe(0n);
     expect(sum(rungs) - 12n * PAS).toBe(overshoot);
-    expect(cover(PAS / 2n, LADDER_PAS)).toEqual({ rungs: [PAS], overshoot: PAS / 2n });
+    expect(cover(PAS / 2n, LADDER_PAS)).toEqual({
+      rungs: [PAS],
+      overshoot: PAS / 2n,
+    });
   });
   it("decomposes, leaving the residue", () => {
     expect(decompose(131n * PAS + 1n, LADDER_PAS)).toEqual({
@@ -26,7 +29,9 @@ describe("note secrets", () => {
   it("are fixed by the entropy and differ between notes", () => {
     const a = noteSecrets(new Uint8Array(32).fill(1));
     expect(noteSecrets(new Uint8Array(32).fill(1))).toEqual(a);
-    expect(noteSecrets(new Uint8Array(32).fill(2)).nullifier).not.toBe(a.nullifier);
+    expect(noteSecrets(new Uint8Array(32).fill(2)).nullifier).not.toBe(
+      a.nullifier
+    );
     expect(a.nullifier).not.toBe(a.secret);
   });
 });
@@ -36,7 +41,10 @@ function leanRoot(leaves: bigint[]): bigint {
   let level = leaves;
   while (level.length > 1) {
     const next: bigint[] = [];
-    for (let i = 0; i < level.length; i += 2) next.push(i + 1 < level.length ? poseidon2([level[i], level[i + 1]]) : level[i]);
+    for (let i = 0; i < level.length; i += 2)
+      next.push(
+        i + 1 < level.length ? poseidon2([level[i], level[i + 1]]) : level[i]
+      );
     level = next;
   }
   return level[0];
@@ -45,15 +53,27 @@ function leanRoot(leaves: bigint[]): bigint {
 describe("paths", () => {
   it("left snapshots plus later leaves reach the tree's root, for every leaf", () => {
     const leaves = Array.from({ length: 13 }, (_, i) =>
-      commitmentOf({ nullifier: String(i + 1), secret: String(i + 100), value: String(PAS), asset: "0" }),
+      commitmentOf({
+        nullifier: String(i + 1),
+        secret: String(i + 100),
+        value: String(PAS),
+        asset: "0",
+      })
     );
     // The tree before any of these, then all 13 inserted as one run.
     const paths = batchNotePaths(0, {}, leaves);
     const root = leanRoot(leaves);
     for (const p of paths) {
-      const right = new Map(leaves.map((l, i) => [i, l] as const).filter(([i]) => i > p.index));
+      const right = new Map(
+        leaves.map((l, i) => [i, l] as const).filter(([i]) => i > p.index)
+      );
       right.set(p.index, leaves[p.index]);
-      const siblings = authPath(p.index, p.leftSnapshot, right, leaves.length - 1);
+      const siblings = authPath(
+        p.index,
+        p.leftSnapshot,
+        right,
+        leaves.length - 1
+      );
       expect(rootFrom(leaves[p.index], p.index, siblings)).toBe(root);
     }
   });
@@ -86,9 +106,21 @@ describe("funding request", () => {
   const proof = {
     recipient,
     pA: ["1", "2"] as [string, string],
-    pB: [["3", "4"], ["5", "6"]] as [[string, string], [string, string]],
+    pB: [
+      ["3", "4"],
+      ["5", "6"],
+    ] as [[string, string], [string, string]],
     pC: ["7", "8"] as [string, string],
-    pubSignals: ["101", "102", "103", withdrawn.toString(), "128", contextFor(recipient).toString(), "107", "0"],
+    pubSignals: [
+      "101",
+      "102",
+      "103",
+      withdrawn.toString(),
+      "128",
+      contextFor(recipient).toString(),
+      "107",
+      "0",
+    ],
   };
 
   it("round-trips in 426 bytes, restoring the derived signals", () => {
@@ -101,7 +133,9 @@ describe("funding request", () => {
   });
 
   it("refuses a proof whose signals disagree with the request", () => {
-    expect(() => encodeRequest({ proof, withdrawn: withdrawn + 1n, fee: 0n })).toThrow();
+    expect(() =>
+      encodeRequest({ proof, withdrawn: withdrawn + 1n, fee: 0n })
+    ).toThrow();
   });
 });
 
@@ -111,14 +145,25 @@ describe("statement decoding", () => {
     const channel = new Uint8Array(32).fill(9);
     const data = new Uint8Array(300).fill(5);
     const expiry = (1_800_000_000n << 32n) | 3n;
-    const le = (v: bigint) => Uint8Array.from({ length: 8 }, (_, i) => Number((v >> BigInt(8 * i)) & 0xffn));
+    const le = (v: bigint) =>
+      Uint8Array.from({ length: 8 }, (_, i) =>
+        Number((v >> BigInt(8 * i)) & 0xffn)
+      );
     const bytes = new Uint8Array([
       5 << 2, // five fields
-      0, 0, ...new Uint8Array(96), // sr25519 proof
-      2, ...le(expiry),
-      3, ...channel,
-      4, ...topic,
-      8, ((300 << 2) | 1) & 0xff, (300 << 2 | 1) >> 8, ...data,
+      0,
+      0,
+      ...new Uint8Array(96), // sr25519 proof
+      2,
+      ...le(expiry),
+      3,
+      ...channel,
+      4,
+      ...topic,
+      8,
+      ((300 << 2) | 1) & 0xff,
+      ((300 << 2) | 1) >> 8,
+      ...data,
     ]);
     const s = decodeStatement(bytes);
     expect(s.topics).toEqual([topic]);
@@ -129,18 +174,34 @@ describe("statement decoding", () => {
 });
 
 import { PAYOUT_BYTES, decodePayout, encodePayout } from "../market/request";
-import { NoteTree, payoutCommitment, payoutNullifierHash, zeroHashes } from "./payout";
+import {
+  NoteTree,
+  payoutCommitment,
+  payoutNullifierHash,
+  zeroHashes,
+} from "./payout";
 
 describe("payout notes", () => {
-  const note = { n: 3, bucket: (5n * PAS).toString(), nullifier: "12345", secret: "67890" };
+  const note = {
+    n: 3,
+    bucket: (5n * PAS).toString(),
+    nullifier: "12345",
+    secret: "67890",
+  };
 
   it("bind the bucket into the leaf", () => {
-    expect(payoutCommitment(note)).not.toBe(payoutCommitment({ ...note, bucket: PAS.toString() }));
-    expect(payoutNullifierHash(note)).toBe(payoutNullifierHash({ ...note, bucket: PAS.toString() }));
+    expect(payoutCommitment(note)).not.toBe(
+      payoutCommitment({ ...note, bucket: PAS.toString() })
+    );
+    expect(payoutNullifierHash(note)).toBe(
+      payoutNullifierHash({ ...note, bucket: PAS.toString() })
+    );
   });
 
   it("build a path that reproduces the tree's root", () => {
-    const leaves = Array.from({ length: 5 }, (_, i) => payoutCommitment({ ...note, nullifier: String(i + 1) }));
+    const leaves = Array.from({ length: 5 }, (_, i) =>
+      payoutCommitment({ ...note, nullifier: String(i + 1) })
+    );
     const tree = new NoteTree(leaves);
     const zeros = zeroHashes();
     for (let index = 0; index < leaves.length; index++) {
@@ -148,7 +209,10 @@ describe("payout notes", () => {
       let node = leaves[index];
       for (let lv = 0; lv < elements.length; lv++) {
         const sibling = elements[lv];
-        node = indices[lv] === 0 ? poseidon2([node, sibling]) : poseidon2([sibling, node]);
+        node =
+          indices[lv] === 0
+            ? poseidon2([node, sibling])
+            : poseidon2([sibling, node]);
       }
       expect(node).toBe(tree.root());
     }
@@ -179,14 +243,19 @@ describe("top-up plans", () => {
     expect(plan.rungs).toEqual([100n * PAS, 25n * PAS, 5n * PAS]);
     expect(plan.rungs.length).toBeLessThanOrEqual(MAX_NOTES_PER_TAP);
     expect(plan.leftOver).toBe(PAS);
-    expect(planTopUp(6n * PAS)).toMatchObject({ rungs: [5n * PAS, PAS], leftOver: 0n });
+    expect(planTopUp(6n * PAS)).toMatchObject({
+      rungs: [5n * PAS, PAS],
+      leftOver: 0n,
+    });
   });
 });
 
 describe("tokens", () => {
   it("list the precompile the pool derives for each asset", () => {
     for (const t of TOKENS) {
-      expect(t.precompile.toLowerCase()).toBe("0x" + precompileFor(BigInt(t.id)).toString(16).padStart(40, "0"));
+      expect(t.precompile.toLowerCase()).toBe(
+        "0x" + precompileFor(BigInt(t.id)).toString(16).padStart(40, "0")
+      );
     }
   });
 

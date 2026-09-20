@@ -10,7 +10,14 @@
 // the request is signed by the product's statement account, the withdrawal by a
 // stranger, and the tip by the burner.
 
-import { Wallet, ZeroAddress, formatEther, keccak256, toUtf8Bytes, zeroPadValue } from "ethers";
+import {
+  Wallet,
+  ZeroAddress,
+  formatEther,
+  keccak256,
+  toUtf8Bytes,
+  zeroPadValue,
+} from "ethers";
 import { SHIELD_POOL } from "../config";
 import { ethProvider } from "../contracts";
 import { substrate } from "../hostchain";
@@ -19,7 +26,17 @@ import { encodeRequest } from "../market/request";
 import { publishRequest } from "../market/statements";
 import { poolInserts } from "./events";
 import { commitmentOf, findLeafBlock, notePathsAt } from "./pool";
-import { allNotes, markSpending, markSpent, nextBurner, noteOf, reserveNotes, settleNotes, spendable, type NoteRecord } from "./notes";
+import {
+  allNotes,
+  markSpending,
+  markSpent,
+  nextBurner,
+  noteOf,
+  reserveNotes,
+  settleNotes,
+  spendable,
+  type NoteRecord,
+} from "./notes";
 import { proveWithdrawal } from "./withdraw";
 
 /** What a submitter is offered: about ten times a withdrawal's gas at Paseo prices. */
@@ -27,7 +44,13 @@ export const DEFAULT_TIP = 3n * 10n ** 17n; // 0.3 PAS
 const POLL_MS = 4_000;
 const WAIT_MS = 15 * 60_000;
 
-export type FundStage = "proving" | "posting" | "waiting" | "settling" | "tipping" | "done";
+export type FundStage =
+  | "proving"
+  | "posting"
+  | "waiting"
+  | "settling"
+  | "tipping"
+  | "done";
 
 export interface Funded {
   burner: Wallet;
@@ -40,7 +63,9 @@ export interface Funded {
 const inserts = () => poolInserts(substrate(), SHIELD_POOL);
 
 /** Kusama Shield's `Withdrawal(address indexed asset, uint256 value, address indexed recipient, uint256)`. */
-const WITHDRAWAL_TOPIC = keccak256(toUtf8Bytes("Withdrawal(address,uint256,address,uint256)"));
+const WITHDRAWAL_TOPIC = keccak256(
+  toUtf8Bytes("Withdrawal(address,uint256,address,uint256)")
+);
 
 /**
  * Who submitted the withdrawal that funded `recipient`, from the pool's own
@@ -48,13 +73,24 @@ const WITHDRAWAL_TOPIC = keccak256(toUtf8Bytes("Withdrawal(address,uint256,addre
  * refused outright ("data did not match any variant of untagged enum
  * FilterTopic", 2026-09-20), so the recipient is matched here instead.
  */
-async function submitterOf(recipient: string, fromBlock: number): Promise<string | null> {
+async function submitterOf(
+  recipient: string,
+  fromBlock: number
+): Promise<string | null> {
   const provider = ethProvider();
   const want = zeroPadValue(recipient, 32).toLowerCase();
-  const logs = await provider.getLogs({ address: SHIELD_POOL, topics: [WITHDRAWAL_TOPIC], fromBlock, toBlock: "latest" });
-  const hit = logs.find((l) => l.topics.length === 3 && l.topics[2].toLowerCase() === want);
+  const logs = await provider.getLogs({
+    address: SHIELD_POOL,
+    topics: [WITHDRAWAL_TOPIC],
+    fromBlock,
+    toBlock: "latest",
+  });
+  const hit = logs.find(
+    (l) => l.topics.length === 3 && l.topics[2].toLowerCase() === want
+  );
   if (!hit) return null;
-  const from = (await provider.getTransaction(hit.transactionHash))?.from ?? null;
+  const from =
+    (await provider.getTransaction(hit.transactionHash))?.from ?? null;
   return from && from !== ZeroAddress ? from : null;
 }
 
@@ -63,7 +99,11 @@ async function submitterOf(recipient: string, fromBlock: number): Promise<string
  * withdrawal came from a Substrate account, or the burner is short — is left for
  * `resumeFunding` rather than failing a funding that has already worked.
  */
-async function payTip(burner: Wallet, tip: bigint, fromBlock: number): Promise<string | null> {
+async function payTip(
+  burner: Wallet,
+  tip: bigint,
+  fromBlock: number
+): Promise<string | null> {
   const submitter = await submitterOf(burner.address, fromBlock);
   if (!submitter) return null;
   const tx = await burner.sendTransaction({ to: submitter, value: tip });
@@ -71,10 +111,17 @@ async function payTip(burner: Wallet, tip: bigint, fromBlock: number): Promise<s
   return submitter;
 }
 
-export async function fundBurner(amount: bigint, onStage: (s: FundStage) => void, tip = DEFAULT_TIP): Promise<Funded> {
+export async function fundBurner(
+  amount: bigint,
+  onStage: (s: FundStage) => void,
+  tip = DEFAULT_TIP
+): Promise<Funded> {
   const need = amount + tip;
   const note = (await spendable()).find((r) => BigInt(r.value) >= need);
-  if (!note) throw new Error(`no single note holds ${formatEther(need)} PAS; shield more first`);
+  if (!note)
+    throw new Error(
+      `no single note holds ${formatEther(need)} PAS; shield more first`
+    );
 
   const burnerIndex = await nextBurner();
   const burner = (await burnerKey(burnerIndex)).connect(ethProvider());
@@ -96,11 +143,25 @@ export async function fundBurner(amount: bigint, onStage: (s: FundStage) => void
 
   onStage("posting");
   await publishRequest(encodeRequest({ proof, withdrawn: need, fee: tip }));
-  await markSpending(note.n, { burner: burnerIndex, change: change.n, since: Date.now(), tip: tip.toString() });
+  await markSpending(note.n, {
+    burner: burnerIndex,
+    change: change.n,
+    since: Date.now(),
+    tip: tip.toString(),
+  });
 
   onStage("waiting");
   const received = await waitForFunds(burner.address, need);
-  return finish(note, change, burner, burnerIndex, received, startBlock, tip, onStage);
+  return finish(
+    note,
+    change,
+    burner,
+    burnerIndex,
+    received,
+    startBlock,
+    tip,
+    onStage
+  );
 }
 
 async function waitForFunds(address: string, need: bigint): Promise<bigint> {
@@ -111,7 +172,9 @@ async function waitForFunds(address: string, need: bigint): Promise<bigint> {
     if (bal >= need) return bal;
     await new Promise((r) => setTimeout(r, POLL_MS));
   }
-  throw new Error("no one has submitted the request yet. It stays posted for an hour; try again later");
+  throw new Error(
+    "no one has submitted the request yet. It stays posted for an hour; try again later"
+  );
 }
 
 async function finish(
@@ -122,15 +185,27 @@ async function finish(
   received: bigint,
   startBlock: number,
   tip: bigint,
-  onStage: (s: FundStage) => void,
+  onStage: (s: FundStage) => void
 ): Promise<Funded> {
   const provider = ethProvider();
   onStage("settling");
   await markSpent(note.n);
   const changeCommit = commitmentOf(await noteOf(change));
-  const block = await findLeafBlock(provider, SHIELD_POOL, changeCommit, startBlock, inserts());
+  const block = await findLeafBlock(
+    provider,
+    SHIELD_POOL,
+    changeCommit,
+    startBlock,
+    inserts()
+  );
   if (block !== null) {
-    const [path] = await notePathsAt(provider, SHIELD_POOL, block, [changeCommit], inserts());
+    const [path] = await notePathsAt(
+      provider,
+      SHIELD_POOL,
+      block,
+      [changeCommit],
+      inserts()
+    );
     await settleNotes(new Map([[change.n, path]]));
   }
 
@@ -142,7 +217,13 @@ async function finish(
   } catch {
     submitter = null; // retried by resumeFunding
   }
-  await markSpending(note.n, { burner: burnerIndex, change: change.n, since: Date.now(), tip: tip.toString(), tipped: !!submitter });
+  await markSpending(note.n, {
+    burner: burnerIndex,
+    change: change.n,
+    since: Date.now(),
+    tip: tip.toString(),
+    tipped: !!submitter,
+  });
   onStage("done");
   return { burner, burnerIndex, received, submitter, tipped: !!submitter };
 }
@@ -158,11 +239,16 @@ export async function resumeFunding(): Promise<Funded[]> {
   const done: Funded[] = [];
   const provider = ethProvider();
   // Tips that couldn't be paid when the funding finished.
-  for (const note of (await allNotes()).filter((r) => r.spent && r.spending && !r.spending.tipped)) {
+  for (const note of (await allNotes()).filter(
+    (r) => r.spent && r.spending && !r.spending.tipped
+  )) {
     const s = note.spending!;
     const burner = (await burnerKey(s.burner)).connect(provider);
     const head = await provider.getBlockNumber();
-    const from = Math.max(0, head - Math.ceil((Date.now() - s.since) / 6000) - 20);
+    const from = Math.max(
+      0,
+      head - Math.ceil((Date.now() - s.since) / 6000) - 20
+    );
     try {
       const submitter = await payTip(burner, BigInt(s.tip), from);
       if (submitter) await markSpending(note.n, { ...s, tipped: true });
@@ -181,8 +267,13 @@ export async function resumeFunding(): Promise<Funded[]> {
     if (bal >= need && change) {
       // Search from a little before the request: blocks are about 6 s apart.
       const head = await provider.getBlockNumber();
-      const from = Math.max(0, head - Math.ceil((Date.now() - s.since) / 6000) - 20);
-      done.push(await finish(note, change, burner, s.burner, bal, from, tip, () => {}));
+      const from = Math.max(
+        0,
+        head - Math.ceil((Date.now() - s.since) / 6000) - 20
+      );
+      done.push(
+        await finish(note, change, burner, s.burner, bal, from, tip, () => {})
+      );
     } else if (Date.now() - s.since > REQUEST_LIFETIME_MS) {
       await markSpending(note.n, undefined);
     }

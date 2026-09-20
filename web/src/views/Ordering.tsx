@@ -34,10 +34,23 @@ import { QrScan, QrShow } from "./Qr";
 import { Choose } from "./Choose";
 import { Thread } from "./Thread";
 import { MapPick } from "./MapPick";
-import { driverKeyFromDropSignature, fetchPhoto } from "../order/evidence";
+import {
+  committedPhotoKey,
+  driverKeyFromDropSignature,
+  fetchPhoto,
+} from "../order/evidence";
 import { PHASE_DROPOFF } from "../order/handoff";
 import { basketTotal, basketText, menuOf, type Menu } from "../order/menu";
 import { watchIntros } from "../order/chat";
+import { disputeOf, fileDispute, type Filed } from "../order/dispute";
+import {
+  driverRating,
+  rate,
+  ratingText,
+  venueRating,
+  wasRated,
+} from "../order/ratings";
+import { Stars } from "./Stars";
 import { rememberOrder } from "../shield/notes";
 import { errorText, pasWei, short } from "../format";
 
@@ -83,6 +96,13 @@ export function Ordering() {
   // kitchen whose key the menu published.
   const [driverKey, setDriverKey] = useState<string | null>(null);
   const [liveMenu, setLiveMenu] = useState<Menu | null>(null);
+  const [driverStars, setDriverStars] = useState(0);
+  const [venueStars, setVenueStars] = useState(0);
+  const [rated, setRated] = useState(false);
+  const [complaint, setComplaint] = useState<string | null>(null);
+  const [filed, setFiled] = useState<Filed | null>(null);
+  /** Reputation, read on demand: venue id or driver address to its text. */
+  const [stars, setStars] = useState<Map<string, string>>(new Map());
   const stop = useRef<(() => void) | null>(null);
 
   const refresh = useCallback(async () => {
@@ -133,6 +153,61 @@ export function Ordering() {
       live = false;
     };
   }, [venueId, venues]);
+
+  // Venue reputations, so a venue can be chosen on more than its distance.
+  useEffect(() => {
+    let on = true;
+    Promise.all(
+      venues.map(
+        async (v) =>
+          [v.id.toString(), ratingText(await venueRating(v.id))] as const
+      )
+    )
+      .then((rows) => on && setStars((m) => new Map([...m, ...rows])))
+      .catch(() => undefined);
+    return () => {
+      on = false;
+    };
+  }, [venues]);
+
+  // And the reputation of whoever is bidding.
+  useEffect(() => {
+    let on = true;
+    Promise.all(
+      bids.map(
+        async (b) =>
+          [
+            b.driver.toLowerCase(),
+            ratingText(await driverRating(b.driver)),
+          ] as const
+      )
+    )
+      .then((rows) => on && setStars((m) => new Map([...m, ...rows])))
+      .catch(() => undefined);
+    return () => {
+      on = false;
+    };
+  }, [bids]);
+
+  // Whether this order has already been rated or disputed: both are one-shot,
+  // and the contract is the only place that knows.
+  useEffect(() => {
+    setRated(false);
+    setFiled(null);
+    setComplaint(null);
+    if (!live) return;
+    let on = true;
+    const id = BigInt(live.record.id);
+    wasRated(id)
+      .then((r) => on && setRated(r))
+      .catch(() => undefined);
+    disputeOf(id)
+      .then((d) => on && setFiled(d))
+      .catch(() => undefined);
+    return () => {
+      on = false;
+    };
+  }, [live]);
 
   // A live order's own venue, which isn't the one the form is pointing at.
   useEffect(() => {
@@ -259,6 +334,53 @@ export function Ordering() {
       });
       setProveMs(ms);
       setDoor(null);
+      await openOrder(live.record);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function sendRating() {
+    if (!live) return;
+    setBusy("Rating");
+    setError(null);
+    try {
+      await rate(live.burner, BigInt(live.record.id), driverStars, venueStars);
+      setRated(true);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * File a dispute, enclosing the key to the driver's photo when there is one.
+   * Only the arbiter can read either, and the photo's key opens that photo
+   * alone — never the messages or any other photo.
+   */
+  async function fileComplaint() {
+    if (!live || !complaint?.trim()) return;
+    setBusy("Filing");
+    setError(null);
+    try {
+      const id = BigInt(live.record.id);
+      const photoKey = live.record.driverKey
+        ? await committedPhotoKey(
+            live.burner.signingKey,
+            live.record.driverKey,
+            id,
+            live.order.driver
+          ).catch(() => null)
+        : null;
+      await fileDispute(live.burner, id, {
+        reason: complaint,
+        photoKey: photoKey ?? undefined,
+      });
+      setFiled(await disputeOf(id));
+      setComplaint(null);
       await openOrder(live.record);
     } catch (e) {
       setError(errorText(e));
@@ -485,7 +607,8 @@ export function Ordering() {
                     disabled={!!busy || !b.standing}
                     onClick={() => take(b)}
                   >
-                    {pasWei(b.amount)} — {short(b.driver)}
+                    {pasWei(b.amount)} — {short(b.driver)},{" "}
+                    {stars.get(b.driver.toLowerCase()) ?? "…"}
                     {b.standing ? "" : " (withdrawn)"}
                   </button>
                 ))}
@@ -572,6 +695,58 @@ export function Ordering() {
             </>
           )}
 
+          {filed && (
+            <p className="notice">
+              Dispute #{filed.disputeId.toString()} is{" "}
+              {filed.status === 2 ? "settled" : "open"}. The escrow is held
+              until an arbiter rules on it.
+            </p>
+          )}
+
+          {!filed && live.order.status >= 2 && live.order.status <= 3 && (
+            <>
+              {complaint === null ? (
+                <button
+                  className="link"
+                  disabled={!!busy}
+                  onClick={() => setComplaint("")}
+                >
+                  Something's wrong with this order
+                </button>
+              ) : (
+                <div className="actions">
+                  <label>
+                    What happened{" "}
+                    <input
+                      value={complaint}
+                      maxLength={200}
+                      onChange={(e) => setComplaint(e.target.value)}
+                      placeholder="It never arrived"
+                    />
+                  </label>
+                  <p className="muted">
+                    This freezes the money until an arbiter rules. Only the
+                    arbiter can read what you write, and the photo's key goes
+                    with it — that key opens this photo and nothing else.
+                  </p>
+                  <button
+                    disabled={!!busy || !complaint.trim()}
+                    onClick={fileComplaint}
+                  >
+                    File it
+                  </button>
+                  <button
+                    className="link"
+                    disabled={!!busy}
+                    onClick={() => setComplaint(null)}
+                  >
+                    Never mind
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
           {live.order.status >= 4 && (
             <>
               <p className="ok">
@@ -601,6 +776,37 @@ export function Ordering() {
               )}
               {photo && (
                 <img className="evidence" src={photo} alt="the delivery" />
+              )}
+
+              {rated ? (
+                <p className="muted">
+                  Rated. Thanks — it's counted against the driver's address, not
+                  against you.
+                </p>
+              ) : (
+                <div className="actions">
+                  <Stars
+                    label="The driver"
+                    value={driverStars}
+                    onPick={setDriverStars}
+                  />
+                  <Stars
+                    label="The venue"
+                    value={venueStars}
+                    onPick={setVenueStars}
+                  />
+                  <button
+                    disabled={!!busy || (!driverStars && !venueStars)}
+                    onClick={sendRating}
+                  >
+                    Rate this order
+                  </button>
+                  <p className="muted">
+                    Sent from this order's own account, so it says what the
+                    order was like and nothing about you. One rating per order,
+                    and it can't be changed.
+                  </p>
+                </div>
               )}
             </>
           )}

@@ -26,7 +26,7 @@ export async function submitRequest(
   req: FundRequest,
   pool: string,
   signer: Signer,
-  policy: SubmitPolicy = DEFAULT_POLICY,
+  policy: SubmitPolicy = DEFAULT_POLICY
 ): Promise<SubmitOutcome> {
   const { proof } = req;
   const key = proof.pubSignals[1]; // unique per spent note
@@ -34,20 +34,41 @@ export async function submitRequest(
   const c = new Contract(pool, POOL_ABI, signer);
   let gas: bigint;
   try {
-    gas = await c.withdraw.estimateGas(proof.pA, proof.pB, proof.pC, proof.pubSignals, proof.recipient);
+    gas = await c.withdraw.estimateGas(
+      proof.pA,
+      proof.pB,
+      proof.pC,
+      proof.pubSignals,
+      proof.recipient
+    );
   } catch (e) {
     seen.add(key);
-    return { status: "skipped", reason: `the pool refuses it: ${(e as { shortMessage?: string }).shortMessage ?? String(e)}` };
+    return {
+      status: "skipped",
+      reason: `the pool refuses it: ${
+        (e as { shortMessage?: string }).shortMessage ?? String(e)
+      }`,
+    };
   }
   const price = (await signer.provider!.getFeeData()).gasPrice ?? 10n ** 12n;
   const cost = gas * price;
   if (Number(req.fee) < Number(cost) * policy.minFeeOverGas) {
-    return { status: "skipped", reason: `tip ${req.fee} wei doesn't cover gas ${cost} wei` };
+    return {
+      status: "skipped",
+      reason: `tip ${req.fee} wei doesn't cover gas ${cost} wei`,
+    };
   }
   seen.add(key);
-  const tx = await c.withdraw(proof.pA, proof.pB, proof.pC, proof.pubSignals, proof.recipient, {
-    gasLimit: (gas * 6n) / 5n,
-  });
+  const tx = await c.withdraw(
+    proof.pA,
+    proof.pB,
+    proof.pC,
+    proof.pubSignals,
+    proof.recipient,
+    {
+      gasLimit: (gas * 6n) / 5n,
+    }
+  );
   return { status: "sent", hash: tx.hash, gas };
 }
 
@@ -60,22 +81,40 @@ const VAULT_SPEND_ABI = [
  * nothing spendable to tip with yet, and the gas is small. The proof fixes the
  * commitment the deposit funds, so there is nothing to redirect.
  */
-export async function submitPayout(req: PayoutRequest, vault: string, signer: Signer): Promise<SubmitOutcome> {
-  if (seen.has(req.nullifierHash)) return { status: "skipped", reason: "already handled" };
+export async function submitPayout(
+  req: PayoutRequest,
+  vault: string,
+  signer: Signer
+): Promise<SubmitOutcome> {
+  if (seen.has(req.nullifierHash))
+    return { status: "skipped", reason: "already handled" };
   const proof = AbiCoder.defaultAbiCoder().encode(
     ["uint256[2]", "uint256[4]", "uint256[2]"],
-    [req.words.slice(0, 2), req.words.slice(2, 6), req.words.slice(6, 8)],
+    [req.words.slice(0, 2), req.words.slice(2, 6), req.words.slice(6, 8)]
   );
   const c = new Contract(vault, VAULT_SPEND_ABI, signer);
-  const args = [proof, req.root, req.nullifierHash, req.bucket, req.ksCommitment] as const;
+  const args = [
+    proof,
+    req.root,
+    req.nullifierHash,
+    req.bucket,
+    req.ksCommitment,
+  ] as const;
   let gas: bigint;
   try {
     gas = await c.depositShieldNoteZK.estimateGas(...args);
   } catch (e) {
     seen.add(req.nullifierHash);
-    return { status: "skipped", reason: `the vault refuses it: ${(e as { shortMessage?: string }).shortMessage ?? String(e)}` };
+    return {
+      status: "skipped",
+      reason: `the vault refuses it: ${
+        (e as { shortMessage?: string }).shortMessage ?? String(e)
+      }`,
+    };
   }
   seen.add(req.nullifierHash);
-  const tx = await c.depositShieldNoteZK(...args, { gasLimit: (gas * 6n) / 5n });
+  const tx = await c.depositShieldNoteZK(...args, {
+    gasLimit: (gas * 6n) / 5n,
+  });
   return { status: "sent", hash: tx.hash, gas };
 }

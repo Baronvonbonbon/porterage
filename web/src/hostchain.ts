@@ -12,7 +12,12 @@
 // user is asked to tap.
 
 import { getAccountsProvider } from "@parity/product-sdk-host";
-import { AccountId, createClient, type PolkadotClient, type PolkadotSigner } from "polkadot-api";
+import {
+  AccountId,
+  createClient,
+  type PolkadotClient,
+  type PolkadotSigner,
+} from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
 import { getBytes, hexlify } from "ethers";
 import { CHAIN, PRODUCT_ID } from "./config";
@@ -20,10 +25,13 @@ import { inHost, withTimeout } from "./host";
 
 /** The Paseo hubs' own transaction extensions, all None (sonde, 2026-09-19). */
 const HUB_EXTENSIONS = Object.fromEntries(
-  ["AsPgas", "AsScarcity", "AsRingAlias", "AsDotnsGateway", "RestrictOrigins"].map((e) => [
-    e,
-    { value: new Uint8Array([0]) },
-  ]),
+  [
+    "AsPgas",
+    "AsScarcity",
+    "AsRingAlias",
+    "AsDotnsGateway",
+    "RestrictOrigins",
+  ].map((e) => [e, { value: new Uint8Array([0]) }])
 );
 
 /** Headroom on the dry-run's weight and deposit, for state that moves before inclusion. */
@@ -38,7 +46,9 @@ interface Weight {
 interface DryRunResult {
   weight_required: Weight;
   storage_deposit: { type: "Charge" | "Refund"; value: bigint };
-  result: { success: true; value: { flags: number; data: Uint8Array } } | { success: false; value: unknown };
+  result:
+    | { success: true; value: { flags: number; data: Uint8Array } }
+    | { success: false; value: unknown };
 }
 
 export interface HostAccount {
@@ -65,18 +75,25 @@ let account: Promise<HostAccount> | null = null;
 /** Product account #0 for this .dot label: the user's identity as a driver or venue. */
 export function hostAccount(): Promise<HostAccount> {
   return (account ??= (async () => {
-    if (!(await inHost())) throw new Error("open Porterage in the Polkadot app to use your account");
+    if (!(await inHost()))
+      throw new Error("open Porterage in the Polkadot app to use your account");
     const provider = await getAccountsProvider();
     if (!provider) throw new Error("the Polkadot app offers no accounts");
     const r = await provider.getProductAccount(PRODUCT_ID, 0).match(
       (v) => ({ ok: true as const, v }),
-      (e) => ({ ok: false as const, e }),
+      (e) => ({ ok: false as const, e })
     );
-    if (!r.ok) throw new Error(`could not get your account: ${JSON.stringify(r.e)}`);
+    if (!r.ok)
+      throw new Error(`could not get your account: ${JSON.stringify(r.e)}`);
     const acct = r.v as unknown as { publicKey: Uint8Array };
     const address = AccountId(CHAIN.ss58Prefix).dec(acct.publicKey);
     const evm = (await chain().apis.ReviveApi.address(address)) as string;
-    return { publicKey: acct.publicKey, address, evm, signer: provider.getProductAccountSigner(r.v) };
+    return {
+      publicKey: acct.publicKey,
+      address,
+      evm,
+      signer: provider.getProductAccountSigner(r.v),
+    };
   })()).catch((e) => {
     account = null;
     throw e;
@@ -85,7 +102,9 @@ export function hostAccount(): Promise<HostAccount> {
 
 /** Free PAS on the Substrate side, in planck (10 decimals). */
 export async function freeBalance(address: string): Promise<bigint> {
-  const info = (await chain().query.System.Account.getValue(address)) as { data: { free: bigint } };
+  const info = (await chain().query.System.Account.getValue(address)) as {
+    data: { free: bigint };
+  };
   return info.data.free;
 }
 
@@ -94,7 +113,8 @@ export function ethDerivedAccount(evm: string): string {
   return evm.toLowerCase() + "ee".repeat(12);
 }
 
-const big = (_k: string, v: unknown) => (typeof v === "bigint" ? v.toString() : v);
+const big = (_k: string, v: unknown) =>
+  typeof v === "bigint" ? v.toString() : v;
 
 export class ContractRevert extends Error {
   constructor(public data: string) {
@@ -103,26 +123,44 @@ export class ContractRevert extends Error {
 }
 
 /** Dry-run a call as `origin`. Returns what the runtime needs to include it. */
-export async function dryRun(origin: string, dest: string, data: string, value = 0n) {
+export async function dryRun(
+  origin: string,
+  dest: string,
+  data: string,
+  value = 0n
+) {
   const r = (await chain().apis.ReviveApi.call(
-    origin, dest, value, undefined, undefined, getBytes(data),
+    origin,
+    dest,
+    value,
+    undefined,
+    undefined,
+    getBytes(data)
   )) as DryRunResult;
-  if (!r.result.success) throw new Error(`dry run failed: ${JSON.stringify(r.result.value, big)}`);
+  if (!r.result.success)
+    throw new Error(`dry run failed: ${JSON.stringify(r.result.value, big)}`);
   const out = hexlify(r.result.value.data);
   if (r.result.value.flags & 1) throw new ContractRevert(out);
-  const deposit = r.storage_deposit.type === "Charge" ? r.storage_deposit.value : 0n;
+  const deposit =
+    r.storage_deposit.type === "Charge" ? r.storage_deposit.value : 0n;
   return {
     returnData: out,
     weight: {
-      ref_time: r.weight_required.ref_time + r.weight_required.ref_time / MARGIN,
-      proof_size: r.weight_required.proof_size + r.weight_required.proof_size / MARGIN,
+      ref_time:
+        r.weight_required.ref_time + r.weight_required.ref_time / MARGIN,
+      proof_size:
+        r.weight_required.proof_size + r.weight_required.proof_size / MARGIN,
     },
     depositLimit: deposit + deposit / MARGIN,
   };
 }
 
 /** Call a contract as the user's host account. One tap. Resolves when included in a block. */
-export async function hostCall(dest: string, data: string, value = 0n): Promise<{ block: number }> {
+export async function hostCall(
+  dest: string,
+  data: string,
+  value = 0n
+): Promise<{ block: number }> {
   const me = await hostAccount();
   const plan = await dryRun(me.address, dest, data, value);
   const tx = chain().tx.Revive.call({
@@ -135,9 +173,12 @@ export async function hostCall(dest: string, data: string, value = 0n): Promise<
   const r = await withTimeout(
     tx.signAndSubmit(me.signer, { customSignedExtensions: HUB_EXTENSIONS }),
     TX_MS,
-    "transaction",
+    "transaction"
   );
-  if (!r.ok) throw new Error(`the transaction failed: ${JSON.stringify(r.dispatchError, big)}`);
+  if (!r.ok)
+    throw new Error(
+      `the transaction failed: ${JSON.stringify(r.dispatchError, big)}`
+    );
   return { block: r.block.number };
 }
 
@@ -160,7 +201,9 @@ const isContractCall = (c: CallSpec | PalletCall): c is CallSpec => "dest" in c;
  * nothing. Contract calls are dry-run on their own first, so a revert is caught
  * before the user is asked.
  */
-export async function hostBatch(calls: (CallSpec | PalletCall)[]): Promise<{ block: number }> {
+export async function hostBatch(
+  calls: (CallSpec | PalletCall)[]
+): Promise<{ block: number }> {
   if (calls.length === 1 && isContractCall(calls[0])) {
     return hostCall(calls[0].dest, calls[0].data, calls[0].value ?? 0n);
   }
@@ -181,30 +224,44 @@ export async function hostBatch(calls: (CallSpec | PalletCall)[]): Promise<{ blo
         weight_limit: plan.weight,
         storage_deposit_limit: plan.depositLimit,
         data: getBytes(c.data),
-      }).decodedCall,
+      }).decodedCall
     );
   }
   const r = await withTimeout(
-    api.tx.Utility.batch_all({ calls: inner }).signAndSubmit(me.signer, { customSignedExtensions: HUB_EXTENSIONS }),
+    api.tx.Utility.batch_all({ calls: inner }).signAndSubmit(me.signer, {
+      customSignedExtensions: HUB_EXTENSIONS,
+    }),
     TX_MS,
-    "transaction",
+    "transaction"
   );
-  if (!r.ok) throw new Error(`the transaction failed: ${JSON.stringify(r.dispatchError, big)}`);
+  if (!r.ok)
+    throw new Error(
+      `the transaction failed: ${JSON.stringify(r.dispatchError, big)}`
+    );
   return { block: r.block.number };
 }
 
 /** Send PAS from the host account to an Ethereum-style key (a session key's gas). One tap. */
-export async function hostFund(evm: string, planck: bigint): Promise<{ block: number }> {
+export async function hostFund(
+  evm: string,
+  planck: bigint
+): Promise<{ block: number }> {
   const me = await hostAccount();
   const tx = chain().tx.Balances.transfer_keep_alive({
-    dest: { type: "Id", value: AccountId(CHAIN.ss58Prefix).dec(getBytes(ethDerivedAccount(evm))) },
+    dest: {
+      type: "Id",
+      value: AccountId(CHAIN.ss58Prefix).dec(getBytes(ethDerivedAccount(evm))),
+    },
     value: planck,
   });
   const r = await withTimeout(
     tx.signAndSubmit(me.signer, { customSignedExtensions: HUB_EXTENSIONS }),
     TX_MS,
-    "transfer",
+    "transfer"
   );
-  if (!r.ok) throw new Error(`the transfer failed: ${JSON.stringify(r.dispatchError, big)}`);
+  if (!r.ok)
+    throw new Error(
+      `the transfer failed: ${JSON.stringify(r.dispatchError, big)}`
+    );
   return { block: r.block.number };
 }

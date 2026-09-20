@@ -36,3 +36,5 @@ signed. Registering an unowned label needs `--register` and the label typed back
 | 2026-09-20 | Published the kitchen view | `bafybeicr7f34iysz3r6nv77ficonpxy5ayfzu6epqlgqr7ai42ps4whgce` |
 | 2026-09-20 | Published the drop map, and buttons in place of dropdowns | `bafybeib2lzzmx5mj7vjhy3bydmhgwy5xd2les5zuxb5hphwwbyjg2lxs7a`. The app's WebView never opened `<select>` popups, so the venue and token lists couldn't be picked from on a phone. |
 | 2026-09-20 | Published order messages | `bafybeigmc2cq5vncrwrjtvmmk5qiculiuqiawamwo4uruiebz7bnjlr2ne` |
+| 2026-09-20 | Set the arbiter, published disputes and ratings | `bafybeid3puptsivrvxoxfdpwzcxq6rmxiss5simvvb6mu53lcie3qrob5e`. Arbiter = the deploy key `0x4B38…c420`; its public key is in `web/src/deployed.json` and the app refuses it unless it hashes to that address. Dispute bond 0 (bootstrap). |
+| 2026-09-20 | Topped the deployer up | 120 PAS from the name key, in two transfers (`node tools/fund-deployer.mjs`). Live runs now refund their throwaway accounts, so one costs about 3.5 PAS instead of 30. |

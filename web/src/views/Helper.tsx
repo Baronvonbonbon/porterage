@@ -20,24 +20,37 @@ export function Helper({ sessionKey }: { sessionKey: Wallet }) {
   useEffect(() => {
     if (!on) return;
     const signer = sessionKey.connect(ethProvider());
-    const note = (line: string) => setLog((l) => [`${new Date().toLocaleTimeString()} ${line}`, ...l].slice(0, 8));
+    const note = (line: string) =>
+      setLog((l) =>
+        [`${new Date().toLocaleTimeString()} ${line}`, ...l].slice(0, 8)
+      );
     let stop: (() => void) | null = null;
     // One at a time, so the session key's nonces don't collide.
-    const run = (what: string, job: () => Promise<{ status: string; hash?: string; reason?: string }>) => {
+    const run = (
+      what: string,
+      job: () => Promise<{ status: string; hash?: string; reason?: string }>
+    ) => {
       queue.current = queue.current.then(async () => {
         try {
           const r = await job();
           if (r.status === "sent") note(`${what} (tx ${short(r.hash!)})`);
-          else if (r.reason !== "already handled") note(`skipped ${what}: ${r.reason}`);
+          else if (r.reason !== "already handled")
+            note(`skipped ${what}: ${r.reason}`);
         } catch (e) {
           note(`failed ${what}: ${errorText(e)}`);
         }
       });
     };
     subscribeRequests({
-      fund: (req) => run(`funded ${short(req.proof.recipient)}`, () => submitRequest(req, SHIELD_POOL, signer)),
+      fund: (req) =>
+        run(`funded ${short(req.proof.recipient)}`, () =>
+          submitRequest(req, SHIELD_POOL, signer)
+        ),
       payout: (req) =>
-        deployed() && run("released a payout", () => submitPayout(req, addressOf("vault"), signer)),
+        deployed() &&
+        run("released a payout", () =>
+          submitPayout(req, addressOf("vault"), signer)
+        ),
     })
       .then((s) => (stop = s))
       .catch((e) => note(errorText(e)));
@@ -48,10 +61,17 @@ export function Helper({ sessionKey }: { sessionKey: Wallet }) {
   return (
     <div>
       <label>
-        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> Help fund private orders
-        while the app is open
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(e) => setOn(e.target.checked)}
+        />{" "}
+        Help fund private orders while the app is open
       </label>
-      <p className="muted">Your session key submits other people's withdrawals and is tipped for each one.</p>
+      <p className="muted">
+        Your session key submits other people's withdrawals and is tipped for
+        each one.
+      </p>
       {on && (
         <ul className="muted">
           {log.map((l, i) => (

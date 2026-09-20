@@ -9,7 +9,13 @@ import { useEffect, useRef, useState } from "react";
 const MAX_WIDTH = 640;
 const QUALITY = 0.5;
 
-export function Camera({ onTaken, onCancel }: { onTaken: (jpeg: Uint8Array) => void; onCancel: () => void }) {
+export function Camera({
+  onTaken,
+  onCancel,
+}: {
+  onTaken: (jpeg: Uint8Array) => void;
+  onCancel: () => void;
+}) {
   const video = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,7 +23,10 @@ export function Camera({ onTaken, onCancel }: { onTaken: (jpeg: Uint8Array) => v
     let stream: MediaStream | null = null;
     (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false,
+        });
         const el = video.current;
         if (!el) return;
         el.srcObject = stream;
@@ -26,7 +35,7 @@ export function Camera({ onTaken, onCancel }: { onTaken: (jpeg: Uint8Array) => v
         setError(
           (e as { name?: string }).name === "NotAllowedError"
             ? "The camera was refused, so there's no photo for this delivery."
-            : `No camera: ${(e as Error).message}`,
+            : `No camera: ${(e as Error).message}`
         );
       }
     })();

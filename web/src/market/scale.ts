@@ -16,7 +16,11 @@ function compact(b: Uint8Array, at: number): [number, number] {
   const mode = b[at] & 3;
   if (mode === 0) return [b[at] >> 2, 1];
   if (mode === 1) return [(b[at] | (b[at + 1] << 8)) >> 2, 2];
-  if (mode === 2) return [(b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 2, 4];
+  if (mode === 2)
+    return [
+      (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 2,
+      4,
+    ];
   throw new Error("statement too large");
 }
 
@@ -29,7 +33,8 @@ export function decodeStatement(b: Uint8Array): RawStatement {
     const tag = b[at++];
     if (tag === 0) {
       const kind = b[at++];
-      if (kind >= PROOF_BYTES.length) throw new Error(`unknown proof kind ${kind}`);
+      if (kind >= PROOF_BYTES.length)
+        throw new Error(`unknown proof kind ${kind}`);
       at += PROOF_BYTES[kind];
     } else if (tag === 1) at += 32;
     else if (tag === 2) {

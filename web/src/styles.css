@@ -77,3 +77,12 @@ code { font-size: 0.85em; overflow-wrap: anywhere; }
 }
 .thread .said.mine { background: var(--bg); border-style: dashed; margin-left: 2rem; }
 .thread input { flex: 1; min-width: 8rem; }
+
+/* Stars, for rating a delivered order (views/Stars.tsx). */
+.stars { display: flex; align-items: center; gap: 0.2rem; }
+.stars > span:first-child { margin-right: 0.4rem; }
+.stars .star {
+  background: none; border: none; padding: 0 0.1rem; cursor: pointer;
+  font-size: 1.4rem; line-height: 1; color: var(--line);
+}
+.stars .star.on { color: var(--warn); }

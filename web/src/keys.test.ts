@@ -5,10 +5,15 @@ import { keccak256, toUtf8Bytes, getBytes } from "ethers";
 // deterministic per product. Stand in for it with a keyed hash so the tests can
 // check what matters: same label → same key, different label → different key,
 // and every purpose namespaced.
-const hostEntropy = vi.fn(async (input: Uint8Array) => ({ ok: true, value: getBytes(keccak256(input)) }));
+const hostEntropy = vi.fn(async (input: Uint8Array) => ({
+  ok: true,
+  value: getBytes(keccak256(input)),
+}));
 let inside = true;
 
-vi.mock("@parity/product-sdk-host", () => ({ deriveEntropy: (i: Uint8Array) => hostEntropy(i) }));
+vi.mock("@parity/product-sdk-host", () => ({
+  deriveEntropy: (i: Uint8Array) => hostEntropy(i),
+}));
 vi.mock("./host", () => ({
   inHost: async () => inside,
   withTimeout: <T>(p: Promise<T>) => p,
@@ -25,12 +30,16 @@ describe("keys", () => {
 
   it("asks the host, with the namespaced label", async () => {
     await keys.sessionKey(0);
-    expect(hostEntropy).toHaveBeenCalledWith(toUtf8Bytes("porterage:session:0"));
+    expect(hostEntropy).toHaveBeenCalledWith(
+      toUtf8Bytes("porterage:session:0")
+    );
     expect(await keys.keySource()).toBe("host");
   });
 
   it("recomputes the same key from the same label", async () => {
-    expect((await keys.sessionKey(3)).address).toBe((await keys.sessionKey(3)).address);
+    expect((await keys.sessionKey(3)).address).toBe(
+      (await keys.sessionKey(3)).address
+    );
     expect((await keys.burner(7)).address).toBe((await keys.burner(7)).address);
   });
 
@@ -45,7 +54,11 @@ describe("keys", () => {
   });
 
   it("refuses to continue when the host refuses", async () => {
-    hostEntropy.mockResolvedValueOnce({ ok: false, value: undefined as never, error: "denied" } as never);
+    hostEntropy.mockResolvedValueOnce({
+      ok: false,
+      value: undefined as never,
+      error: "denied",
+    } as never);
     await expect(keys.sessionKey(0)).rejects.toThrow(/key derivation failed/);
   });
 
@@ -65,6 +78,8 @@ describe("keys", () => {
   });
 
   it("walletFrom turns any 32 bytes into a valid key, even zero", () => {
-    expect(keys.walletFrom(new Uint8Array(32)).address).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    expect(keys.walletFrom(new Uint8Array(32)).address).toMatch(
+      /^0x[0-9a-fA-F]{40}$/
+    );
   });
 });

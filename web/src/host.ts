@@ -24,13 +24,25 @@ let inside: Promise<boolean> | null = null;
 
 /// True when running as a Product inside the Polkadot app (mobile or Desktop).
 export function inHost(): Promise<boolean> {
-  return (inside ??= withTimeout(isInsideContainer(), DETECT_MS, "host detection").catch(() => false));
+  return (inside ??= withTimeout(
+    isInsideContainer(),
+    DETECT_MS,
+    "host detection"
+  ).catch(() => false));
 }
 
-export function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+export function withTimeout<T>(
+  p: Promise<T>,
+  ms: number,
+  what: string
+): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${what}: no answer in ${Math.round(ms / 1000)} s`)), ms);
+    timer = setTimeout(
+      () =>
+        reject(new Error(`${what}: no answer in ${Math.round(ms / 1000)} s`)),
+      ms
+    );
   });
   return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
 }
@@ -54,7 +66,11 @@ export function askHostLocation(): Promise<HostLocationGrant> {
   return (locationAsked ??= (async (): Promise<HostLocationGrant> => {
     if (!(await inHost())) return "no-host";
     try {
-      const r = await withTimeout(requestDevicePermission("Location"), ASK_MS, "location permission");
+      const r = await withTimeout(
+        requestDevicePermission("Location"),
+        ASK_MS,
+        "location permission"
+      );
       if (!r.ok) {
         console.warn("host Location permission:", formatHostError(r.error));
         return "error";
@@ -91,11 +107,29 @@ function openPreimages(): Promise<PreimageManager> {
     // Each step has a deadline: a host on another wire codec never answers at all (sonde,
     // 2026-09-18), and a caller waiting here would never get an answer.
     // The type spells it "BulletInAllowance", which throws; only this spelling allocates (sonde).
-    await withTimeout(requestResourceAllocation([{ tag: "BulletinAllowance", value: undefined } as never]), ASK_MS, "Bulletin allowance");
-    const permission = await withTimeout(requestPermission({ tag: "PreimageSubmit", value: undefined }), ASK_MS, "storage permission");
-    if (!permission.ok) throw new Error(`storage permission: ${formatHostError(permission.error)}`);
-    if (!permission.value) throw new Error("the Polkadot app did not allow Porterage to store data");
-    const manager = await withTimeout(getPreimageManager(), DETECT_MS * 4, "storage manager");
+    await withTimeout(
+      requestResourceAllocation([
+        { tag: "BulletinAllowance", value: undefined } as never,
+      ]),
+      ASK_MS,
+      "Bulletin allowance"
+    );
+    const permission = await withTimeout(
+      requestPermission({ tag: "PreimageSubmit", value: undefined }),
+      ASK_MS,
+      "storage permission"
+    );
+    if (!permission.ok)
+      throw new Error(
+        `storage permission: ${formatHostError(permission.error)}`
+      );
+    if (!permission.value)
+      throw new Error("the Polkadot app did not allow Porterage to store data");
+    const manager = await withTimeout(
+      getPreimageManager(),
+      DETECT_MS * 4,
+      "storage manager"
+    );
     if (!manager) throw new Error("this Polkadot app offers no storage");
     return manager;
   })()).catch((e: unknown) => {
@@ -131,7 +165,10 @@ export async function hostGet(key: string): Promise<Uint8Array | null> {
     };
     const timer = setTimeout(() => finish(null), GET_MS);
     try {
-      sub = manager.lookup((key.startsWith("0x") ? key : `0x${key}`) as `0x${string}`, (bytes) => bytes && finish(bytes));
+      sub = manager.lookup(
+        (key.startsWith("0x") ? key : `0x${key}`) as `0x${string}`,
+        (bytes) => bytes && finish(bytes)
+      );
     } catch {
       finish(null);
     }

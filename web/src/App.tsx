@@ -49,11 +49,15 @@ export function App() {
 
       {host === false && (
         <p className="notice">
-          You're outside the Polkadot app, so there's no account to act with. Open <b>porterage.dot</b> in the
-          Polkadot app to take part.
+          You're outside the Polkadot app, so there's no account to act with.
+          Open <b>porterage.dot</b> in the Polkadot app to take part.
         </p>
       )}
-      {!deployed() && <p className="notice">The contracts aren't deployed yet, so nothing on-chain works.</p>}
+      {!deployed() && (
+        <p className="notice">
+          The contracts aren't deployed yet, so nothing on-chain works.
+        </p>
+      )}
 
       {!role && (
         <section className="roles">

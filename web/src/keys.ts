@@ -46,7 +46,11 @@ function devSeed(): Uint8Array {
 /** 32 bytes of key material for `label`, the same every time. */
 export async function entropy(label: string): Promise<Uint8Array> {
   if ((await keySource()) === "host") {
-    const r = await withTimeout(deriveEntropy(toUtf8Bytes(label)), ENTROPY_MS, "key derivation");
+    const r = await withTimeout(
+      deriveEntropy(toUtf8Bytes(label)),
+      ENTROPY_MS,
+      "key derivation"
+    );
     if (!r.ok) throw new Error(`key derivation failed: ${String(r.error)}`);
     return r.value;
   }

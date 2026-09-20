@@ -24,6 +24,7 @@ import {
   type Basket,
 } from "../order/kitchen";
 import { watchIntros, type Intro } from "../order/chat";
+import { ratingText, venueRating } from "../order/ratings";
 import { Thread } from "./Thread";
 import { errorText, pasWei, short } from "../format";
 
@@ -43,6 +44,7 @@ export function Venue() {
   /** Order id to whoever introduced themselves on it, and with which key. */
   const [callers, setCallers] = useState<Map<string, Intro>>(new Map());
   const [talkTo, setTalkTo] = useState<string | null>(null);
+  const [stars, setStars] = useState<Map<string, string>>(new Map());
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -66,6 +68,19 @@ export function Venue() {
             }
           );
         }
+        setStars(
+          new Map(
+            await Promise.all(
+              rows.map(
+                async (v) =>
+                  [
+                    v.id.toString(),
+                    ratingText(await venueRating(v.id)),
+                  ] as const
+              )
+            )
+          )
+        );
         const ids = new Set(rows.map((v) => v.id.toString()));
         setOrders(
           (await recentOrders()).filter((o) => ids.has(o.venueId.toString()))
@@ -176,6 +191,8 @@ export function Venue() {
         <dl key={v.id.toString()}>
           <dt>Venue</dt>
           <dd>#{v.id.toString()}</dd>
+          <dt>Rated</dt>
+          <dd>{stars.get(v.id.toString()) ?? "…"}</dd>
           <dt>Counter at</dt>
           <dd>
             {formatDegrees(v.at.lat)}, {formatDegrees(v.at.lon)}

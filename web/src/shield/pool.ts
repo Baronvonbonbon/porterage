@@ -22,7 +22,16 @@
 // logs is read from the Substrate side instead (`BlockInserts`).
 
 import { poseidon1, poseidon2 } from "poseidon-lite";
-import { Contract, Interface, keccak256, solidityPacked, toBigInt, zeroPadValue, toBeHex, type Provider } from "ethers";
+import {
+  Contract,
+  Interface,
+  keccak256,
+  solidityPacked,
+  toBigInt,
+  zeroPadValue,
+  toBeHex,
+  type Provider,
+} from "ethers";
 
 export const POOL_ABI = [
   "function depositNative(bytes32 commitment) payable",
@@ -40,7 +49,8 @@ export const POOL_ABI = [
 ];
 export const POOL = new Interface(POOL_ABI);
 
-export const BN254_R = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+export const BN254_R =
+  21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 export const NATIVE = 0n;
 const DEPTH = 128;
 
@@ -61,7 +71,8 @@ export interface NotePath {
 }
 
 export const b32 = (x: bigint): string => zeroPadValue(toBeHex(x), 32);
-const bit = (n: number | bigint, lv: number): boolean => ((BigInt(n) >> BigInt(lv)) & 1n) === 1n;
+const bit = (n: number | bigint, lv: number): boolean =>
+  ((BigInt(n) >> BigInt(lv)) & 1n) === 1n;
 
 /**
  * The pool's ERC-20 precompile address for an Asset Hub asset id, as the pool
@@ -70,7 +81,8 @@ const bit = (n: number | bigint, lv: number): boolean => ((BigInt(n) >> BigInt(l
  */
 export const precompileFor = (assetId: bigint): bigint => {
   if (assetId === NATIVE) return NATIVE;
-  if (assetId >= 1n << 64n) throw new Error("assetId too large (pool requires < 2^64)");
+  if (assetId >= 1n << 64n)
+    throw new Error("assetId too large (pool requires < 2^64)");
   return (assetId << 128n) | (0x0120n << 16n);
 };
 
@@ -79,7 +91,8 @@ export const commitmentOf = (n: Note): bigint =>
     poseidon2([BigInt(n.value), BigInt(n.asset)]),
     poseidon2([BigInt(n.nullifier), BigInt(n.secret)]),
   ]);
-export const nullifierHashOf = (n: Note): bigint => poseidon1([BigInt(n.nullifier)]);
+export const nullifierHashOf = (n: Note): bigint =>
+  poseidon1([BigInt(n.nullifier)]);
 export const contextFor = (recipient: string): bigint =>
   toBigInt(keccak256(solidityPacked(["address"], [recipient]))) % BN254_R;
 
@@ -94,14 +107,15 @@ export const contextFor = (recipient: string): bigint =>
 export function batchNotePaths(
   startIndex: number,
   preSideNodes: Record<number, string>,
-  commitments: bigint[],
+  commitments: bigint[]
 ): { index: number; leftSnapshot: Record<number, string> }[] {
   const side: Record<number, bigint> = {};
   for (let lv = 0; lv < DEPTH; lv++) side[lv] = BigInt(preSideNodes[lv] ?? "0");
   return commitments.map((leaf, k) => {
     const index = startIndex + k;
     const leftSnapshot: Record<number, string> = {};
-    for (let lv = 0; lv < DEPTH; lv++) if (bit(index, lv)) leftSnapshot[lv] = side[lv].toString();
+    for (let lv = 0; lv < DEPTH; lv++)
+      if (bit(index, lv)) leftSnapshot[lv] = side[lv].toString();
     let node = leaf;
     for (let lv = 0; lv < DEPTH; lv++) {
       if (bit(index, lv)) {
@@ -112,21 +126,34 @@ export function batchNotePaths(
   });
 }
 
-const INSERT_TOPICS = ["Deposit(address,bytes32)", "NewCommitment(bytes32)"].map((s) =>
-  keccak256(solidityPacked(["string"], [s])),
-);
+const INSERT_TOPICS = [
+  "Deposit(address,bytes32)",
+  "NewCommitment(bytes32)",
+].map((s) => keccak256(solidityPacked(["string"], [s])));
 export const DEPOSIT_TOPIC = INSERT_TOPICS[0];
 export const NEW_COMMITMENT_TOPIC = INSERT_TOPICS[1];
 
 /** Every leaf the pool inserted in one block, in order, from the block's System.Events. */
 export type BlockInserts = (block: number) => Promise<bigint[]>;
 
-async function insertLogs(provider: Provider, pool: string, from: number, to: number) {
+async function insertLogs(
+  provider: Provider,
+  pool: string,
+  from: number,
+  to: number
+) {
   const out: { blockNumber: number; index: number; data: string }[] = [];
   const get = async (a: number, b: number): Promise<void> => {
     try {
       for (const topic of INSERT_TOPICS) {
-        out.push(...((await provider.getLogs({ address: pool, topics: [topic], fromBlock: a, toBlock: b })) as never[]));
+        out.push(
+          ...((await provider.getLogs({
+            address: pool,
+            topics: [topic],
+            fromBlock: a,
+            toBlock: b,
+          })) as never[])
+        );
       }
     } catch (e) {
       if (b <= a) throw e;
@@ -137,7 +164,10 @@ async function insertLogs(provider: Provider, pool: string, from: number, to: nu
   };
   await get(from, to);
   out.sort((x, y) => x.blockNumber - y.blockNumber || x.index - y.index);
-  return out.map((l) => ({ block: l.blockNumber, leaf: toBigInt(l.data.slice(0, 66)) }));
+  return out.map((l) => ({
+    block: l.blockNumber,
+    leaf: toBigInt(l.data.slice(0, 66)),
+  }));
 }
 
 /**
@@ -150,25 +180,31 @@ export async function leavesBetween(
   pool: string,
   from: number,
   to: number,
-  fromSubstrate: BlockInserts,
+  fromSubstrate: BlockInserts
 ): Promise<bigint[]> {
   const read = new Contract(pool, POOL_ABI, provider);
   const sizes = new Map<number, number>();
   const size = async (b: number) => {
-    if (!sizes.has(b)) sizes.set(b, Number(await read.treeSize({ blockTag: b })));
+    if (!sizes.has(b))
+      sizes.set(b, Number(await read.treeSize({ blockTag: b })));
     return sizes.get(b)!;
   };
   const logs = await insertLogs(provider, pool, from, to);
   const byBlock = new Map<number, bigint[]>();
-  for (const l of logs) byBlock.set(l.block, [...(byBlock.get(l.block) ?? []), l.leaf]);
-  const logged = (a: number, b: number) => logs.filter((l) => l.block >= a && l.block <= b).length;
+  for (const l of logs)
+    byBlock.set(l.block, [...(byBlock.get(l.block) ?? []), l.leaf]);
+  const logged = (a: number, b: number) =>
+    logs.filter((l) => l.block >= a && l.block <= b).length;
 
   const check = async (a: number, b: number): Promise<void> => {
     const grew = (await size(b)) - (await size(a - 1));
     if (grew === logged(a, b)) return;
     if (a === b) {
       const leaves = await fromSubstrate(a);
-      if (leaves.length !== grew) throw new Error(`block ${a}: the tree grew by ${grew}, events show ${leaves.length}`);
+      if (leaves.length !== grew)
+        throw new Error(
+          `block ${a}: the tree grew by ${grew}, events show ${leaves.length}`
+        );
       byBlock.set(a, leaves);
       return;
     }
@@ -177,7 +213,9 @@ export async function leavesBetween(
     await check(m + 1, b);
   };
   await check(from, to);
-  return [...byBlock.keys()].sort((x, y) => x - y).flatMap((b) => byBlock.get(b)!);
+  return [...byBlock.keys()]
+    .sort((x, y) => x - y)
+    .flatMap((b) => byBlock.get(b)!);
 }
 
 /**
@@ -191,28 +229,43 @@ export async function notePathsAt(
   pool: string,
   block: number,
   mine: bigint[],
-  fromSubstrate: BlockInserts,
+  fromSubstrate: BlockInserts
 ): Promise<NotePath[]> {
   const read = new Contract(pool, POOL_ABI, provider);
   const before = block - 1;
-  const [start, end] = (await Promise.all([
-    read.treeSize({ blockTag: before }),
-    read.treeSize({ blockTag: block }),
-  ])).map(Number);
+  const [start, end] = (
+    await Promise.all([
+      read.treeSize({ blockTag: before }),
+      read.treeSize({ blockTag: block }),
+    ])
+  ).map(Number);
   const inserts = await fromSubstrate(block);
   if (inserts.length !== end - start) {
-    throw new Error(`block ${block}: the tree grew by ${end - start}, events show ${inserts.length}`);
+    throw new Error(
+      `block ${block}: the tree grew by ${end - start}, events show ${
+        inserts.length
+      }`
+    );
   }
   const levels = Math.max(1, (end - 1).toString(2).length);
   const pre: Record<number, string> = {};
   const nodes = await Promise.all(
-    Array.from({ length: levels }, (_, lv) => read.sideNodes(lv, { blockTag: before }) as Promise<bigint>),
+    Array.from(
+      { length: levels },
+      (_, lv) => read.sideNodes(lv, { blockTag: before }) as Promise<bigint>
+    )
   );
   nodes.forEach((v, lv) => (pre[lv] = v.toString()));
   const paths = batchNotePaths(start, pre, inserts);
   return mine.map((c) => {
     const k = inserts.indexOf(c);
-    if (k < 0) throw new Error(`commitment ${b32(c).slice(0, 12)}… is not among block ${block}'s inserts`);
+    if (k < 0)
+      throw new Error(
+        `commitment ${b32(c).slice(
+          0,
+          12
+        )}… is not among block ${block}'s inserts`
+      );
     return { ...paths[k], depositBlock: before };
   });
 }
@@ -227,13 +280,16 @@ export async function findLeafBlock(
   pool: string,
   leaf: bigint,
   from: number,
-  fromSubstrate: BlockInserts,
+  fromSubstrate: BlockInserts
 ): Promise<number | null> {
   const head = await provider.getBlockNumber();
-  const hit = (await insertLogs(provider, pool, from, head)).find((l) => l.leaf === leaf);
+  const hit = (await insertLogs(provider, pool, from, head)).find(
+    (l) => l.leaf === leaf
+  );
   if (hit) return hit.block;
   const read = new Contract(pool, POOL_ABI, provider);
-  const size = async (b: number) => Number(await read.treeSize({ blockTag: b }));
+  const size = async (b: number) =>
+    Number(await read.treeSize({ blockTag: b }));
   const search = async (a: number, b: number): Promise<number | null> => {
     if ((await size(b)) === (await size(a - 1))) return null;
     if (a === b) return (await fromSubstrate(a)).includes(leaf) ? a : null;
@@ -246,7 +302,12 @@ export async function findLeafBlock(
 // ── right side, at spend time ────────────────────────────────────────────────
 
 /** Root of the subtree covering [start, start + 2^lv) from the known leaves. */
-export function subtreeRoot(leaves: Map<number, bigint>, lv: number, start: bigint, maxIdx: number): bigint | null {
+export function subtreeRoot(
+  leaves: Map<number, bigint>,
+  lv: number,
+  start: bigint,
+  maxIdx: number
+): bigint | null {
   if (start > BigInt(maxIdx)) return null;
   if (lv === 0) {
     const s = Number(start);
@@ -264,7 +325,7 @@ export function authPath(
   index: number,
   leftSnapshot: Record<number, string>,
   rightLeaves: Map<number, bigint>,
-  maxIdx: number,
+  maxIdx: number
 ): string[] {
   const siblings: string[] = [];
   const idx = BigInt(index);
@@ -280,7 +341,11 @@ export function authPath(
   return siblings;
 }
 
-export function rootFrom(commitment: bigint, index: number, siblings: string[]): bigint {
+export function rootFrom(
+  commitment: bigint,
+  index: number,
+  siblings: string[]
+): bigint {
   let node = commitment;
   for (let lv = 0; lv < DEPTH; lv++) {
     const s = BigInt(siblings[lv]);
@@ -296,16 +361,24 @@ export async function reconstructPath(
   pool: string,
   note: Note,
   path: NotePath,
-  fromSubstrate: BlockInserts,
+  fromSubstrate: BlockInserts
 ): Promise<{ siblings: string[]; root: string }> {
   const read = new Contract(pool, POOL_ABI, provider);
   const head = await provider.getBlockNumber();
-  const leaves = await leavesBetween(provider, pool, path.depositBlock + 1, head, fromSubstrate);
+  const leaves = await leavesBetween(
+    provider,
+    pool,
+    path.depositBlock + 1,
+    head,
+    fromSubstrate
+  );
   // The first leaf of the scan sits at treeSize(depositBlock); anchor on our own commitment.
   const first = Number(await read.treeSize({ blockTag: path.depositBlock }));
   const commit = commitmentOf(note);
   if (leaves[path.index - first] !== commit) {
-    throw new Error("the note's commitment isn't where its record says; the note book may be stale");
+    throw new Error(
+      "the note's commitment isn't where its record says; the note book may be stale"
+    );
   }
   const right = new Map<number, bigint>();
   let idx = path.index;
@@ -313,7 +386,9 @@ export async function reconstructPath(
   const siblings = authPath(path.index, path.leftSnapshot, right, idx - 1);
   const onchain = (await read.currentRoot({ blockTag: head })) as bigint;
   if (rootFrom(commit, path.index, siblings) !== onchain) {
-    throw new Error("the rebuilt path doesn't reach the pool's current root; try again in a block");
+    throw new Error(
+      "the rebuilt path doesn't reach the pool's current root; try again in a block"
+    );
   }
   return { siblings, root: onchain.toString() };
 }

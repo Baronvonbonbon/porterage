@@ -14,6 +14,9 @@ import {
   randomSalt,
 } from "./geo";
 import { TILE, latToY, lonToX, panned, wrapX, xToLon, yToLat } from "./tiles";
+import { openWithKey, photoKeyOf } from "./evidence";
+import { decodeCase, encodeCase } from "./dispute";
+import { ratingText } from "./ratings";
 import {
   MAX_TEXT,
   clip,
@@ -380,5 +383,64 @@ describe("order messages", () => {
     const body = clip("🐕".repeat(100));
     expect(body.length).toBeLessThanOrEqual(255);
     expect(toUtf8String(body)).toBe("🐕".repeat(63)); // whole dogs only
+  });
+});
+
+describe("evidence and disputes", () => {
+  const driver = new SigningKey(hexlify(new Uint8Array(32).fill(21)));
+  const customer = new SigningKey(hexlify(new Uint8Array(32).fill(22)));
+  const arbiter = new SigningKey(hexlify(new Uint8Array(32).fill(23)));
+  const photo = new Uint8Array(512).fill(200);
+
+  it("give an arbiter the photo without giving it an identity key", async () => {
+    const sealed = await sealPhoto(driver, customer.compressedPublicKey, photo);
+    // Either party can unwrap the photo's own key.
+    const key = await photoKeyOf(customer, driver.compressedPublicKey, sealed);
+    expect([
+      ...(await photoKeyOf(driver, customer.compressedPublicKey, sealed)),
+    ]).toEqual([...key]);
+    // That key opens this photo — and it's all the arbiter ever gets.
+    expect([...(await openWithKey(key, sealed))]).toEqual([...photo]);
+    // A second photo between the same two has a different key, so handing one
+    // over doesn't open the other.
+    const second = await sealPhoto(driver, customer.compressedPublicKey, photo);
+    await expect(openWithKey(key, second)).rejects.toThrow();
+  });
+
+  it("seal a case to the arbiter alone", async () => {
+    const photoKey = await photoKeyOf(
+      driver,
+      customer.compressedPublicKey,
+      await sealPhoto(driver, customer.compressedPublicKey, photo)
+    );
+    const filed = encodeCase({
+      reason: "Never arrived — the photo is of someone else's door.",
+      photoKey,
+    });
+    const sealed = await seal(arbiter.compressedPublicKey, 8, filed);
+    const back = decodeCase(
+      (await openEnvelope({ signingKey: arbiter }, 8, sealed))!
+    )!;
+    expect(back.reason).toBe(
+      "Never arrived — the photo is of someone else's door."
+    );
+    expect([...back.photoKey!]).toEqual([...photoKey]);
+    // The driver being complained about can't read the complaint.
+    expect(await openEnvelope({ signingKey: driver }, 8, sealed)).toBe(null);
+  });
+
+  it("read a case with no photo, and refuse a malformed one", () => {
+    const back = decodeCase(encodeCase({ reason: "Cold." }))!;
+    expect(back.reason).toBe("Cold.");
+    expect(back.photoKey).toBe(undefined);
+    expect(decodeCase(new Uint8Array(0))).toBe(null);
+    expect(decodeCase(new Uint8Array([9, 1, 2]))).toBe(null); // says nine bytes, carries two
+    expect(decodeCase(new Uint8Array([0, ...new Uint8Array(7)]))).toBe(null); // a key that isn't 32 bytes
+  });
+
+  it("read a rating back as text, including when there is none", () => {
+    expect(ratingText({ avgX100: 437, count: 7 })).toBe("4.4★ from 7");
+    expect(ratingText({ avgX100: 0, count: 0 })).toBe("not rated yet");
+    expect(ratingText(null)).toBe("not rated yet");
   });
 });

@@ -22,8 +22,18 @@ export interface Token {
 export const PAS_DECIMALS = 10; // Substrate side; the EVM sees 18
 
 export const TOKENS: readonly Token[] = [
-  { id: 1337, symbol: "USDC", decimals: 6, precompile: "0x0000053900000000000000000000000001200000" },
-  { id: 1984, symbol: "USDT", decimals: 6, precompile: "0x000007c000000000000000000000000001200000" },
+  {
+    id: 1337,
+    symbol: "USDC",
+    decimals: 6,
+    precompile: "0x0000053900000000000000000000000001200000",
+  },
+  {
+    id: 1984,
+    symbol: "USDT",
+    decimals: 6,
+    precompile: "0x000007c000000000000000000000000001200000",
+  },
   {
     id: 50000413,
     symbol: "pUSD",
@@ -33,13 +43,21 @@ export const TOKENS: readonly Token[] = [
   },
 ];
 
-export const tokenOf = (id: number): Token | undefined => TOKENS.find((t) => t.id === id);
+export const tokenOf = (id: number): Token | undefined =>
+  TOKENS.find((t) => t.id === id);
 
 /** `amount` in an asset's smallest units, as a human string. */
-export function formatUnits(amount: bigint, decimals: number, places = 2): string {
+export function formatUnits(
+  amount: bigint,
+  decimals: number,
+  places = 2
+): string {
   const unit = 10n ** BigInt(decimals);
   const whole = amount / unit;
-  const frac = (amount % unit).toString().padStart(decimals, "0").slice(0, places);
+  const frac = (amount % unit)
+    .toString()
+    .padStart(decimals, "0")
+    .slice(0, places);
   return places ? `${whole}.${frac}` : `${whole}`;
 }
 

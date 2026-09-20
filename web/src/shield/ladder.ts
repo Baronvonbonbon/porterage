@@ -16,11 +16,20 @@
 const PAS = 10n ** 18n;
 
 /** PAS, the pool asset. 1 to 100 PAS covers gas through a large order. */
-export const LADDER_PAS: readonly bigint[] = [1n * PAS, 5n * PAS, 25n * PAS, 100n * PAS];
+export const LADDER_PAS: readonly bigint[] = [
+  1n * PAS,
+  5n * PAS,
+  25n * PAS,
+  100n * PAS,
+];
 
-const descending = (rungs: readonly bigint[]) => [...rungs].sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
+const descending = (rungs: readonly bigint[]) =>
+  [...rungs].sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
 
-export function decompose(amount: bigint, ladder: readonly bigint[]): { rungs: bigint[]; residue: bigint } {
+export function decompose(
+  amount: bigint,
+  ladder: readonly bigint[]
+): { rungs: bigint[]; residue: bigint } {
   const rungs: bigint[] = [];
   let left = amount;
   for (const r of descending(ladder)) {
@@ -32,7 +41,10 @@ export function decompose(amount: bigint, ladder: readonly bigint[]): { rungs: b
   return { rungs, residue: left };
 }
 
-export function cover(amount: bigint, ladder: readonly bigint[]): { rungs: bigint[]; overshoot: bigint } {
+export function cover(
+  amount: bigint,
+  ladder: readonly bigint[]
+): { rungs: bigint[]; overshoot: bigint } {
   if (amount <= 0n) return { rungs: [], overshoot: 0n };
   const { rungs, residue } = decompose(amount, ladder);
   if (residue === 0n) return { rungs, overshoot: 0n };
@@ -42,4 +54,5 @@ export function cover(amount: bigint, ladder: readonly bigint[]): { rungs: bigin
   return { rungs: descending(rungs), overshoot: top - residue };
 }
 
-export const sum = (rungs: readonly bigint[]): bigint => rungs.reduce((a, b) => a + b, 0n);
+export const sum = (rungs: readonly bigint[]): bigint =>
+  rungs.reduce((a, b) => a + b, 0n);

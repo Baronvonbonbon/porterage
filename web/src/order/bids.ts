@@ -10,7 +10,17 @@
 // fresh key of its own, so two bids on different orders don't look like the same
 // driver to anyone watching.
 
-import { AbiCoder, Contract, SigningKey, Wallet, concat, getBytes, hexlify, keccak256, toUtf8Bytes } from "ethers";
+import {
+  AbiCoder,
+  Contract,
+  SigningKey,
+  Wallet,
+  concat,
+  getBytes,
+  hexlify,
+  keccak256,
+  toUtf8Bytes,
+} from "ethers";
 
 import { ABI, addressOf, read } from "../contracts";
 import { publishStatement, subscribeTopics } from "../market/statements";
@@ -24,7 +34,8 @@ export const orderTopic = (orderId: bigint): string =>
   keccak256(toUtf8Bytes(`porterage:order:v1:${orderId}`));
 /** The customer's slot on that topic, and each bidder's own. */
 export const ANNOUNCE_CHANNEL = keccak256(toUtf8Bytes("porterage:order:key"));
-export const bidChannel = (orderId: bigint): string => keccak256(toUtf8Bytes(`porterage:bid:${orderId}`));
+export const bidChannel = (orderId: bigint): string =>
+  keccak256(toUtf8Bytes(`porterage:bid:${orderId}`));
 
 // ── the customer's announcement ──────────────────────────────────────────────
 
@@ -42,7 +53,11 @@ export function decodeAnnounce(b: Uint8Array): string | null {
 
 /** Publish the order account's public key, so bidders can reach the customer. */
 export function announceOrder(burner: Reader, orderId: bigint): Promise<void> {
-  return publishStatement(orderTopic(orderId), ANNOUNCE_CHANNEL, encodeAnnounce(burner.signingKey.publicKey));
+  return publishStatement(
+    orderTopic(orderId),
+    ANNOUNCE_CHANNEL,
+    encodeAnnounce(burner.signingKey.publicKey)
+  );
 }
 
 // ── sealed openings ──────────────────────────────────────────────────────────
@@ -67,16 +82,26 @@ function bigToBytes(v: bigint, n: number): Uint8Array {
 }
 
 /** Encrypt an opening to the customer's key, with a throwaway key of our own. */
-export const sealOpening = (customerKey: string, opening: BidOpening): Promise<Uint8Array> =>
-  seal(customerKey, BID, openingBytes(opening));
+export const sealOpening = (
+  customerKey: string,
+  opening: BidOpening
+): Promise<Uint8Array> => seal(customerKey, BID, openingBytes(opening));
 
 /** Read an opening addressed to this order account. Null when it isn't one, or isn't ours. */
-export async function openSealed(burner: Reader, bytes: Uint8Array): Promise<BidOpening | null> {
+export async function openSealed(
+  burner: Reader,
+  bytes: Uint8Array
+): Promise<BidOpening | null> {
   const plain = await open(burner, BID, bytes);
   if (!plain || plain.length !== 64) return null;
   let amount = 0n;
-  for (const byte of plain.slice(20, 32)) amount = (amount << 8n) | BigInt(byte);
-  return { driver: hexlify(plain.slice(0, 20)), amount, salt: hexlify(plain.slice(32, 64)) };
+  for (const byte of plain.slice(20, 32))
+    amount = (amount << 8n) | BigInt(byte);
+  return {
+    driver: hexlify(plain.slice(0, 20)),
+    amount,
+    salt: hexlify(plain.slice(32, 64)),
+  };
 }
 
 // ── the two sides ────────────────────────────────────────────────────────────
@@ -97,18 +122,33 @@ export async function placeBid(
   orderId: bigint,
   driver: string,
   amount: bigint,
-  customerKey: string,
+  customerKey: string
 ): Promise<{ bidHash: string; salt: string; revokeSecret: string }> {
   const orders = read("orders");
   const salt = hexlify(crypto.getRandomValues(new Uint8Array(32)));
   const revokeSecret = hexlify(crypto.getRandomValues(new Uint8Array(32)));
-  const bidHash = (await orders.bidHashOf(orderId, driver, amount, salt)) as string;
+  const bidHash = (await orders.bidHashOf(
+    orderId,
+    driver,
+    amount,
+    salt
+  )) as string;
   // PorterOrders checks keccak256(abi.encode(secret)), so encode it the same way.
-  const revokeHash = keccak256(AbiCoder.defaultAbiCoder().encode(["bytes32"], [revokeSecret]));
+  const revokeHash = keccak256(
+    AbiCoder.defaultAbiCoder().encode(["bytes32"], [revokeSecret])
+  );
 
-  const write = new Contract(addressOf("orders"), ABI.orders.fragments as never, sessionKey);
+  const write = new Contract(
+    addressOf("orders"),
+    ABI.orders.fragments as never,
+    sessionKey
+  );
   await (await write.commitBid(orderId, bidHash, revokeHash)).wait();
-  await publishStatement(orderTopic(orderId), bidChannel(orderId), await sealOpening(customerKey, { driver, amount, salt }));
+  await publishStatement(
+    orderTopic(orderId),
+    bidChannel(orderId),
+    await sealOpening(customerKey, { driver, amount, salt })
+  );
   return { bidHash, salt, revokeSecret };
 }
 
@@ -116,15 +156,24 @@ export async function placeBid(
 export async function watchBids(
   burner: Reader,
   orderId: bigint,
-  heard: (bid: Bid) => void,
+  heard: (bid: Bid) => void
 ): Promise<() => void> {
   const orders = read("orders");
   return subscribeTopics([orderTopic(orderId)], async (bytes) => {
     const opening = await openSealed(burner, bytes);
     if (!opening) return;
-    const bidHash = (await orders.bidHashOf(orderId, opening.driver, opening.amount, opening.salt)) as string;
+    const bidHash = (await orders.bidHashOf(
+      orderId,
+      opening.driver,
+      opening.amount,
+      opening.salt
+    )) as string;
     const onChain = await orders.sealedBid(orderId, bidHash);
-    heard({ ...opening, bidHash, standing: onChain.exists && !onChain.revoked });
+    heard({
+      ...opening,
+      bidHash,
+      standing: onChain.exists && !onChain.revoked,
+    });
   });
 }
 
@@ -133,7 +182,10 @@ export async function watchBids(
  * order's topic. Statements already posted are delivered to a new subscription,
  * so this finds one placed before the driver joined.
  */
-export function customerKeyOf(orderId: bigint, timeoutMs = 20_000): Promise<string | null> {
+export function customerKeyOf(
+  orderId: bigint,
+  timeoutMs = 20_000
+): Promise<string | null> {
   return new Promise((resolve) => {
     let stop: (() => void) | null = null;
     const finish = (key: string | null) => {

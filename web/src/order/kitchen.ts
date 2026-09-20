@@ -14,8 +14,10 @@ import type { Menu } from "./menu";
 
 const BASKET = 5;
 
-export const venueTopic = (venueId: bigint): string => keccak256(toUtf8Bytes(`porterage:venue:v1:${venueId}`));
-export const basketChannel = (orderId: bigint): string => keccak256(toUtf8Bytes(`porterage:basket:${orderId}`));
+export const venueTopic = (venueId: bigint): string =>
+  keccak256(toUtf8Bytes(`porterage:venue:v1:${venueId}`));
+export const basketChannel = (orderId: bigint): string =>
+  keccak256(toUtf8Bytes(`porterage:basket:${orderId}`));
 
 export interface Basket {
   orderId: bigint;
@@ -44,20 +46,29 @@ export function decodeBasket(bytes: Uint8Array): Basket | null {
   let orderId = 0n;
   for (let i = 0; i < 8; i++) orderId = (orderId << 8n) | BigInt(bytes[i]);
   const items = new Map<string, number>();
-  for (let i = 8; i < bytes.length; i += 2) items.set(String.fromCharCode(bytes[i]), bytes[i + 1]);
+  for (let i = 8; i < bytes.length; i += 2)
+    items.set(String.fromCharCode(bytes[i]), bytes[i + 1]);
   return { orderId, items };
 }
 
 /** Send the basket to the counter. The customer does this from the order's own account. */
-export async function sendBasket(venueId: bigint, counterKey: string, basket: Basket): Promise<void> {
-  await publishStatement(venueTopic(venueId), basketChannel(basket.orderId), await seal(counterKey, BASKET, encodeBasket(basket)));
+export async function sendBasket(
+  venueId: bigint,
+  counterKey: string,
+  basket: Basket
+): Promise<void> {
+  await publishStatement(
+    venueTopic(venueId),
+    basketChannel(basket.orderId),
+    await seal(counterKey, BASKET, encodeBasket(basket))
+  );
 }
 
 /** Watch this venue's topic. Only baskets sealed to the counter's key open. */
 export async function watchBaskets(
   counter: Reader,
   venueId: bigint,
-  heard: (b: Basket) => void,
+  heard: (b: Basket) => void
 ): Promise<() => void> {
   return subscribeTopics([venueTopic(venueId)], async (bytes) => {
     const plain = await open(counter, BASKET, bytes);
@@ -70,5 +81,7 @@ export async function watchBaskets(
 export const basketLine = (menu: Menu | null, basket: Basket): string =>
   [...basket.items]
     .filter(([, n]) => n > 0)
-    .map(([id, n]) => `${n}× ${menu?.items.find((i) => i.id === id)?.name ?? id}`)
+    .map(
+      ([id, n]) => `${n}× ${menu?.items.find((i) => i.id === id)?.name ?? id}`
+    )
     .join(", ");

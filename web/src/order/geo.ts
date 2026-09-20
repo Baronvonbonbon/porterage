@@ -22,12 +22,15 @@ export const positionCommit = (p: Position, salt: bigint): bigint =>
   poseidon3([encLat(p.lat), encLon(p.lon), salt]);
 
 /** The dropoff proof's nullifier: one settlement per drop salt and order. */
-export const dropNullifier = (salt: bigint, orderId: bigint): bigint => poseidon2([salt, orderId]);
+export const dropNullifier = (salt: bigint, orderId: bigint): bigint =>
+  poseidon2([salt, orderId]);
 
-export const b32 = (x: bigint): string => "0x" + x.toString(16).padStart(64, "0");
+export const b32 = (x: bigint): string =>
+  "0x" + x.toString(16).padStart(64, "0");
 
 /** A fresh field element for a salt. */
-export const randomSalt = (): bigint => toBigInt(crypto.getRandomValues(new Uint8Array(31))) % BN254_R;
+export const randomSalt = (): bigint =>
+  toBigInt(crypto.getRandomValues(new Uint8Array(31))) % BN254_R;
 
 /** Degrees as a decimal string to microdegrees, e.g. "37.7749" → 37_774_900. */
 export function parseDegrees(s: string): number | null {
@@ -39,11 +42,15 @@ export function parseDegrees(s: string): number | null {
   return m[1] === "-" ? -v : v;
 }
 
-export const formatDegrees = (micro: number): string => (micro / 1_000_000).toFixed(6);
+export const formatDegrees = (micro: number): string =>
+  (micro / 1_000_000).toFixed(6);
 
 /** Metres between two positions, flat-earth at these distances. */
 export function metresBetween(a: Position, b: Position): number {
   const dLat = ((a.lat - b.lat) / 1e6) * 111_320;
-  const dLon = ((a.lon - b.lon) / 1e6) * 111_320 * Math.cos((a.lat / 1e6) * (Math.PI / 180));
+  const dLon =
+    ((a.lon - b.lon) / 1e6) *
+    111_320 *
+    Math.cos((a.lat / 1e6) * (Math.PI / 180));
   return Math.round(Math.hypot(dLat, dLon));
 }

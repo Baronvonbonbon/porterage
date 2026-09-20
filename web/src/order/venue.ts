@@ -37,7 +37,8 @@ export async function venueOf(id: bigint): Promise<Venue> {
 export async function allVenues(limit = 20): Promise<Venue[]> {
   const next = Number(await read("venues").nextVenueId());
   const ids: bigint[] = [];
-  for (let id = next - 1; id >= 1 && ids.length < limit; id--) ids.push(BigInt(id));
+  for (let id = next - 1; id >= 1 && ids.length < limit; id--)
+    ids.push(BigInt(id));
   return Promise.all(ids.map(venueOf));
 }
 
@@ -46,19 +47,36 @@ export async function myVenues(operator: string): Promise<Venue[]> {
   const venues = read("venues");
   const count = Number(await venues.venueCountOf(operator));
   const ids: bigint[] = [];
-  for (let i = 0; i < count; i++) ids.push(await venues.venuesByOperator(operator, i));
+  for (let i = 0; i < count; i++)
+    ids.push(await venues.venuesByOperator(operator, i));
   return Promise.all(ids.map(venueOf));
 }
 
 /** Register a venue at `at`, signing pickups with `signer`. One tap. */
-export async function registerVenue(at: Position, signer: Wallet, metadataURI = ""): Promise<{ block: number }> {
+export async function registerVenue(
+  at: Position,
+  signer: Wallet,
+  metadataURI = ""
+): Promise<{ block: number }> {
   return hostCall(
     addressOf("venues"),
-    ABI.venues.encodeFunctionData("registerVenue", [at.lat, at.lon, signer.address, signer.address, metadataURI]),
+    ABI.venues.encodeFunctionData("registerVenue", [
+      at.lat,
+      at.lon,
+      signer.address,
+      signer.address,
+      metadataURI,
+    ])
   );
 }
 
 /** Point an existing venue at this phone's session key. One tap. */
-export async function setVenueSigner(id: bigint, signer: Wallet): Promise<{ block: number }> {
-  return hostCall(addressOf("venues"), ABI.venues.encodeFunctionData("setSigner", [id, signer.address]));
+export async function setVenueSigner(
+  id: bigint,
+  signer: Wallet
+): Promise<{ block: number }> {
+  return hostCall(
+    addressOf("venues"),
+    ABI.venues.encodeFunctionData("setSigner", [id, signer.address])
+  );
 }

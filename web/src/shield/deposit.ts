@@ -42,7 +42,12 @@ export const planTopUp = (amountWei: bigint) => {
   // Biggest first, so a capped tap shields as much as it can.
   const take = rungs.slice(0, MAX_NOTES_PER_TAP);
   const left = sum(rungs.slice(MAX_NOTES_PER_TAP));
-  return { rungs: take, overshoot: left > 0n ? 0n : overshoot, total: sum(take), leftOver: left };
+  return {
+    rungs: take,
+    overshoot: left > 0n ? 0n : overshoot,
+    total: sum(take),
+    leftOver: left,
+  };
 };
 
 export async function topUp(amountWei: bigint): Promise<TopUp> {
@@ -61,7 +66,7 @@ export async function topUp(amountWei: bigint): Promise<TopUp> {
         dest: SHIELD_POOL,
         data: POOL.encodeFunctionData("depositNative", [b32(commitments[i])]),
         value: BigInt(r.value) / WEI_PER_PLANCK,
-      })),
+      }))
     ));
   } catch (e) {
     // Declined or refused before inclusion: nothing was deposited. A timeout is
@@ -70,8 +75,16 @@ export async function topUp(amountWei: bigint): Promise<TopUp> {
     throw e;
   }
 
-  const paths = await notePathsAt(ethProvider(), SHIELD_POOL, block, commitments, poolInserts(substrate(), SHIELD_POOL));
-  await settleNotes(new Map<number, NotePath>(recs.map((r, i) => [r.n, paths[i]])));
+  const paths = await notePathsAt(
+    ethProvider(),
+    SHIELD_POOL,
+    block,
+    commitments,
+    poolInserts(substrate(), SHIELD_POOL)
+  );
+  await settleNotes(
+    new Map<number, NotePath>(recs.map((r, i) => [r.n, paths[i]]))
+  );
   return { rungs, deposited: total, overshoot, leftOver, block };
 }
 
@@ -83,14 +96,19 @@ export async function topUp(amountWei: bigint): Promise<TopUp> {
  * quote, so the batch can't ask to deposit more PAS than arrives. Anything above
  * that stays in the account as ordinary balance.
  */
-export async function topUpFromToken(token: Token, amountIn: bigint): Promise<TopUp> {
+export async function topUpFromToken(
+  token: Token,
+  amountIn: bigint
+): Promise<TopUp> {
   const me = await hostAccount();
   const plan = await planSwap(locationOf(token.id), PAS_LOCATION, amountIn);
   const cut = decompose(plan.minOut * WEI_PER_PLANCK, LADDER_PAS);
   const rungs = cut.rungs.slice(0, MAX_NOTES_PER_TAP);
   const leftOver = sum(cut.rungs.slice(MAX_NOTES_PER_TAP)) + cut.residue;
   if (rungs.length === 0) {
-    throw new Error(`that swaps to less than the smallest note (${pasOf(LADDER_PAS[0])} PAS)`);
+    throw new Error(
+      `that swaps to less than the smallest note (${pasOf(LADDER_PAS[0])} PAS)`
+    );
   }
 
   const recs = await reserveNotes(rungs, NATIVE);
@@ -110,8 +128,16 @@ export async function topUpFromToken(token: Token, amountIn: bigint): Promise<To
     throw e;
   }
 
-  const paths = await notePathsAt(ethProvider(), SHIELD_POOL, block, commitments, poolInserts(substrate(), SHIELD_POOL));
-  await settleNotes(new Map<number, NotePath>(recs.map((r, i) => [r.n, paths[i]])));
+  const paths = await notePathsAt(
+    ethProvider(),
+    SHIELD_POOL,
+    block,
+    commitments,
+    poolInserts(substrate(), SHIELD_POOL)
+  );
+  await settleNotes(
+    new Map<number, NotePath>(recs.map((r, i) => [r.n, paths[i]]))
+  );
   return { rungs, deposited: sum(rungs), overshoot: 0n, leftOver, block };
 }
 

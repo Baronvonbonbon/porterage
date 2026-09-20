@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { addressOf, ethProvider, read } from "../contracts";
 import { bucketFor, buckets } from "../shield/payout";
-import { releaseEarnings, shieldEarnings, type ReleaseStage } from "../shield/payoutFlow";
+import {
+  releaseEarnings,
+  shieldEarnings,
+  type ReleaseStage,
+} from "../shield/payoutFlow";
 import { allPayouts, type PayoutRecord } from "../shield/notes";
 import { errorText, pasWei } from "../format";
 
@@ -30,7 +34,9 @@ export function Earnings({ account }: { account: string }) {
   }, [refresh]);
 
   const bucket = balance === null ? null : bucketFor(balance, rungs);
-  const waiting = payouts.filter((p) => p.insertedAt && p.spentInto === undefined);
+  const waiting = payouts.filter(
+    (p) => p.insertedAt && p.spentInto === undefined
+  );
 
   async function run(label: string, fn: () => Promise<unknown>) {
     setBusy(label);
@@ -56,9 +62,9 @@ export function Earnings({ account }: { account: string }) {
             waiting: "Waiting for a stranger to submit it",
             settling: "Recording your pool note",
             done: "Done",
-          }[s],
-        ),
-      ),
+          }[s]
+        )
+      )
     );
 
   return (
@@ -77,7 +83,10 @@ export function Earnings({ account }: { account: string }) {
 
       <div className="actions">
         {bucket !== null && bucket > 0n && (
-          <button disabled={!!busy} onClick={() => run("Shielding", () => shieldEarnings(bucket))}>
+          <button
+            disabled={!!busy}
+            onClick={() => run("Shielding", () => shieldEarnings(bucket))}
+          >
             Move {pasWei(bucket)} out of sight
           </button>
         )}
@@ -89,9 +98,10 @@ export function Earnings({ account }: { account: string }) {
       </div>
 
       <p className="muted">
-        Two steps, and they work best apart. Moving earnings out of sight is signed by you, like any deposit. Releasing
-        proves you own one note of many without saying which, and a stranger submits it, so nothing ties the money to
-        you. Leave time between them.
+        Two steps, and they work best apart. Moving earnings out of sight is
+        signed by you, like any deposit. Releasing proves you own one note of
+        many without saying which, and a stranger submits it, so nothing ties
+        the money to you. Leave time between them.
       </p>
 
       {busy && <p className="muted">{busy}…</p>}

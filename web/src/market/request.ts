@@ -30,7 +30,9 @@ export const FUND_TOPIC = keccak256(toUtf8Bytes("porterage:fund:v1"));
 export const PAYOUT_TOPIC = keccak256(toUtf8Bytes("porterage:payout:v1"));
 /** One channel per kind, so a new request replaces this account's previous one. */
 export const FUND_CHANNEL = keccak256(toUtf8Bytes("porterage:fund:channel"));
-export const PAYOUT_CHANNEL = keccak256(toUtf8Bytes("porterage:payout:channel"));
+export const PAYOUT_CHANNEL = keccak256(
+  toUtf8Bytes("porterage:payout:channel")
+);
 
 export interface FundRequest {
   proof: WithdrawalProof;
@@ -52,12 +54,26 @@ function get(b: Uint8Array, at: number, bytes: number): bigint {
   return v;
 }
 
-const proofWords = (p: WithdrawalProof) => [p.pA[0], p.pA[1], p.pB[0][0], p.pB[0][1], p.pB[1][0], p.pB[1][1], p.pC[0], p.pC[1]];
+const proofWords = (p: WithdrawalProof) => [
+  p.pA[0],
+  p.pA[1],
+  p.pB[0][0],
+  p.pB[0][1],
+  p.pB[1][0],
+  p.pB[1][1],
+  p.pC[0],
+  p.pC[1],
+];
 
 export function encodeRequest(r: FundRequest): Uint8Array {
   const { proof } = r;
   const s = proof.pubSignals;
-  if (BigInt(s[3]) !== r.withdrawn || s[4] !== "128" || BigInt(s[5]) !== contextFor(proof.recipient) || s[7] !== "0") {
+  if (
+    BigInt(s[3]) !== r.withdrawn ||
+    s[4] !== "128" ||
+    BigInt(s[5]) !== contextFor(proof.recipient) ||
+    s[7] !== "0"
+  ) {
     throw new Error("the proof's public signals don't match the request");
   }
   const out = new Uint8Array(REQUEST_BYTES);
@@ -66,18 +82,23 @@ export function encodeRequest(r: FundRequest): Uint8Array {
   out.set(getBytes(getAddress(proof.recipient)), 2);
   put(out, 22, r.withdrawn, 12);
   put(out, 34, r.fee / GWEI, 8);
-  [s[0], s[1], s[2], s[6]].forEach((v, i) => put(out, 42 + 32 * i, BigInt(v), 32));
+  [s[0], s[1], s[2], s[6]].forEach((v, i) =>
+    put(out, 42 + 32 * i, BigInt(v), 32)
+  );
   proofWords(proof).forEach((v, i) => put(out, 170 + 32 * i, BigInt(v), 32));
   return out;
 }
 
 export function decodeRequest(b: Uint8Array): FundRequest {
-  if (b.length !== REQUEST_BYTES || b[0] !== VERSION) throw new Error("not a version 1 funding request");
+  if (b.length !== REQUEST_BYTES || b[0] !== VERSION)
+    throw new Error("not a version 1 funding request");
   const recipient = getAddress(hexlify(b.slice(2, 22)));
   const withdrawn = get(b, 22, 12);
   const fee = get(b, 34, 8) * GWEI;
   const pub = [0, 1, 2, 3].map((i) => get(b, 42 + 32 * i, 32).toString());
-  const w = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => get(b, 170 + 32 * i, 32).toString());
+  const w = [0, 1, 2, 3, 4, 5, 6, 7].map((i) =>
+    get(b, 170 + 32 * i, 32).toString()
+  );
   return {
     withdrawn,
     fee,
@@ -89,7 +110,16 @@ export function decodeRequest(b: Uint8Array): FundRequest {
         [w[4], w[5]],
       ],
       pC: [w[6], w[7]],
-      pubSignals: [pub[0], pub[1], pub[2], withdrawn.toString(), "128", contextFor(recipient).toString(), pub[3], "0"],
+      pubSignals: [
+        pub[0],
+        pub[1],
+        pub[2],
+        withdrawn.toString(),
+        "128",
+        contextFor(recipient).toString(),
+        pub[3],
+        "0",
+      ],
     },
   };
 }
@@ -127,7 +157,9 @@ export function encodePayout(r: PayoutRequest): Uint8Array {
   out[0] = VERSION;
   out[1] = PAYOUT_KIND;
   put(out, 2, r.bucket, 12);
-  [r.root, r.nullifierHash, r.ksCommitment].forEach((v, i) => put(out, 14 + 32 * i, BigInt(v), 32));
+  [r.root, r.nullifierHash, r.ksCommitment].forEach((v, i) =>
+    put(out, 14 + 32 * i, BigInt(v), 32)
+  );
   r.words.forEach((v, i) => put(out, 110 + 32 * i, BigInt(v), 32));
   return out;
 }
@@ -141,6 +173,8 @@ export function decodePayout(b: Uint8Array): PayoutRequest {
     root: get(b, 14, 32).toString(),
     nullifierHash: get(b, 46, 32).toString(),
     ksCommitment: "0x" + get(b, 78, 32).toString(16).padStart(64, "0"),
-    words: [0, 1, 2, 3, 4, 5, 6, 7].map((i) => get(b, 110 + 32 * i, 32).toString()),
+    words: [0, 1, 2, 3, 4, 5, 6, 7].map((i) =>
+      get(b, 110 + 32 * i, 32).toString()
+    ),
   };
 }

@@ -206,6 +206,17 @@ async function main() {
     );
   } else console.log("  = disputes already configured");
 
+  // An arbiter can only rule if one is set, and evidence can only be sealed to
+  // it if its PUBLIC key is known — an address is a hash, and ECDH needs the
+  // point. So the key goes into the app's address book, where the app checks it
+  // against this address before trusting it (web/src/order/arbiter.ts).
+  // On the testnet that arbiter is the deploy key: a single account we hold,
+  // and the plainest centralisation left in the design (docs/PLAN.md §6).
+  const arbiter = process.env.ARBITER_ADDRESS ?? deployer.address;
+  if ((await disputesC.arbiter()) !== arbiter) {
+    await send("disputes.setArbiter", () => disputesC.setArbiter(arbiter, { gasLimit: GAS_LIMIT }));
+  } else console.log("  = arbiter already set");
+
   const ratingsC = await ethers.getContractAt("PorterRatings", ratings, deployer);
   if ((await ratingsC.orders()) !== orders) {
     await send("ratings.configure", () => ratingsC.configure(orders, { gasLimit: GAS_LIMIT }));
@@ -320,6 +331,7 @@ async function main() {
     ["verifier VK set", await verifierC.vkSet()],
     ["disputes.orders", (await disputesC.orders()) === orders],
     ["ratings.orders", (await ratingsC.orders()) === orders],
+    ["disputes.arbiter set", (await disputesC.arbiter()) !== ethers.ZeroAddress],
     ["vault auth orders", await vaultC.authorized(orders)],
     ["vault auth disputes", await vaultC.authorized(disputes)],
     ["drivers auth orders", await driversC.authorized(orders)],
@@ -351,8 +363,26 @@ async function main() {
 
   // ── 4. Export for the web app ──────────────────────────────────────────
   // Flat, as web/src/contracts.ts reads it: one address per contract name.
+  // The arbiter's public key, recovered from a signature it makes here, so the
+  // app can seal a dispute to it. It is checked against disputes.arbiter()
+  // before use, so a wrong key in this file is caught, not trusted.
+  const arbiterAddress = await disputesC.arbiter();
+  let arbiterKey: string | undefined;
+  if (arbiterAddress === deployer.address) {
+    const message = "porterage:arbiter:v1";
+    arbiterKey = ethers.SigningKey.computePublicKey(
+      ethers.SigningKey.recoverPublicKey(ethers.hashMessage(message), await deployer.signMessage(message)),
+      true,
+    );
+    if (ethers.computeAddress(arbiterKey) !== arbiterAddress) throw new Error("the arbiter key doesn't match its address");
+  } else {
+    console.log(`  ! arbiter ${arbiterAddress} is not the deploy key: publish its public key by hand`);
+  }
+
   const exportBook = {
     ...book,
+    arbiter: arbiterAddress,
+    ...(arbiterKey ? { arbiterKey } : {}),
     network: network.name,
     chainId: Number((await provider.getNetwork()).chainId),
     deployedAt: new Date().toISOString(),

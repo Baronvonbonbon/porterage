@@ -10,7 +10,9 @@
   "locationVerifier": "0x2c90b2bA4EA54C1151F6c311b38E8Cbe7b79F843",
   "ratings": "0x34f9577913C1E329887477Ef682a69A8D2bD3223",
   "shieldVerifier": "0xBF7412f191D56181E41b9c12823c49C2F9A2025e",
+  "arbiter": "0x4B38b09Fb2c7B5310f4f7D51d359Fc63a344c420",
+  "arbiterKey": "0x02f9e945568ade5a4d4094b98deb07dbd681228b366ff59bbae3c007ca6b1177e7",
   "network": "polkadotTestnet",
   "chainId": 420420417,
-  "deployedAt": "2026-09-20T01:11:50.242Z"
+  "deployedAt": "2026-09-20T11:40:49.924Z"
 }

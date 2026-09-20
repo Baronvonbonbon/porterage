@@ -9,7 +9,13 @@ import jsQR from "jsqr";
 import { decodePayload, type Kind } from "../order/handoff";
 
 /** A high-contrast code. Always dark on white: a themed QR doesn't scan. */
-export function QrShow({ value, caption }: { value: string; caption?: string }) {
+export function QrShow({
+  value,
+  caption,
+}: {
+  value: string;
+  caption?: string;
+}) {
   const qr = qrcode(0, "L");
   qr.addData(value);
   qr.make();
@@ -19,7 +25,12 @@ export function QrShow({ value, caption }: { value: string; caption?: string }) 
       {caption && <p className="muted">{caption}</p>}
       <details>
         <summary className="muted">or copy the code</summary>
-        <textarea readOnly rows={3} value={value} onFocus={(e) => e.currentTarget.select()} />
+        <textarea
+          readOnly
+          rows={3}
+          value={value}
+          onFocus={(e) => e.currentTarget.select()}
+        />
       </details>
     </div>
   );
@@ -50,8 +61,13 @@ export function QrScan({
     let done = false;
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    const Native = (globalThis as { BarcodeDetector?: new (o: unknown) => { detect(v: unknown): Promise<{ rawValue: string }[]> } })
-      .BarcodeDetector;
+    const Native = (
+      globalThis as {
+        BarcodeDetector?: new (o: unknown) => {
+          detect(v: unknown): Promise<{ rawValue: string }[]>;
+        };
+      }
+    ).BarcodeDetector;
     const detector = Native ? new Native({ formats: ["qr_code"] }) : null;
 
     const accept = (text: string): boolean => {
@@ -73,13 +89,16 @@ export function QrScan({
       }
       try {
         if (detector) {
-          for (const code of await detector.detect(el)) if (accept(code.rawValue)) return;
+          for (const code of await detector.detect(el))
+            if (accept(code.rawValue)) return;
         } else if (ctx) {
           canvas.width = el.videoWidth;
           canvas.height = el.videoHeight;
           ctx.drawImage(el, 0, 0, canvas.width, canvas.height);
           const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+          const code = jsQR(img.data, img.width, img.height, {
+            inversionAttempts: "dontInvert",
+          });
           if (code && accept(code.data)) return;
         }
       } catch {
@@ -90,7 +109,10 @@ export function QrScan({
 
     (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false,
+        });
         const el = video.current;
         if (!el) return;
         el.srcObject = stream;
@@ -100,7 +122,7 @@ export function QrScan({
         setError(
           (e as { name?: string }).name === "NotAllowedError"
             ? "The camera was refused. Paste the code instead."
-            : `No camera: ${(e as Error).message}`,
+            : `No camera: ${(e as Error).message}`
         );
       }
     })();
@@ -127,7 +149,8 @@ export function QrScan({
           disabled={!pasted.trim()}
           onClick={() => {
             try {
-              if (decodePayload(pasted).kind !== expect) throw new Error("wrong code");
+              if (decodePayload(pasted).kind !== expect)
+                throw new Error("wrong code");
               onRead(pasted.trim());
             } catch {
               setError("That isn't the code this step expects.");

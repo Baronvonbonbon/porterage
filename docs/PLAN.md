@@ -419,9 +419,29 @@ Each phase ends with something that runs on a phone.
 
 ### Phase 6 — Disputes, ratings, operations
 
-- [ ] Dispute filing with the committed photo key and the arbiter-sealed key.
+- [x] Dispute filing with the committed photo key and the arbiter-sealed key. The photo is now
+      encrypted under a **content key of its own**, which is what gets wrapped to the other party —
+      so the key to one photo can be handed to an arbiter without handing over the identity key that
+      wrapped it, which would open every other photo, message and bid that key has touched. The case
+      (the reason, and that content key) is sealed to the arbiter and travels in the dispute's own
+      `evidenceURI`, not on Bulletin: the burner sends the transaction, but a Bulletin write is
+      signed by the phone's host account, which would tie the order to the person filing it. The
+      arbiter's public key ships in the address book and is **refused unless it hashes to the address
+      the contract names** — an address is a hash, so it cannot be encrypted to. A customer files from
+      the order's burner (no tap); a driver files from its own account (one tap), because the contract
+      asks for a party and a session key is not one. `web/src/order/{arbiter,dispute}.ts`. Verified
+      live on 2026-09-20 (`web/tools/live-dispute.ts`): filed, the driver could not read the case, the
+      arbiter read it and opened the photo, the same key opened no other photo, and the ruling split
+      the escrow 75/25 and left a strike on the driver.
 - [ ] The Desktop operations console.
-- [ ] Ratings and reputation.
+- [x] Ratings and reputation. One rating per delivered order, sent by the order's own burner, so it
+      says what the order was like and nothing about who placed it — reputation that can't be traced
+      back to a person is the trade this design keeps making. Stars show where the choices are: on
+      each venue in the picker, on each bid in the auction, and on the driver's own Work screen.
+      Verified live on 2026-09-20 (`web/tools/live-order.ts` step 11), second rating refused.
+- [ ] A fairer arbiter than one address. The testnet arbiter is the deploy key, which is the plainest
+      centralisation left: it can rule on any dispute. The contract already routes upgrades through
+      `PorterGovernanceRouter`; the arbiter should go the same way.
 
 ### Phase 7 — Live test
 

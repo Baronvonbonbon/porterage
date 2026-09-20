@@ -38,7 +38,12 @@ const DRIVER_COMMIT_TYPES = {
 
 async function domain() {
   const { chainId } = await ethProvider().getNetwork();
-  return { name: "PorterSettlement", version: "1", chainId, verifyingContract: addressOf("settlement") };
+  return {
+    name: "PorterSettlement",
+    version: "1",
+    chainId,
+    verifyingContract: addressOf("settlement"),
+  };
 }
 
 /**
@@ -48,35 +53,107 @@ async function domain() {
  */
 export async function driverKeyFromDropSignature(
   att: { orderId: bigint; actor: string; posCommit: string; timestamp: bigint },
-  signature: string,
+  signature: string
 ): Promise<string> {
-  const digest = TypedDataEncoder.hash(await domain(), DRIVER_COMMIT_TYPES, { ...att, phase: PHASE_DROPOFF });
+  const digest = TypedDataEncoder.hash(await domain(), DRIVER_COMMIT_TYPES, {
+    ...att,
+    phase: PHASE_DROPOFF,
+  });
   return SigningKey.recoverPublicKey(digest, signature);
 }
 
 async function sharedKey(mine: SigningKey, theirs: string): Promise<CryptoKey> {
   const shared = getBytes(mine.computeSharedSecret(theirs));
   const material = getBytes(keccak256(shared.slice(1, 33)));
-  return crypto.subtle.importKey("raw", material as BufferSource, "AES-GCM", false, ["encrypt", "decrypt"]);
+  return crypto.subtle.importKey(
+    "raw",
+    material as BufferSource,
+    "AES-GCM",
+    false,
+    ["encrypt", "decrypt"]
+  );
 }
 
-/** Seal a photo so only the other party can open it: nonce, then the sealed bytes. */
-export async function sealPhoto(mine: SigningKey, theirs: string, photo: Uint8Array): Promise<Uint8Array> {
+// The photo is encrypted under a CONTENT KEY of its own, and that key is what
+// gets wrapped to the other party. It costs one extra step and buys the thing a
+// dispute needs: the key can be handed to an arbiter (order/dispute.ts) without
+// handing over the identity key that wrapped it, which would open every other
+// photo, message and bid that key has ever touched.
+//
+//   0..12    the nonce the content key was wrapped under
+//   12..60   the wrapped content key (32 bytes and its tag)
+//   60..72   the nonce the photo was encrypted under
+//   72..     the photo
+const WRAPPED = 60;
+const BODY = 72;
+
+const contentKey = (raw: Uint8Array): Promise<CryptoKey> =>
+  crypto.subtle.importKey("raw", raw as BufferSource, "AES-GCM", false, [
+    "encrypt",
+    "decrypt",
+  ]);
+
+/** Seal a photo so only the other party can open it, under a key of its own. */
+export async function sealPhoto(
+  mine: SigningKey,
+  theirs: string,
+  photo: Uint8Array
+): Promise<Uint8Array> {
+  const raw = crypto.getRandomValues(new Uint8Array(32));
+  const wrapIv = crypto.getRandomValues(new Uint8Array(12));
+  const wrapped = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: wrapIv },
+      await sharedKey(mine, theirs),
+      raw as BufferSource
+    )
+  );
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const body = new Uint8Array(
-    await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await sharedKey(mine, theirs), photo as BufferSource),
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      await contentKey(raw),
+      photo as BufferSource
+    )
   );
-  return getBytes(concat([iv, body]));
+  return getBytes(concat([wrapIv, wrapped, iv, body]));
 }
 
-export async function openPhoto(mine: SigningKey, theirs: string, sealed: Uint8Array): Promise<Uint8Array> {
+/** The photo's own key, which either party can unwrap — and only they. */
+export async function photoKeyOf(
+  mine: SigningKey,
+  theirs: string,
+  sealed: Uint8Array
+): Promise<Uint8Array> {
   return new Uint8Array(
     await crypto.subtle.decrypt(
       { name: "AES-GCM", iv: sealed.slice(0, 12) as BufferSource },
       await sharedKey(mine, theirs),
-      sealed.slice(12) as BufferSource,
-    ),
+      sealed.slice(12, WRAPPED) as BufferSource
+    )
   );
+}
+
+/** Open a photo with its content key alone — what an arbiter is given. */
+export async function openWithKey(
+  raw: Uint8Array,
+  sealed: Uint8Array
+): Promise<Uint8Array> {
+  return new Uint8Array(
+    await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: sealed.slice(WRAPPED, BODY) as BufferSource },
+      await contentKey(raw),
+      sealed.slice(BODY) as BufferSource
+    )
+  );
+}
+
+export async function openPhoto(
+  mine: SigningKey,
+  theirs: string,
+  sealed: Uint8Array
+): Promise<Uint8Array> {
+  return openWithKey(await photoKeyOf(mine, theirs, sealed), sealed);
 }
 
 /**
@@ -88,17 +165,29 @@ export async function commitPhoto(
   sessionKey: Wallet,
   orderId: bigint,
   customerKey: string,
-  photo: Uint8Array,
+  photo: Uint8Array
 ): Promise<{ key: string; bytes: number }> {
   const sealed = await sealPhoto(sessionKey.signingKey, customerKey, photo);
   const key = await hostPut(sealed);
-  const disputes = new Contract(addressOf("disputes"), ABI.disputes.fragments as never, sessionKey);
-  await (await disputes.commitEvidence(orderId, key.startsWith("0x") ? key : `0x${key}`)).wait();
+  const disputes = new Contract(
+    addressOf("disputes"),
+    ABI.disputes.fragments as never,
+    sessionKey
+  );
+  await (
+    await disputes.commitEvidence(
+      orderId,
+      key.startsWith("0x") ? key : `0x${key}`
+    )
+  ).wait();
   return { key, bytes: sealed.length };
 }
 
 /** The key a party committed for this order, or null. */
-export async function evidenceKeyOf(orderId: bigint, party: string): Promise<string | null> {
+export async function evidenceKeyOf(
+  orderId: bigint,
+  party: string
+): Promise<string | null> {
   const e = await read("disputes").evidenceOf(orderId, party);
   const key = e[0] as string;
   return key && key !== `0x${"0".repeat(64)}` ? key : null;
@@ -109,7 +198,7 @@ export async function fetchPhoto(
   mine: SigningKey,
   driverKey: string,
   orderId: bigint,
-  driver: string,
+  driver: string
 ): Promise<string | null> {
   const key = await evidenceKeyOf(orderId, driver);
   if (!key) return null;
@@ -117,6 +206,23 @@ export async function fetchPhoto(
   if (!sealed) return null;
   const photo = await openPhoto(mine, driverKey, sealed);
   return `data:image/jpeg;base64,${btoa(String.fromCharCode(...photo))}`;
+}
+
+/**
+ * The content key of a photo already on Bulletin, for enclosing in a dispute.
+ * Null when that party committed nothing, or the bytes have aged out.
+ */
+export async function committedPhotoKey(
+  mine: SigningKey,
+  theirs: string,
+  orderId: bigint,
+  party: string
+): Promise<Uint8Array | null> {
+  const key = await evidenceKeyOf(orderId, party);
+  if (!key) return null;
+  const sealed = await hostGet(key);
+  if (!sealed) return null;
+  return photoKeyOf(mine, theirs, sealed);
 }
 
 export const photoHex = (b: Uint8Array) => hexlify(b);

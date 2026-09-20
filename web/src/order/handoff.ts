@@ -18,7 +18,15 @@
 
 import { AbiCoder, Contract, getBytes, hexlify, type Wallet } from "ethers";
 import { ABI, addressOf, ethProvider, read } from "../contracts";
-import { b32, dropNullifier, encLat, encLon, positionCommit, randomSalt, type Position } from "./geo";
+import {
+  b32,
+  dropNullifier,
+  encLat,
+  encLon,
+  positionCommit,
+  randomSalt,
+  type Position,
+} from "./geo";
 
 export const PHASE_PICKUP = 1;
 export const PHASE_DROPOFF = 2;
@@ -32,10 +40,17 @@ const ZKEY = "./zk/proximity.zkey";
 
 // ── payloads ────────────────────────────────────────────────────────────────
 
-const b64 = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const b64 = (b: Uint8Array) =>
+  btoa(String.fromCharCode(...b))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 const unb64 = (s: string) => {
   const t = s.replace(/-/g, "+").replace(/_/g, "/");
-  return Uint8Array.from(atob(t.padEnd(Math.ceil(t.length / 4) * 4, "=")), (c) => c.charCodeAt(0));
+  return Uint8Array.from(
+    atob(t.padEnd(Math.ceil(t.length / 4) * 4, "=")),
+    (c) => c.charCodeAt(0)
+  );
 };
 
 function put(out: Uint8Array, at: number, v: bigint, bytes: number) {
@@ -126,10 +141,20 @@ export function decodePayload(text: string): Payload {
     };
   }
   if (b[1] === KIND.dropRequest && b.length === 50) {
-    return { kind: "dropRequest", orderId: get(b, 2, 8), posCommit: hexlify(b.slice(10, 42)), timestamp: get(b, 42, 8) };
+    return {
+      kind: "dropRequest",
+      orderId: get(b, 2, 8),
+      posCommit: hexlify(b.slice(10, 42)),
+      timestamp: get(b, 42, 8),
+    };
   }
   if (b[1] === KIND.dropSignature && b.length === 83) {
-    return { kind: "dropSignature", orderId: get(b, 2, 8), timestamp: get(b, 10, 8), signature: hexlify(b.slice(18)) };
+    return {
+      kind: "dropSignature",
+      orderId: get(b, 2, 8),
+      timestamp: get(b, 10, 8),
+      signature: hexlify(b.slice(18)),
+    };
   }
   throw new Error("not a Porterage code");
 }
@@ -158,7 +183,12 @@ const DRIVER_COMMIT_TYPES = {
 
 async function domain() {
   const { chainId } = await ethProvider().getNetwork();
-  return { name: "PorterSettlement", version: "1", chainId, verifyingContract: addressOf("settlement") };
+  return {
+    name: "PorterSettlement",
+    version: "1",
+    chainId,
+    verifyingContract: addressOf("settlement"),
+  };
 }
 
 export const nowSeconds = (): bigint => BigInt(Math.floor(Date.now() / 1000));
@@ -169,9 +199,16 @@ export async function signPickup(
   orderId: bigint,
   actor: string,
   at: Position,
-  timestamp = nowSeconds(),
+  timestamp = nowSeconds()
 ): Promise<string> {
-  const att = { orderId, phase: PHASE_PICKUP, actor, lat: at.lat, lon: at.lon, timestamp };
+  const att = {
+    orderId,
+    phase: PHASE_PICKUP,
+    actor,
+    lat: at.lat,
+    lon: at.lon,
+    timestamp,
+  };
   return key.signTypedData(await domain(), LOCATION_TYPES, att);
 }
 
@@ -181,25 +218,54 @@ export async function signDropCommit(
   orderId: bigint,
   driver: string,
   posCommit: string,
-  timestamp = nowSeconds(),
+  timestamp = nowSeconds()
 ): Promise<string> {
-  const att = { orderId, phase: PHASE_DROPOFF, actor: driver, posCommit, timestamp };
+  const att = {
+    orderId,
+    phase: PHASE_DROPOFF,
+    actor: driver,
+    posCommit,
+    timestamp,
+  };
   return key.signTypedData(await domain(), DRIVER_COMMIT_TYPES, att);
 }
 
 // ── settlement ──────────────────────────────────────────────────────────────
 
-const settlementWith = (signer: Wallet) => new Contract(addressOf("settlement"), ABI.settlement.fragments as never, signer);
+const settlementWith = (signer: Wallet) =>
+  new Contract(
+    addressOf("settlement"),
+    ABI.settlement.fragments as never,
+    signer
+  );
 
 /**
  * Confirm the pickup: the driver signs the same pin the counter signed and sends
  * both attestations. Sent by the driver's session key, so no taps — and the
  * venue is paid the moment it lands.
  */
-export async function confirmPickup(sessionKey: Wallet, driver: string, code: PickupPayload, venueSigner: string) {
+export async function confirmPickup(
+  sessionKey: Wallet,
+  driver: string,
+  code: PickupPayload,
+  venueSigner: string
+) {
   const timestamp = nowSeconds();
-  const driverSig = await signPickup(sessionKey, code.orderId, driver, code.at, timestamp);
-  const driverAtt = { orderId: code.orderId, phase: PHASE_PICKUP, actor: driver, lat: code.at.lat, lon: code.at.lon, timestamp };
+  const driverSig = await signPickup(
+    sessionKey,
+    code.orderId,
+    driver,
+    code.at,
+    timestamp
+  );
+  const driverAtt = {
+    orderId: code.orderId,
+    phase: PHASE_PICKUP,
+    actor: driver,
+    lat: code.at.lat,
+    lon: code.at.lon,
+    timestamp,
+  };
   const venueAtt = {
     orderId: code.orderId,
     phase: PHASE_PICKUP,
@@ -208,7 +274,12 @@ export async function confirmPickup(sessionKey: Wallet, driver: string, code: Pi
     lon: code.at.lon,
     timestamp: code.timestamp,
   };
-  const tx = await settlementWith(sessionKey).confirmPickup(driverAtt, driverSig, venueAtt, code.signature);
+  const tx = await settlementWith(sessionKey).confirmPickup(
+    driverAtt,
+    driverSig,
+    venueAtt,
+    code.signature
+  );
   await tx.wait();
 }
 
@@ -222,7 +293,11 @@ export interface DropRequest {
 export function makeDropRequest(orderId: bigint, drop: Position): DropRequest {
   const driverSalt = randomSalt();
   return {
-    payload: { orderId, posCommit: b32(positionCommit(drop, driverSalt)), timestamp: nowSeconds() },
+    payload: {
+      orderId,
+      posCommit: b32(positionCommit(drop, driverSalt)),
+      timestamp: nowSeconds(),
+    },
     driverSalt,
   };
 }
@@ -269,20 +344,20 @@ export async function confirmDropoff(args: {
       drvSalt: args.request.driverSalt.toString(),
     },
     WASM,
-    ZKEY,
+    ZKEY
   );
   const proveMs = Math.round(performance.now() - started);
 
-  const packed = AbiCoder.defaultAbiCoder()
-    .encode(
-      Array(8).fill("uint256"),
-      [
-        proof.pi_a[0], proof.pi_a[1],
-        proof.pi_b[0][1], proof.pi_b[0][0],
-        proof.pi_b[1][1], proof.pi_b[1][0],
-        proof.pi_c[0], proof.pi_c[1],
-      ],
-    );
+  const packed = AbiCoder.defaultAbiCoder().encode(Array(8).fill("uint256"), [
+    proof.pi_a[0],
+    proof.pi_a[1],
+    proof.pi_b[0][1],
+    proof.pi_b[0][0],
+    proof.pi_b[1][1],
+    proof.pi_b[1][0],
+    proof.pi_c[0],
+    proof.pi_c[1],
+  ]);
   const driverAtt = {
     orderId: args.orderId,
     phase: PHASE_DROPOFF,
@@ -290,7 +365,12 @@ export async function confirmDropoff(args: {
     posCommit: args.request.payload.posCommit,
     timestamp: args.signedAt,
   };
-  const tx = await settlementWith(args.burner).confirmDropoffZK(driverAtt, args.signature, packed, publicSignals);
+  const tx = await settlementWith(args.burner).confirmDropoffZK(
+    driverAtt,
+    args.signature,
+    packed,
+    publicSignals
+  );
   await tx.wait();
   return { proveMs };
 }

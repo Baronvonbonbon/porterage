@@ -6,7 +6,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Wallet } from "ethers";
-import { freeBalance, hostAccount, hostCall, hostFund, type HostAccount } from "../hostchain";
+import {
+  freeBalance,
+  hostAccount,
+  hostCall,
+  hostFund,
+  type HostAccount,
+} from "../hostchain";
 import { sessionKey, keySource, type KeySource } from "../keys";
 import { addressOf, deployed, encode, ethProvider, read } from "../contracts";
 import { errorText, pas, pasWei, short } from "../format";
@@ -38,7 +44,11 @@ export function Driver() {
   const refresh = useCallback(async () => {
     setError(null);
     try {
-      const [acct, k, src] = await Promise.all([hostAccount(), sessionKey(0), keySource()]);
+      const [acct, k, src] = await Promise.all([
+        hostAccount(),
+        sessionKey(0),
+        keySource(),
+      ]);
       setMe(acct);
       setKey(k);
       setSource(src);
@@ -76,7 +86,10 @@ export function Driver() {
     }
   }
 
-  const keyCurrent = !!key && !!chain && chain.keyOnChain.toLowerCase() === key.address.toLowerCase();
+  const keyCurrent =
+    !!key &&
+    !!chain &&
+    chain.keyOnChain.toLowerCase() === key.address.toLowerCase();
   const keyLow = keyBalance !== null && keyBalance < SESSION_LOW_WEI;
 
   return (
@@ -94,7 +107,9 @@ export function Driver() {
           <dt>Session key</dt>
           <dd title={key?.address}>
             {key ? short(key.address) : "…"}
-            {source === "browser" && <span className="warn"> (browser-held: development only)</span>}
+            {source === "browser" && (
+              <span className="warn"> (browser-held: development only)</span>
+            )}
           </dd>
           <dt>Session key gas</dt>
           <dd>{keyBalance === null ? "…" : pasWei(keyBalance)}</dd>
@@ -111,7 +126,8 @@ export function Driver() {
 
       {me && balance === 0n && (
         <p className="notice">
-          Your account has no PAS. Get some from the Paseo faucet for <code>{me.address}</code>, then refresh.
+          Your account has no PAS. Get some from the Paseo faucet for{" "}
+          <code>{me.address}</code>, then refresh.
         </p>
       )}
 
@@ -122,7 +138,13 @@ export function Driver() {
               disabled={!!busy}
               onClick={() =>
                 run("Registering", () =>
-                  hostCall(addressOf("drivers"), encode("drivers", "registerWithSessionKey", ["", key.address])),
+                  hostCall(
+                    addressOf("drivers"),
+                    encode("drivers", "registerWithSessionKey", [
+                      "",
+                      key.address,
+                    ])
+                  )
                 )
               }
             >
@@ -134,7 +156,10 @@ export function Driver() {
               disabled={!!busy}
               onClick={() =>
                 run("Setting the session key", () =>
-                  hostCall(addressOf("drivers"), encode("drivers", "setSessionKey", [key.address])),
+                  hostCall(
+                    addressOf("drivers"),
+                    encode("drivers", "setSessionKey", [key.address])
+                  )
                 )
               }
             >
@@ -144,16 +169,26 @@ export function Driver() {
           {chain.registered && keyCurrent && keyLow && (
             <button
               disabled={!!busy}
-              onClick={() => run("Funding the session key", () => hostFund(key.address, SESSION_GAS_PLANCK))}
+              onClick={() =>
+                run("Funding the session key", () =>
+                  hostFund(key.address, SESSION_GAS_PLANCK)
+                )
+              }
             >
               Give the session key {pas(SESSION_GAS_PLANCK)} for gas
             </button>
           )}
           {chain.registered && keyCurrent && !keyLow && (
-            <p className="ok">Ready. Bids and handoffs sign on this phone with no taps.</p>
+            <p className="ok">
+              Ready. Bids and handoffs sign on this phone with no taps.
+            </p>
           )}
-          {chain.registered && keyCurrent && !keyLow && <Helper sessionKey={key} />}
-          {chain.registered && keyCurrent && <Jobs sessionKey={key} driver={me.evm} />}
+          {chain.registered && keyCurrent && !keyLow && (
+            <Helper sessionKey={key} />
+          )}
+          {chain.registered && keyCurrent && (
+            <Jobs sessionKey={key} driver={me.evm} />
+          )}
           {chain.registered && <Earnings account={me.evm} />}
         </div>
       )}
