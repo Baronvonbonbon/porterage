@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { inHost } from "./host";
 import { deployed } from "./contracts";
 import { Driver } from "./views/Driver";
-import { Soon } from "./views/Soon";
+import { Ordering } from "./views/Ordering";
+import { Venue } from "./views/Venue";
 import { Wallet } from "./views/Wallet";
 
 type Role = "customer" | "driver" | "venue";
@@ -76,16 +77,10 @@ export function App() {
       {role === "customer" && (
         <>
           <Wallet />
-          <Soon title="Ordering">
-            Ordering from a fresh account funded out of your private balance arrives next.
-          </Soon>
+          <Ordering />
         </>
       )}
-      {role === "venue" && (
-        <Soon title="Selling">
-          Venue registration, menus and the pickup QR arrive with the delivery phase of the plan.
-        </Soon>
-      )}
+      {role === "venue" && <Venue />}
     </main>
   );
 }

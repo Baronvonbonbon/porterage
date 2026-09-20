@@ -25,7 +25,7 @@ export interface NoteRecord {
   /** A deposit was sent and its outcome isn't known yet. Recoverable from the pool. */
   pendingSince?: number;
   /** A funding request spending this note is out; the burner it pays, and when. */
-  spending?: { burner: number; change: number; since: number; tip: string };
+  spending?: { burner: number; change: number; since: number; tip: string; tipped?: boolean };
   spent?: boolean;
 }
 
@@ -39,11 +39,24 @@ export interface PayoutRecord {
   spentInto?: number;
 }
 
+/** An order this device placed, and the secrets only it holds (order/flow.ts). */
+export interface OrderRecord {
+  id: string;
+  /** Which burner placed it: its key is deriveEntropy("porterage:burner:<n>"). */
+  burner: number;
+  /** The drop position and the salt its commitment was made with. */
+  lat: number;
+  lon: number;
+  salt: string;
+  placedAt: number;
+}
+
 interface Book {
   next: number;
   notes: NoteRecord[];
   payouts?: PayoutRecord[];
   nextPayout?: number;
+  orders?: OrderRecord[];
   /** Burners handed out so far; burner n's key is deriveEntropy("porterage:burner:<n>"). */
   burners?: number;
 }
@@ -186,6 +199,16 @@ export async function spendable(asset = NATIVE): Promise<NoteRecord[]> {
   return (await allNotes())
     .filter((r) => !r.spent && !r.spending && r.path && BigInt(r.asset) === asset)
     .sort((a, b) => (BigInt(a.value) < BigInt(b.value) ? -1 : 1));
+}
+
+export function allOrders(): Promise<OrderRecord[]> {
+  return queue.then(load).then((b) => b.orders ?? []);
+}
+
+export function rememberOrder(rec: OrderRecord): Promise<void> {
+  return update((book) => {
+    book.orders = [...(book.orders ?? []).filter((o) => o.id !== rec.id), rec];
+  });
 }
 
 export function allPayouts(): Promise<PayoutRecord[]> {

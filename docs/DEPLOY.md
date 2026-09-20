@@ -30,3 +30,4 @@ signed. Registering an unowned label needs `--register` and the label typed back
 | 2026-09-19 | Published withdrawals and the funding market, with the 32.8 MiB proving key | `bafybeicbqnb4d5awqi57cillg72drnfmrlhyxeo73bhav6xelhzacdhtfi`. 38.6 MB in 32 Bulletin chunks; the publish took 9 min 51 s. |
 | 2026-09-19 | Wired shielded payouts and published them | Shield verifier deployed and keyed, vault pointed at Kusama Shield, Poseidon and the buckets; all 22 checks pass. App `bafybeigrpxwlcsuupapakqsnc7qi6y2wejk3mdagcftt3h6dak4hrcwebm` (8.1 MB incremental). |
 | 2026-09-20 | Published token top-ups | `bafybeic4rvhmfgqar7lazji2d5x24jpmdr3lyz4a567j77ekwnkbvoceii` (1.5 MB incremental) |
+| 2026-09-20 | Published ordering, venues and the auction | `bafybeif2e3e4rmjvfpaiuc5uszchc4wihvh2efzvv3vjf7p5jzbhzjiike` |

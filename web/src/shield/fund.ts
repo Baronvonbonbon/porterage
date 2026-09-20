@@ -10,7 +10,7 @@
 // the request is signed by the product's statement account, the withdrawal by a
 // stranger, and the tip by the burner.
 
-import { Wallet, ZeroAddress, formatEther, zeroPadValue } from "ethers";
+import { Wallet, ZeroAddress, formatEther, keccak256, toUtf8Bytes, zeroPadValue } from "ethers";
 import { SHIELD_POOL } from "../config";
 import { ethProvider } from "../contracts";
 import { substrate } from "../hostchain";
@@ -38,6 +38,38 @@ export interface Funded {
 }
 
 const inserts = () => poolInserts(substrate(), SHIELD_POOL);
+
+/** Kusama Shield's `Withdrawal(address indexed asset, uint256 value, address indexed recipient, uint256)`. */
+const WITHDRAWAL_TOPIC = keccak256(toUtf8Bytes("Withdrawal(address,uint256,address,uint256)"));
+
+/**
+ * Who submitted the withdrawal that funded `recipient`, from the pool's own
+ * event. Only the FIRST topic may be filtered on Paseo: a `null` placeholder is
+ * refused outright ("data did not match any variant of untagged enum
+ * FilterTopic", 2026-09-20), so the recipient is matched here instead.
+ */
+async function submitterOf(recipient: string, fromBlock: number): Promise<string | null> {
+  const provider = ethProvider();
+  const want = zeroPadValue(recipient, 32).toLowerCase();
+  const logs = await provider.getLogs({ address: SHIELD_POOL, topics: [WITHDRAWAL_TOPIC], fromBlock, toBlock: "latest" });
+  const hit = logs.find((l) => l.topics.length === 3 && l.topics[2].toLowerCase() === want);
+  if (!hit) return null;
+  const from = (await provider.getTransaction(hit.transactionHash))?.from ?? null;
+  return from && from !== ZeroAddress ? from : null;
+}
+
+/**
+ * Pay the submitter, from the burner. A tip that can't be paid yet — the
+ * withdrawal came from a Substrate account, or the burner is short — is left for
+ * `resumeFunding` rather than failing a funding that has already worked.
+ */
+async function payTip(burner: Wallet, tip: bigint, fromBlock: number): Promise<string | null> {
+  const submitter = await submitterOf(burner.address, fromBlock);
+  if (!submitter) return null;
+  const tx = await burner.sendTransaction({ to: submitter, value: tip });
+  await tx.wait().catch(() => undefined);
+  return submitter;
+}
 
 export async function fundBurner(amount: bigint, onStage: (s: FundStage) => void, tip = DEFAULT_TIP): Promise<Funded> {
   const need = amount + tip;
@@ -105,21 +137,14 @@ async function finish(
   // The withdrawal event names the recipient; its transaction names the submitter.
   onStage("tipping");
   let submitter: string | null = null;
-  const logs = await provider.getLogs({
-    address: SHIELD_POOL,
-    topics: [null, null, zeroPadValue(burner.address, 32)],
-    fromBlock: startBlock,
-    toBlock: "latest",
-  });
-  if (logs.length) submitter = (await provider.getTransaction(logs[0].transactionHash))?.from ?? null;
-  let tipped = false;
-  if (submitter && submitter !== ZeroAddress) {
-    const tx = await burner.sendTransaction({ to: submitter, value: tip });
-    await tx.wait().catch(() => undefined);
-    tipped = true;
+  try {
+    submitter = await payTip(burner, tip, startBlock);
+  } catch {
+    submitter = null; // retried by resumeFunding
   }
+  await markSpending(note.n, { burner: burnerIndex, change: change.n, since: Date.now(), tip: tip.toString(), tipped: !!submitter });
   onStage("done");
-  return { burner, burnerIndex, received, submitter, tipped };
+  return { burner, burnerIndex, received, submitter, tipped: !!submitter };
 }
 
 const REQUEST_LIFETIME_MS = 60 * 60_000;
@@ -132,6 +157,20 @@ const REQUEST_LIFETIME_MS = 60 * 60_000;
 export async function resumeFunding(): Promise<Funded[]> {
   const done: Funded[] = [];
   const provider = ethProvider();
+  // Tips that couldn't be paid when the funding finished.
+  for (const note of (await allNotes()).filter((r) => r.spent && r.spending && !r.spending.tipped)) {
+    const s = note.spending!;
+    const burner = (await burnerKey(s.burner)).connect(provider);
+    const head = await provider.getBlockNumber();
+    const from = Math.max(0, head - Math.ceil((Date.now() - s.since) / 6000) - 20);
+    try {
+      const submitter = await payTip(burner, BigInt(s.tip), from);
+      if (submitter) await markSpending(note.n, { ...s, tipped: true });
+    } catch {
+      /* try again next time */
+    }
+  }
+
   for (const note of (await allNotes()).filter((r) => r.spending && !r.spent)) {
     const s = note.spending!;
     const burner = (await burnerKey(s.burner)).connect(provider);

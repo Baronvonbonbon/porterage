@@ -361,8 +361,15 @@ Each phase ends with something that runs on a phone.
 
 ### Phase 4 — Delivery
 
-- [ ] Order creation, sealed bidding, acceptance.
+- [x] Order creation, sealed bidding, acceptance. The customer places an order from a fresh account
+      funded out of the private balance (one flow: prove, post, fund, create, announce), carrying only
+      `Poseidon(lat, lon, salt)`; the salt stays on the phone. Drivers read open orders straight from
+      the contract (no event log, so orders from any kind of account appear), commit a bid hash with
+      the session key and send the terms encrypted to the order account's key over the Statement Store
+      (ECDH, a fresh key per bid, 127 bytes). The customer may take any bid.
+      Verified live on 2026-09-20: venue, driver with a session key, order, sealed bid, acceptance.
 - [ ] Pickup and dropoff handoffs by QR, with the proof on the phone.
+- [ ] A map for choosing the drop, instead of typing coordinates.
 - [ ] Photo evidence to Bulletin, keyed into the dropoff attestation.
 - [ ] Venue menus on Bulletin, the kitchen view.
 
