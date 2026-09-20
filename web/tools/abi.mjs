@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ART = join(HERE, "..", "..", "artifacts", "contracts");
 const OUT = join(HERE, "..", "src", "abi");
-const CONTRACTS = ["PorterDrivers", "PorterVenues", "PorterOrders", "PorterSettlement", "PorterVault", "PorterDisputes", "PorterRatings"];
+const CONTRACTS = ["PorterDrivers", "PorterVenues", "PorterOrders", "PorterSettlement", "PorterVault", "PorterDisputes", "PorterRatings", "PorterPauseRegistry"];
 
 if (!existsSync(ART)) {
   console.error("No contract build found. Run `npx hardhat compile` in the repo root first.");

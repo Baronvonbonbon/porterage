@@ -17,6 +17,7 @@ import { TILE, latToY, lonToX, panned, wrapX, xToLon, yToLat } from "./tiles";
 import { openWithKey, photoKeyOf } from "./evidence";
 import { decodeCase, encodeCase } from "./dispute";
 import { ratingText } from "./ratings";
+import { slashExceedsStake, splitEscrow } from "../ops/ruling";
 import {
   MAX_TEXT,
   clip,
@@ -442,5 +443,35 @@ describe("evidence and disputes", () => {
     expect(ratingText({ avgX100: 437, count: 7 })).toBe("4.4★ from 7");
     expect(ratingText({ avgX100: 0, count: 0 })).toBe("not rated yet");
     expect(ratingText(null)).toBe("not rated yet");
+  });
+});
+
+describe("ruling arithmetic", () => {
+  const escrow = 2_500_000_000_000_000_001n; // deliberately not divisible
+
+  it("split the escrow exactly as the contract does", () => {
+    const { customerAmt, driverAmt } = splitEscrow(escrow, 7500);
+    expect(customerAmt).toBe((escrow * 7500n) / 10_000n);
+    // Nothing is stranded: the driver takes the truncation remainder.
+    expect(customerAmt + driverAmt).toBe(escrow);
+    expect(splitEscrow(escrow, 0)).toEqual({
+      customerAmt: 0n,
+      driverAmt: escrow,
+    });
+    expect(splitEscrow(escrow, 10_000)).toEqual({
+      customerAmt: escrow,
+      driverAmt: 0n,
+    });
+  });
+
+  it("refuse a share the contract would reject", () => {
+    expect(() => splitEscrow(escrow, 10_001)).toThrow();
+    expect(() => splitEscrow(escrow, -1)).toThrow();
+    expect(() => splitEscrow(escrow, 12.5)).toThrow();
+  });
+
+  it("notice a slash bigger than the stake, which the contract silently clamps", () => {
+    expect(slashExceedsStake(5n, 4n)).toBe(true);
+    expect(slashExceedsStake(4n, 4n)).toBe(false);
   });
 });

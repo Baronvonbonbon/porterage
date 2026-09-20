@@ -38,3 +38,4 @@ signed. Registering an unowned label needs `--register` and the label typed back
 | 2026-09-20 | Published order messages | `bafybeigmc2cq5vncrwrjtvmmk5qiculiuqiawamwo4uruiebz7bnjlr2ne` |
 | 2026-09-20 | Set the arbiter, published disputes and ratings | `bafybeid3puptsivrvxoxfdpwzcxq6rmxiss5simvvb6mu53lcie3qrob5e`. Arbiter = the deploy key `0x4B38…c420`; its public key is in `web/src/deployed.json` and the app refuses it unless it hashes to that address. Dispute bond 0 (bootstrap). |
 | 2026-09-20 | Topped the deployer up | 120 PAS from the name key, in two transfers (`node tools/fund-deployer.mjs`). Live runs now refund their throwaway accounts, so one costs about 3.5 PAS instead of 30. |
+| 2026-09-20 | Published the operations console | `bafybeig6l26y3o4utzieunckbcjjvl3cct3qik4xxz7pnymeqp7hdg4eei`. Read-only unless the device holds the arbiter key; `npx vite-node tools/ops.ts -- list \| show \| rule` is the arbiter's command line. |

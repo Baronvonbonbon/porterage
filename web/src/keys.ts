@@ -25,6 +25,7 @@ export const LABEL = {
   notes: "porterage:notes",
   note: (n: number) => `porterage:note:${n}`,
   payout: (n: number) => `porterage:payout:${n}`,
+  ops: (epoch: number) => `porterage:ops:${epoch}`,
 } as const;
 
 let source: Promise<KeySource> | null = null;
@@ -82,6 +83,16 @@ export async function sessionKey(epoch = 0): Promise<Wallet> {
 /** Order `n`'s burner: a fresh on-chain identity per order (docs/PLAN.md §3.1). */
 export async function burner(n: number): Promise<Wallet> {
   return walletFrom(await entropy(LABEL.burner(n)));
+}
+
+/**
+ * The operations key (docs/PLAN.md §6): the key an arbiter reads cases with and
+ * signs rulings with. It has to be secp256k1 — a case is sealed by ECDH on that
+ * curve — which is why an arbiter can't simply be a host account, and why this
+ * is derived rather than being the host's own key.
+ */
+export async function opsKey(epoch = 0): Promise<Wallet> {
+  return walletFrom(await entropy(LABEL.ops(epoch)));
 }
 
 /** For tests. */

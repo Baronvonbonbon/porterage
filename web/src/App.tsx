@@ -5,14 +5,17 @@ import { Driver } from "./views/Driver";
 import { Ordering } from "./views/Ordering";
 import { Venue } from "./views/Venue";
 import { Wallet } from "./views/Wallet";
+import { Ops } from "./views/Ops";
 
-type Role = "customer" | "driver" | "venue";
+type Role = "customer" | "driver" | "venue" | "ops";
 const ROLE_KEY = "porterage.role";
 
 function savedRole(): Role | null {
   try {
     const r = localStorage.getItem(ROLE_KEY);
-    return r === "customer" || r === "driver" || r === "venue" ? r : null;
+    return r === "customer" || r === "driver" || r === "venue" || r === "ops"
+      ? r
+      : null;
   } catch {
     return null;
   }
@@ -74,6 +77,11 @@ export function App() {
             <b>Sell</b>
             <span>Take orders at your venue</span>
           </button>
+          {/* Not a fourth role: it's the arbiter's queue, and it's read-only
+              unless this device holds the arbiter's key. Meant for Desktop. */}
+          <button className="link" onClick={() => choose("ops")}>
+            Operations console
+          </button>
         </section>
       )}
 
@@ -85,6 +93,7 @@ export function App() {
         </>
       )}
       {role === "venue" && <Venue />}
+      {role === "ops" && <Ops />}
     </main>
   );
 }

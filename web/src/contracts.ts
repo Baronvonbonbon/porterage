@@ -10,6 +10,7 @@ import Settlement from "./abi/PorterSettlement.json";
 import Vault from "./abi/PorterVault.json";
 import Disputes from "./abi/PorterDisputes.json";
 import Ratings from "./abi/PorterRatings.json";
+import PauseRegistry from "./abi/PorterPauseRegistry.json";
 
 export const ABI = {
   drivers: new Interface(Drivers),
@@ -19,6 +20,7 @@ export const ABI = {
   vault: new Interface(Vault),
   disputes: new Interface(Disputes),
   ratings: new Interface(Ratings),
+  pauseRegistry: new Interface(PauseRegistry),
 };
 export type ContractName = keyof typeof ABI;
 

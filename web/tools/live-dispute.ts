@@ -238,7 +238,16 @@ console.log(
   "4. the arbiter read the case and the photo; the same key opens no other photo"
 );
 
-// 7. the ruling: the customer gets three quarters back, the driver the rest
+// 7. the ruling: the customer gets three quarters back, the driver the rest.
+// With --leave-open the dispute is left standing, so the arbiter's own console
+// (tools/ops.ts) can be the thing that rules on it.
+if (process.argv.includes("--leave-open")) {
+  console.log(
+    `5. left dispute #${disputeId} open — rule on it with: npx vite-node tools/ops.ts -- rule ${disputeId} 5000`
+  );
+  process.exit(0);
+}
+
 const vault = new Contract(book.vault, VAULT_ABI as never, eth);
 const before = {
   customer: await vault.balanceOf(customer.address),

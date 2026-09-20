@@ -433,7 +433,23 @@ Each phase ends with something that runs on a phone.
       live on 2026-09-20 (`web/tools/live-dispute.ts`): filed, the driver could not read the case, the
       arbiter read it and opened the photo, the same key opened no other photo, and the ruling split
       the escrow 75/25 and left a strike on the driver.
-- [ ] The Desktop operations console.
+- [x] The Desktop operations console. Not a second app: a link under the role chooser, meant for
+      Desktop but the same Product (`web/src/views/Ops.tsx`, queue in `web/src/ops/queue.ts`). It
+      shows the open disputes with the order, the escrow, the driver's record and what evidence was
+      committed — all of which is public on-chain anyway — and **refuses to pretend to authority it
+      hasn't got**: a case is sealed to the arbiter, so a device that isn't the arbiter can read the
+      queue and nothing else, and it says so instead of offering buttons that would revert. The
+      ruling arithmetic is FARE's `ops/ruling.ts`, carried over and tested against
+      `PorterOrders.resolveDisputed`, including that the driver takes the truncation remainder so no
+      wei is stranded; a preview that disagreed with the chain would mislead an arbiter about a
+      ruling that cannot be taken back. The arbiter key must be secp256k1 (`keys.ts opsKey`), because
+      a case is sealed by ECDH on that curve and an sr25519 host account cannot take part.
+      `web/tools/ops.ts` is the same queue and the same arithmetic on the command line, which is what
+      can rule today, the arbiter being the deploy key on this computer. Verified live on 2026-09-20:
+      `live-dispute.ts --leave-open` left dispute #3 standing, the console read its sealed case, and
+      `ops.ts rule 3 6000 --fault --slash 1` split 2.5 PAS into exactly the 1.5/1.0 it previewed.
+- [ ] Changing the arbiter needs a republish: the app is built with the arbiter's public key (checked
+      against the address the contract names). Somewhere self-verifying and on-chain would be better.
 - [x] Ratings and reputation. One rating per delivered order, sent by the order's own burner, so it
       says what the order was like and nothing about who placed it — reputation that can't be traced
       back to a person is the trade this design keeps making. Stars show where the choices are: on
