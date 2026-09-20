@@ -48,10 +48,20 @@ function handle(hex: string, from: string) {
   });
 }
 
-function watch(url: string) {
+function watch(url: string, backoffMs = 10_000) {
   const ws = new WebSocket(url);
   const name = new URL(url).host;
+  // One reconnect per socket: an error also fires a close, and calling close()
+  // from onerror re-enters the handler until the stack runs out (seen 2026-09-20).
+  let done = false;
+  const again = (why: string) => {
+    if (done) return;
+    done = true;
+    log(`${name} ${why}; reconnecting in ${Math.round(backoffMs / 1000)} s`);
+    setTimeout(() => watch(url, Math.min(backoffMs * 2, 300_000)), backoffMs);
+  };
   ws.onopen = () => {
+    backoffMs = 10_000;
     ws.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "statement_subscribeStatement", params: [{ matchAny: [FUND_TOPIC] }] }));
     log(`listening on ${name}`);
   };
@@ -59,11 +69,8 @@ function watch(url: string) {
     const r = JSON.parse(String(m.data));
     for (const s of r.params?.result?.data?.statements ?? []) handle(s, name);
   };
-  ws.onclose = () => {
-    log(`${name} closed; reconnecting in 10 s`);
-    setTimeout(() => watch(url), 10_000);
-  };
-  ws.onerror = () => ws.close();
+  ws.onclose = () => again("closed");
+  ws.onerror = () => again("errored");
 }
 
 log(`relay ${signer.address}, ${formatEther(await eth.getBalance(signer.address))} PAS for gas`);
