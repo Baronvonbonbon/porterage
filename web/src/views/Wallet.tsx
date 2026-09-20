@@ -6,7 +6,9 @@ import { useCallback, useEffect, useState } from "react";
 import { parseEther } from "ethers";
 import { freeBalance, hostAccount, type HostAccount } from "../hostchain";
 import { allNotes, type NoteRecord } from "../shield/notes";
-import { planTopUp, topUp } from "../shield/deposit";
+import { MAX_NOTES_PER_TAP, planTopUp, topUp, topUpFromToken } from "../shield/deposit";
+import { TOKENS, formatUnits, parseUnits, type Token } from "../money/tokens";
+import { locationOf, quote, spendableToken, PAS_LOCATION } from "../money/swap";
 import { DEFAULT_TIP, fundBurner, resumeFunding, type FundStage, type Funded } from "../shield/fund";
 import { errorText, pas, pasWei, short } from "../format";
 
@@ -33,6 +35,9 @@ export function Wallet() {
   const [stage, setStage] = useState<{ stage: FundStage; at: number } | null>(null);
   const [proveMs, setProveMs] = useState<number | null>(null);
   const [funded, setFunded] = useState<Funded | null>(null);
+  const [source, setSource] = useState<Token | null>(null); // null = PAS
+  const [held, setHeld] = useState<Map<number, bigint>>(new Map());
+  const [swapQuote, setSwapQuote] = useState<bigint | null>(null);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -41,6 +46,7 @@ export function Wallet() {
       setMe(acct);
       setBalance(await freeBalance(acct.address));
       setNotes(await allNotes());
+      setHeld(new Map(await Promise.all(TOKENS.map(async (t) => [t.id, await spendableToken(t, acct.address)] as const))));
     } catch (e) {
       setError(errorText(e));
     }
@@ -64,9 +70,26 @@ export function Wallet() {
   const byRung = new Map<string, number>();
   for (const n of unspent) byRung.set(n.value, (byRung.get(n.value) ?? 0) + 1);
 
-  const want = parsePas(amount);
-  const plan = want ? planTopUp(want) : null;
-  const affordable = plan && balance !== null && plan.total / PLANCK_PER_WEI < balance;
+  const want = source ? parseUnits(amount, source.decimals) : parsePas(amount);
+  const plan = !source && want ? planTopUp(want) : swapQuote ? planTopUp(swapQuote * PLANCK_PER_WEI) : null;
+  const affordable = source
+    ? !!want && want <= (held.get(source.id) ?? 0n)
+    : !!plan && balance !== null && plan.total / PLANCK_PER_WEI < balance;
+
+  // Quote a token amount whenever it changes, so the notes shown are the real ones.
+  useEffect(() => {
+    if (!source || !want) {
+      setSwapQuote(null);
+      return;
+    }
+    let live = true;
+    quote(locationOf(source.id), PAS_LOCATION, want)
+      .then((q) => live && setSwapQuote(q))
+      .catch(() => live && setSwapQuote(null));
+    return () => {
+      live = false;
+    };
+  }, [source, amount, want]);
 
   async function shield() {
     if (!plan || !want) return;
@@ -74,8 +97,11 @@ export function Wallet() {
     setError(null);
     setDone(null);
     try {
-      const r = await topUp(want);
-      setDone(`Shielded ${pasWei(r.deposited)} as ${r.rungs.length} note${r.rungs.length > 1 ? "s" : ""} (block ${r.block}).`);
+      const r = source ? await topUpFromToken(source, want) : await topUp(want);
+      setDone(
+        `Shielded ${pasWei(r.deposited)} as ${r.rungs.length} note${r.rungs.length > 1 ? "s" : ""} (block ${r.block}).` +
+          (r.leftOver > 0n ? ` ${pasWei(r.leftOver)} stayed in your account: only ${MAX_NOTES_PER_TAP} notes fit in one tap.` : ""),
+      );
       await refresh();
     } catch (e) {
       setError(errorText(e));
@@ -156,9 +182,31 @@ export function Wallet() {
 
       <div className="actions">
         <label>
-          Shield{" "}
-          <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} size={6} /> PAS
+          Shield <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} size={6} />{" "}
+          <select
+            value={source?.id ?? 0}
+            onChange={(e) => {
+              const id = Number(e.target.value);
+              setSource(TOKENS.find((t) => t.id === id) ?? null);
+              setAmount(id ? "10" : "10");
+            }}
+          >
+            <option value={0}>PAS</option>
+            {TOKENS.map((t) => (
+              <option key={t.id} value={t.id} disabled={!(held.get(t.id) ?? 0n)}>
+                {t.symbol}
+                {held.get(t.id) ? ` (${formatUnits(held.get(t.id)!, t.decimals)})` : " — none"}
+              </option>
+            ))}
+          </select>
         </label>
+        {source && (
+          <p className="muted">
+            {swapQuote === null
+              ? "…"
+              : `Swaps to about ${pas(swapQuote)} first. That swap is public, and happens before anything is hidden.`}
+          </p>
+        )}
         {plan && (
           <p className="muted">
             Deposits {pasWei(plan.total)} as {plan.rungs.map((r) => pasWei(r).replace(".0000", "")).join(" + ")}.

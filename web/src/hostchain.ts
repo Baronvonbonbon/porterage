@@ -148,17 +148,30 @@ export interface CallSpec {
   value?: bigint;
 }
 
+/** A ready-made runtime call, such as one built from `substrate().getUnsafeApi().tx.*`. */
+export interface PalletCall {
+  decodedCall: unknown;
+}
+
+const isContractCall = (c: CallSpec | PalletCall): c is CallSpec => "dest" in c;
+
 /**
- * Several contract calls as one transaction (Utility.batch_all): one tap, and
- * all or nothing. Each call is dry-run on its own first, so a revert is caught
+ * Several calls as one transaction (Utility.batch_all): one tap, and all or
+ * nothing. Contract calls are dry-run on their own first, so a revert is caught
  * before the user is asked.
  */
-export async function hostBatch(calls: CallSpec[]): Promise<{ block: number }> {
-  if (calls.length === 1) return hostCall(calls[0].dest, calls[0].data, calls[0].value ?? 0n);
+export async function hostBatch(calls: (CallSpec | PalletCall)[]): Promise<{ block: number }> {
+  if (calls.length === 1 && isContractCall(calls[0])) {
+    return hostCall(calls[0].dest, calls[0].data, calls[0].value ?? 0n);
+  }
   const me = await hostAccount();
   const api = chain();
   const inner = [];
   for (const c of calls) {
+    if (!isContractCall(c)) {
+      inner.push(c.decodedCall);
+      continue;
+    }
     const value = c.value ?? 0n;
     const plan = await dryRun(me.address, c.dest, c.data, value);
     inner.push(

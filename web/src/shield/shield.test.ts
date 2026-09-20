@@ -168,3 +168,33 @@ describe("payout notes", () => {
     expect(decodePayout(bytes)).toEqual(req);
   });
 });
+
+import { MAX_NOTES_PER_TAP, planTopUp } from "./deposit";
+import { formatUnits, parseUnits, TOKENS } from "../money/tokens";
+import { precompileFor } from "./pool";
+
+describe("top-up plans", () => {
+  it("shield at most the notes that fit in one transaction, biggest first", () => {
+    const plan = planTopUp(131n * PAS);
+    expect(plan.rungs).toEqual([100n * PAS, 25n * PAS, 5n * PAS]);
+    expect(plan.rungs.length).toBeLessThanOrEqual(MAX_NOTES_PER_TAP);
+    expect(plan.leftOver).toBe(PAS);
+    expect(planTopUp(6n * PAS)).toMatchObject({ rungs: [5n * PAS, PAS], leftOver: 0n });
+  });
+});
+
+describe("tokens", () => {
+  it("list the precompile the pool derives for each asset", () => {
+    for (const t of TOKENS) {
+      expect(t.precompile.toLowerCase()).toBe("0x" + precompileFor(BigInt(t.id)).toString(16).padStart(40, "0"));
+    }
+  });
+
+  it("parse and format amounts at the asset's decimals", () => {
+    expect(parseUnits("12.345678", 6)).toBe(12_345_678n);
+    expect(parseUnits("0.5", 6)).toBe(500_000n);
+    expect(parseUnits("", 6)).toBe(null);
+    expect(parseUnits("abc", 6)).toBe(null);
+    expect(formatUnits(12_345_678n, 6, 4)).toBe("12.3456");
+  });
+});

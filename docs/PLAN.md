@@ -329,8 +329,18 @@ Each phase ends with something that runs on a phone.
       (`Utility.batch_all`), note secrets derived from `deriveEntropy`, bookkeeping encrypted in host
       local storage. Verified live from node on 2026-09-19 (leaves 372–373 reach the live root);
       not yet from the phone.
-- [ ] Swaps into PAS before shielding, and from PAS into the escrow token at the burner, for each
-      accepted token; drop any token without a PAS pair.
+- [x] Swaps into PAS before shielding: a host account calls asset-conversion directly (no XCM, no
+      precompile), and the swap and the deposits go in one `Utility.batch_all` — one tap. Tokens with
+      a live PAS pool on Paseo (2026-09-20): **USDC 1337, USDT 1984, pUSD 50000413**. Hollar and dotUSD
+      have no asset there. Verified live: 298 USDC swapped and shielded as 25 + 25 + 5 PAS notes in one
+      transaction, all three paths reaching the live root.
+      **Two limits found:** a deposit takes about a quarter of a normal extrinsic's proof budget, so a
+      tap carries at most 3 notes (`MAX_NOTES_PER_TAP`) or the batch is refused as `ExhaustsResources`;
+      and an asset account can't be emptied (`Token(NotExpendable)`), so a swap leaves the minimum
+      balance behind.
+- [ ] From PAS into the escrow token at the burner. A burner signs Ethereum transactions only, so this
+      needs the XCM precompile's `ExchangeAsset` (FARE's `venue-node/swap.mjs`). It's only needed once
+      escrow is in a token, which is Phase 4.
 - [x] Withdrawal to a fresh burner: the proof (Kusama Shield withdraw_v7, 32.8 MiB key shipped with the
       app and checked by SHA-256), a derived change note, and recovery of requests left over from an
       earlier session. Verified live from node on 2026-09-19: deposit, an 11.4 s proof, a submission
