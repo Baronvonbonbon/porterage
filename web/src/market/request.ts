@@ -25,10 +25,12 @@ export const REQUEST_BYTES = 426;
 const VERSION = 1;
 const GWEI = 10n ** 9n;
 
-/** The public topic every submitter listens on. */
+/** The public topics every submitter listens on. */
 export const FUND_TOPIC = keccak256(toUtf8Bytes("porterage:fund:v1"));
-/** One channel per requester, so a new request replaces that account's previous one. */
+export const PAYOUT_TOPIC = keccak256(toUtf8Bytes("porterage:payout:v1"));
+/** One channel per kind, so a new request replaces this account's previous one. */
 export const FUND_CHANNEL = keccak256(toUtf8Bytes("porterage:fund:channel"));
+export const PAYOUT_CHANNEL = keccak256(toUtf8Bytes("porterage:payout:channel"));
 
 export interface FundRequest {
   proof: WithdrawalProof;
@@ -89,5 +91,56 @@ export function decodeRequest(b: Uint8Array): FundRequest {
       pC: [w[6], w[7]],
       pubSignals: [pub[0], pub[1], pub[2], withdrawn.toString(), "128", contextFor(recipient).toString(), pub[3], "0"],
     },
+  };
+}
+
+// ── payout spends ────────────────────────────────────────────────────────────
+//
+// The other half of the market (docs/PLAN.md §5.6): a payee proves ownership of
+// a note in the vault's tree and binds the pool commitment the deposit must
+// fund. Submitting it must NOT be the payee, or their account is tied to the new
+// pool note. There's no tip: the payee has nothing spendable to tip with yet,
+// and the gas is small. Submitters do these because they need them too.
+//
+//   0      version (1)
+//   1      kind (2)
+//   2..14  bucket, wei, u96
+//   14..46 root the proof was built against
+//   46..78 nullifier hash
+//   78..110 the Kusama Shield commitment the deposit funds
+//   110..366 the proof's eight words
+export const PAYOUT_BYTES = 366;
+const PAYOUT_KIND = 2;
+
+export interface PayoutRequest {
+  bucket: bigint;
+  root: string;
+  nullifierHash: string;
+  ksCommitment: string;
+  /** The proof's words, in the order PorterShieldVerifier takes them. */
+  words: string[];
+}
+
+export function encodePayout(r: PayoutRequest): Uint8Array {
+  if (r.words.length !== 8) throw new Error("a proof is eight words");
+  const out = new Uint8Array(PAYOUT_BYTES);
+  out[0] = VERSION;
+  out[1] = PAYOUT_KIND;
+  put(out, 2, r.bucket, 12);
+  [r.root, r.nullifierHash, r.ksCommitment].forEach((v, i) => put(out, 14 + 32 * i, BigInt(v), 32));
+  r.words.forEach((v, i) => put(out, 110 + 32 * i, BigInt(v), 32));
+  return out;
+}
+
+export function decodePayout(b: Uint8Array): PayoutRequest {
+  if (b.length !== PAYOUT_BYTES || b[0] !== VERSION || b[1] !== PAYOUT_KIND) {
+    throw new Error("not a version 1 payout request");
+  }
+  return {
+    bucket: get(b, 2, 12),
+    root: get(b, 14, 32).toString(),
+    nullifierHash: get(b, 46, 32).toString(),
+    ksCommitment: "0x" + get(b, 78, 32).toString(16).padStart(64, "0"),
+    words: [0, 1, 2, 3, 4, 5, 6, 7].map((i) => get(b, 110 + 32 * i, 32).toString()),
   };
 }

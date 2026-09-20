@@ -123,6 +123,7 @@ async function main() {
   const disputes = await deployOrReuse("disputes", "PorterDisputes", [pause]);
   const locationVerifier = await deployOrReuse("locationVerifier", "PorterLocationVerifier");
   const ratings = await deployOrReuse("ratings", "PorterRatings");
+  const shieldVerifier = await deployOrReuse("shieldVerifier", "PorterShieldVerifier");
 
   // Stablecoin escrow (C3). Asset Hub USDC is asset 1337, seen from the EVM
   // through its ERC-20 precompile — a REAL asset with a real price and a live
@@ -231,6 +232,51 @@ async function main() {
     );
   }
 
+  // ── Shielded payouts (docs/PLAN.md §5.6) ────────────────────────────────
+  // A payee turns a fixed bucket of vault balance into a note, and later spends
+  // it into Kusama Shield with a proof that reveals only a nullifier. The ZK
+  // path needs no keeper, so no keeper is authorized here.
+  const shieldC = await ethers.getContractAt("PorterShieldVerifier", shieldVerifier, deployer);
+  const SHIELD_VK = [
+    path.join(__dirname, "..", "circuits", "build", "setShieldVK-calldata.json"),
+    path.join(__dirname, "..", "test", "fixtures", "vk-shieldnote.json"),
+  ].find((f) => fs.existsSync(f));
+  if (!(await shieldC.vkSet())) {
+    if (SHIELD_VK) {
+      const vk = JSON.parse(fs.readFileSync(SHIELD_VK, "utf-8"));
+      await send("shieldVerifier.setVerifyingKey", () =>
+        shieldC.setVerifyingKey(
+          vk.alpha1, vk.beta2, vk.gamma2, vk.delta2,
+          vk.IC0, vk.IC1, vk.IC2, vk.IC3, vk.IC4,
+          { gasLimit: GAS_LIMIT }
+        )
+      );
+    } else console.log("  ! no shieldnote verifying key found — shielded payouts stay off");
+  } else console.log("  = shieldVerifier VK already set");
+
+  // Kusama Shield's pool on Paseo, and the chain's Poseidon precompile (FARE
+  // checked its hash against poseidon-lite on 2026-07). Local chains have
+  // neither, so payouts there stay in the clear.
+  const SHIELD_POOL = "0x7d5a496bD61b631025A828d9049f6A68e007e0dC";
+  const POSEIDON = "0x1d165f6fE5A30422E0E2140e91C8A9B800380637";
+  const PAS = 10n ** 18n;
+  const BUCKETS = [1n * PAS, 5n * PAS, 25n * PAS, 100n * PAS]; // web/src/shield/ladder.ts
+  if (!isLocal) {
+    if ((await vaultC.shieldPool()) !== SHIELD_POOL) {
+      await send("vault.setShieldPool", () => vaultC.setShieldPool(SHIELD_POOL, { gasLimit: GAS_LIMIT }));
+    } else console.log("  = vault shield pool already set");
+    if ((await vaultC.shieldBucketCount()) === 0n) {
+      await send("vault.setShieldBuckets", () => vaultC.setShieldBuckets(BUCKETS, { gasLimit: GAS_LIMIT }));
+    } else console.log("  = vault shield buckets already set");
+    // 16 Poseidon calls; one-shot, and it initializes the note tree.
+    if ((await vaultC.emptyNoteRoot()) === 0n) {
+      await send("vault.setShieldPoseidon", () => vaultC.setShieldPoseidon(POSEIDON, { gasLimit: GAS_LIMIT }));
+    } else console.log("  = vault Poseidon already set");
+    if ((await vaultC.shieldVerifier()) !== shieldVerifier) {
+      await send("vault.setShieldVerifier", () => vaultC.setShieldVerifier(shieldVerifier, { gasLimit: GAS_LIMIT }));
+    } else console.log("  = vault shield verifier already wired");
+  }
+
   // ── 2b. Upgradability: registry + router binding ───────────────────────
   console.log("\n2b. Governance router registry");
   const routerC = await ethers.getContractAt("PorterGovernanceRouter", router, deployer);
@@ -289,6 +335,11 @@ async function main() {
         )
       ).every(Boolean),
     ],
+    ["shieldVerifier VK set", await shieldC.vkSet()],
+    ["vault shield verifier", isLocal || (await vaultC.shieldVerifier()) === shieldVerifier],
+    ["vault shield pool", isLocal || (await vaultC.shieldPool()) === SHIELD_POOL],
+    ["vault shield buckets", isLocal || (await vaultC.shieldBucketCount()) === BigInt(BUCKETS.length)],
+    ["vault note tree ready", isLocal || (await vaultC.emptyNoteRoot()) !== 0n],
     ["orders router bound", (await ordersC.router()) === router],
   ];
   let ok = true;

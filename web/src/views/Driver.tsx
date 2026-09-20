@@ -10,6 +10,7 @@ import { freeBalance, hostAccount, hostCall, hostFund, type HostAccount } from "
 import { sessionKey, keySource, type KeySource } from "../keys";
 import { addressOf, deployed, encode, ethProvider, read } from "../contracts";
 import { errorText, pas, pasWei, short } from "../format";
+import { Earnings } from "./Earnings";
 import { Helper } from "./Helper";
 
 /** Gas for the session key: plenty for a few hundred bids and handoffs on Paseo. */
@@ -151,6 +152,7 @@ export function Driver() {
             <p className="ok">Ready. Bids and handoffs sign on this phone with no taps.</p>
           )}
           {chain.registered && keyCurrent && !keyLow && <Helper sessionKey={key} />}
+          {chain.registered && <Earnings account={me.evm} />}
         </div>
       )}
 

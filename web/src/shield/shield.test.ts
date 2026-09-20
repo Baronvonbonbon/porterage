@@ -127,3 +127,44 @@ describe("statement decoding", () => {
     expect(s.data).toEqual(data);
   });
 });
+
+import { PAYOUT_BYTES, decodePayout, encodePayout } from "../market/request";
+import { NoteTree, payoutCommitment, payoutNullifierHash, zeroHashes } from "./payout";
+
+describe("payout notes", () => {
+  const note = { n: 3, bucket: (5n * PAS).toString(), nullifier: "12345", secret: "67890" };
+
+  it("bind the bucket into the leaf", () => {
+    expect(payoutCommitment(note)).not.toBe(payoutCommitment({ ...note, bucket: PAS.toString() }));
+    expect(payoutNullifierHash(note)).toBe(payoutNullifierHash({ ...note, bucket: PAS.toString() }));
+  });
+
+  it("build a path that reproduces the tree's root", () => {
+    const leaves = Array.from({ length: 5 }, (_, i) => payoutCommitment({ ...note, nullifier: String(i + 1) }));
+    const tree = new NoteTree(leaves);
+    const zeros = zeroHashes();
+    for (let index = 0; index < leaves.length; index++) {
+      const { elements, indices } = tree.path(index);
+      let node = leaves[index];
+      for (let lv = 0; lv < elements.length; lv++) {
+        const sibling = elements[lv];
+        node = indices[lv] === 0 ? poseidon2([node, sibling]) : poseidon2([sibling, node]);
+      }
+      expect(node).toBe(tree.root());
+    }
+    expect(new NoteTree([]).root()).toBe(zeros[16]);
+  });
+
+  it("round-trip a payout request in 366 bytes", () => {
+    const req = {
+      bucket: 5n * PAS,
+      root: "12345678901234567890",
+      nullifierHash: "987654321",
+      ksCommitment: "0x" + "ab".repeat(32),
+      words: ["1", "2", "3", "4", "5", "6", "7", "8"],
+    };
+    const bytes = encodePayout(req);
+    expect(bytes.length).toBe(PAYOUT_BYTES);
+    expect(decodePayout(bytes)).toEqual(req);
+  });
+});

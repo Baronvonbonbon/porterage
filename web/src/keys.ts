@@ -24,6 +24,7 @@ export const LABEL = {
   burner: (n: number) => `porterage:burner:${n}`,
   notes: "porterage:notes",
   note: (n: number) => `porterage:note:${n}`,
+  payout: (n: number) => `porterage:payout:${n}`,
 } as const;
 
 let source: Promise<KeySource> | null = null;

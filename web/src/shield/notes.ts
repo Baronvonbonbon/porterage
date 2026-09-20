@@ -29,9 +29,21 @@ export interface NoteRecord {
   spent?: boolean;
 }
 
+/** A bucket of vault balance turned into a note in the vault's tree (payout.ts). */
+export interface PayoutRecord {
+  n: number;
+  bucket: string;
+  /** The block the insert landed in; the leaf search starts here. */
+  insertedAt?: number;
+  /** The pool note this payout was spent into, once a submitter has done it. */
+  spentInto?: number;
+}
+
 interface Book {
   next: number;
   notes: NoteRecord[];
+  payouts?: PayoutRecord[];
+  nextPayout?: number;
   /** Burners handed out so far; burner n's key is deriveEntropy("porterage:burner:<n>"). */
   burners?: number;
 }
@@ -174,6 +186,26 @@ export async function spendable(asset = NATIVE): Promise<NoteRecord[]> {
   return (await allNotes())
     .filter((r) => !r.spent && !r.spending && r.path && BigInt(r.asset) === asset)
     .sort((a, b) => (BigInt(a.value) < BigInt(b.value) ? -1 : 1));
+}
+
+export function allPayouts(): Promise<PayoutRecord[]> {
+  return queue.then(load).then((b) => b.payouts ?? []);
+}
+
+/** Reserve a payout note number, recorded before the insert is signed. */
+export function reservePayout(bucket: bigint): Promise<PayoutRecord> {
+  return update((book) => {
+    const rec = { n: book.nextPayout ?? 0, bucket: bucket.toString() };
+    book.nextPayout = rec.n + 1;
+    book.payouts = [...(book.payouts ?? []), rec];
+    return rec;
+  });
+}
+
+export function updatePayout(n: number, patch: Partial<PayoutRecord>): Promise<void> {
+  return update((book) => {
+    for (const r of book.payouts ?? []) if (r.n === n) Object.assign(r, patch);
+  });
 }
 
 export async function shieldedBalance(asset = NATIVE): Promise<bigint> {

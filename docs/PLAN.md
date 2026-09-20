@@ -341,9 +341,13 @@ Each phase ends with something that runs on a phone.
       private orders") and the optional relay (`npm run relay`), which reads both People chains.
       **Fee:** the burner tips the submitter after it's funded. The proof binds only the recipient, so
       the tip is on trust; a fee splitter the proof pays into is the mainnet fix (§9).
-- [ ] The funding market from the phone: the proof's time on the phone, and a request posted by the
-      host reaching a submitter.
-- [ ] Batched shielded payouts and `flush()`.
+- [ ] From the phone: the proofs' time there, and requests posted by the host reaching a submitter.
+- [x] Private payouts, the ZK note path only (no keeper): the deploy wires the shield verifier, the
+      Poseidon precompile, Kusama Shield's pool and the 1/5/25/100 PAS buckets. A payee turns a bucket
+      of vault balance into a note (one tap), then proves ownership of one note among many and posts
+      the spend to the market; a stranger submits it and the money arrives as an ordinary pool note.
+      Verified live on 2026-09-19: credit, insert, a 2.2 s proof, a submission from a key that never
+      held the note (27,295 gas), and the pool note reaching the live root.
 
 ### Phase 4 — Delivery
 

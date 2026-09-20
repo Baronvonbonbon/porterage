@@ -6,9 +6,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { Wallet } from "ethers";
 import { SHIELD_POOL } from "../config";
+import { addressOf, deployed } from "../contracts";
 import { ethProvider } from "../contracts";
 import { subscribeRequests } from "../market/statements";
-import { submitRequest } from "../market/submit";
+import { submitPayout, submitRequest } from "../market/submit";
 import { errorText, short } from "../format";
 
 export function Helper({ sessionKey }: { sessionKey: Wallet }) {
@@ -21,17 +22,22 @@ export function Helper({ sessionKey }: { sessionKey: Wallet }) {
     const signer = sessionKey.connect(ethProvider());
     const note = (line: string) => setLog((l) => [`${new Date().toLocaleTimeString()} ${line}`, ...l].slice(0, 8));
     let stop: (() => void) | null = null;
-    subscribeRequests((req) => {
-      // One at a time, so the session key's nonces don't collide.
+    // One at a time, so the session key's nonces don't collide.
+    const run = (what: string, job: () => Promise<{ status: string; hash?: string; reason?: string }>) => {
       queue.current = queue.current.then(async () => {
         try {
-          const r = await submitRequest(req, SHIELD_POOL, signer);
-          if (r.status === "sent") note(`funded ${short(req.proof.recipient)} (tx ${short(r.hash)})`);
-          else if (r.reason !== "already handled") note(`skipped ${short(req.proof.recipient)}: ${r.reason}`);
+          const r = await job();
+          if (r.status === "sent") note(`${what} (tx ${short(r.hash!)})`);
+          else if (r.reason !== "already handled") note(`skipped ${what}: ${r.reason}`);
         } catch (e) {
-          note(`failed ${short(req.proof.recipient)}: ${errorText(e)}`);
+          note(`failed ${what}: ${errorText(e)}`);
         }
       });
+    };
+    subscribeRequests({
+      fund: (req) => run(`funded ${short(req.proof.recipient)}`, () => submitRequest(req, SHIELD_POOL, signer)),
+      payout: (req) =>
+        deployed() && run("released a payout", () => submitPayout(req, addressOf("vault"), signer)),
     })
       .then((s) => (stop = s))
       .catch((e) => note(errorText(e)));
