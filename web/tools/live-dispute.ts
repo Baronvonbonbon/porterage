@@ -69,12 +69,46 @@ console.log(
   )} PAS`
 );
 for (const [who, amount] of [
-  [venueOp, 6n * PAS],
-  [driver, 6n * PAS],
-  [session, 4n * PAS],
-  [customer, 12n * PAS],
+  [venueOp, 3n * PAS],
+  [driver, 3n * PAS],
+  [session, 2n * PAS],
+  [customer, 7n * PAS],
 ] as const) {
   await fund(who.address, amount);
+}
+
+/**
+ * Give back what the throwaway accounts didn't spend. Registered for failures
+ * too: a run that dies halfway used to strand everything it was funded with,
+ * which is most of what a run costs.
+ */
+async function giveBack() {
+  for (const who of [venueOp, driver, session, customer]) {
+    try {
+      const balance = await eth.getBalance(who.address);
+      const keep = 2n * 10n ** 17n; // enough for the gas of the refund itself
+      if (balance > keep)
+        await (
+          await who.sendTransaction({
+            to: funder.address,
+            value: balance - keep,
+          })
+        ).wait();
+    } catch {
+      /* not worth failing over */
+    }
+  }
+  console.log(
+    `   funder back to ${formatEther(await eth.getBalance(funder.address))} PAS`
+  );
+}
+
+for (const bad of ["uncaughtException", "unhandledRejection"] as const) {
+  process.on(bad, async (e) => {
+    console.error(e);
+    await giveBack();
+    process.exit(1);
+  });
 }
 
 // 0. the arbiter the app would seal to, checked the way the app checks it
@@ -285,23 +319,6 @@ console.log(
 if (record.failed !== 1n)
   throw new Error("the at-fault ruling left no mark on the driver");
 
-// Give back what the throwaway accounts didn't spend, so a run costs gas and
-// stranded escrow rather than everything it was funded with.
-for (const who of [venueOp, driver, session, customer]) {
-  const balance = await eth.getBalance(who.address);
-  const keep = 2n * 10n ** 17n; // leave enough for the gas of the refund itself
-  if (balance > keep) {
-    try {
-      await (
-        await who.sendTransaction({ to: funder.address, value: balance - keep })
-      ).wait();
-    } catch {
-      /* not worth failing a passed run over */
-    }
-  }
-}
-console.log(
-  `   funder back to ${formatEther(await eth.getBalance(funder.address))} PAS`
-);
+await giveBack();
 
 process.exit(0);

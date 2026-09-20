@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { decodeDrop, encodeDrop } from "./drop";
 import { dropsFrom, encodeArchive } from "./chat";
 import { Wallet, hexlify, toUtf8String } from "ethers";
 import {
@@ -673,5 +674,54 @@ describe("long threads", () => {
     expect(whole.said.length).toBe(many.length);
     expect(whole.said[0].text).toBe(many[0].text);
     expect(whole.orderId).toBe(1n);
+  });
+});
+
+describe("sending the drop to the driver", () => {
+  const customer = new SigningKey(hexlify(new Uint8Array(32).fill(31)));
+  const driver = new SigningKey(hexlify(new Uint8Array(32).fill(33)));
+  const nosey = new SigningKey(hexlify(new Uint8Array(32).fill(35)));
+  const at = { lat: 37_784_900, lon: -122_419_400 };
+
+  it("carry a position exactly, negative ones included", () => {
+    const back = decodeDrop(encodeDrop(9n, at))!;
+    expect(back.orderId).toBe(9n);
+    expect(back.at).toEqual(at);
+    // Southern and western halves of the world must survive the round trip.
+    const sydney = { lat: -33_868_800, lon: 151_209_300 };
+    expect(decodeDrop(encodeDrop(1n, sydney))!.at).toEqual(sydney);
+    expect(encodeDrop(9n, at).length).toBe(18);
+  });
+
+  it("refuse anything that isn't one", () => {
+    expect(decodeDrop(new Uint8Array(18))).toBe(null);
+    expect(decodeDrop(encodeDrop(9n, at).slice(0, 17))).toBe(null);
+    // A position off the planet is not a position.
+    const bad = encodeDrop(9n, at);
+    bad[10] = 0x7f;
+    expect(decodeDrop(bad)).toBe(null);
+  });
+
+  it("open for the driver it was sent to, and for nobody else", async () => {
+    const sealed = await seal(
+      driver.compressedPublicKey,
+      13,
+      encodeDrop(9n, at)
+    );
+    expect(
+      decodeDrop((await openEnvelope({ signingKey: driver }, 13, sealed))!)!.at
+    ).toEqual(at);
+    expect(await openEnvelope({ signingKey: nosey }, 13, sealed)).toBe(null);
+    // Not even the customer can reopen what it sent: the envelope's key was
+    // thrown away, which is why its own copy comes from its own storage.
+    expect(await openEnvelope({ signingKey: customer }, 13, sealed)).toBe(null);
+  });
+
+  it("go where only those two can look", () => {
+    // The thread topic is the ECDH secret of the pair, so the drop isn't even
+    // findable by someone holding the order id.
+    const theirs = threadTopic(customer, driver.compressedPublicKey);
+    expect(threadTopic(driver, customer.compressedPublicKey)).toBe(theirs);
+    expect(threadTopic(nosey, driver.compressedPublicKey)).not.toBe(theirs);
   });
 });

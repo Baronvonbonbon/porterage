@@ -9,7 +9,7 @@ Where something can be swapped out later, the seam is named.
 
 ---
 
-## 0. The drop never reaches the driver — a blocker, not a polish item
+## 0. The drop never reaches the driver — DONE 2026-09-20 (`order/drop.ts`)
 
 **The bug.** A driver can bid, win, collect from the venue and then has nowhere to go. The order
 carries only `Poseidon(lat, lon, salt)`; the coarse area is opt-in and a kilometre wide; the exact
@@ -29,8 +29,12 @@ pair thread that already exists, kind 13.
   failed delivery, and "did you remember to send it" is not a design.
 - Until it lands, the coarse area is the only hint a driver has, and that is not good enough.
 
-**Touches** `order/drop.ts` (new), `views/Ordering.tsx` (send on acceptance), `views/Jobs.tsx`
-(show it, with navigation). **Costs** nothing on-chain; one statement per order.
+**Done.** 81 bytes sealed, on the pair thread, one statement per order replaced in place with a
+12-hour expiry; the driver keeps a copy in the encrypted book, because an address that vanished
+halfway through a delivery would be worse than one that never came. Verified live on 2026-09-20
+(`web/tools/live-order.ts` step 5b): the driver read it, the venue could not, and a third party
+holding both public keys could not even derive the thread it travelled on. Nothing on-chain changed.
+Navigation to it is §4.
 
 ---
 

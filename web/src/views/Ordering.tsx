@@ -43,6 +43,7 @@ import { PHASE_DROPOFF } from "../order/handoff";
 import { basketTotal, basketText, menuOf, type Menu } from "../order/menu";
 import { watchIntros } from "../order/chat";
 import { cellOf, cellVagueness, publishArea } from "../order/area";
+import { sendDrop } from "../order/drop";
 import { HerePin, useHere } from "./Here";
 import { disputeOf, fileDispute, type Filed } from "../order/dispute";
 import {
@@ -98,6 +99,7 @@ export function Ordering() {
   // Who this order can talk to: the driver once it introduces itself, and the
   // kitchen whose key the menu published.
   const [driverKey, setDriverKey] = useState<string | null>(null);
+  const [dropSent, setDropSent] = useState(false);
   const [liveMenu, setLiveMenu] = useState<Menu | null>(null);
   const [driverStars, setDriverStars] = useState(0);
   const [venueStars, setVenueStars] = useState(0);
@@ -203,6 +205,26 @@ export function Ordering() {
     if (live.order.status === 3) tell("picked-up", id);
     if (live.order.status >= 4) tell("delivered", id);
   }, [live]);
+
+  // The driver cannot deliver to a commitment. Once it has the job and has said
+  // hello, it gets the exact drop — sealed to it alone, and to nobody else.
+  // Automatic, because a driver in the street with no address is a failed
+  // delivery; repeated, because replacing its own statement costs nothing and
+  // covers a driver that missed it.
+  useEffect(() => {
+    if (!live || !driverKey) return;
+    if (live.order.status < 2 || live.order.status > 3) return;
+    let on = true;
+    sendDrop(live.burner, driverKey, BigInt(live.record.id), {
+      lat: live.record.lat,
+      lon: live.record.lon,
+    })
+      .then(() => on && setDropSent(true))
+      .catch(() => on && setDropSent(false));
+    return () => {
+      on = false;
+    };
+  }, [live, driverKey]);
 
   // Whether this order has already been rated or disputed: both are one-shot,
   // and the contract is the only place that knows.
@@ -700,7 +722,12 @@ export function Ordering() {
 
           {live.order.status === 2 && (
             <p className="muted">
-              Assigned. The driver collects it from the counter next.
+              Assigned. The driver collects it from the counter next.{" "}
+              {dropSent
+                ? "It has your drop, sealed to it alone — it needs that to find you, and nobody else can read it."
+                : driverKey
+                ? "Sending it your drop…"
+                : "It gets your drop as soon as it says hello."}
             </p>
           )}
 

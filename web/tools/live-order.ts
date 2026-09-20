@@ -53,6 +53,7 @@ import {
   encodeThread,
   threadTopic,
 } from "../src/order/chat";
+import { decodeDrop, encodeDrop } from "../src/order/drop";
 import { open as openEnvelope, seal } from "../src/order/seal";
 
 const PAS = 10n ** 18n;
@@ -93,12 +94,46 @@ console.log(
   )} PAS`
 );
 for (const [who, amount] of [
-  [venueOp, 6n * PAS],
-  [driver, 6n * PAS],
-  [session, 4n * PAS],
-  [customer, 12n * PAS],
+  [venueOp, 3n * PAS],
+  [driver, 3n * PAS],
+  [session, 2n * PAS],
+  [customer, 7n * PAS],
 ] as const) {
   await fund(who.address, amount);
+}
+
+/**
+ * Give back what the throwaway accounts didn't spend. Registered for failures
+ * too: a run that dies halfway used to strand everything it was funded with,
+ * which is most of what a run costs.
+ */
+async function giveBack() {
+  for (const who of [venueOp, driver, session, customer]) {
+    try {
+      const balance = await eth.getBalance(who.address);
+      const keep = 2n * 10n ** 17n; // enough for the gas of the refund itself
+      if (balance > keep)
+        await (
+          await who.sendTransaction({
+            to: funder.address,
+            value: balance - keep,
+          })
+        ).wait();
+    } catch {
+      /* not worth failing over */
+    }
+  }
+  console.log(
+    `   funder back to ${formatEther(await eth.getBalance(funder.address))} PAS`
+  );
+}
+
+for (const bad of ["uncaughtException", "unhandledRejection"] as const) {
+  process.on(bad, async (e) => {
+    console.error(e);
+    await giveBack();
+    process.exit(1);
+  });
 }
 
 // 1. a venue, signing with a session key
@@ -200,6 +235,35 @@ console.log(
   `5. status ${await orders.statusOf(orderId)}, driver ${
     o.driver
   }, fare ${formatEther(o.fare)} PAS`
+);
+
+// 5b. the customer sends the drop to the driver that won — and to nobody else
+const dropSealed = await seal(
+  session.signingKey.compressedPublicKey,
+  13,
+  encodeDrop(orderId, drop)
+);
+const dropRead = decodeDrop(
+  (await openEnvelope({ signingKey: session.signingKey }, 13, dropSealed))!
+)!;
+if (dropRead.at.lat !== drop.lat || dropRead.at.lon !== drop.lon)
+  throw new Error("the driver got the wrong address");
+if (await openEnvelope({ signingKey: venueOp.signingKey }, 13, dropSealed))
+  throw new Error("the venue could read the address");
+const dropTopic = threadTopic(
+  customer.signingKey,
+  session.signingKey.compressedPublicKey
+);
+if (
+  threadTopic(venueOp.signingKey, session.signingKey.compressedPublicKey) ===
+  dropTopic
+) {
+  throw new Error("a third party found the thread the address went on");
+}
+console.log(
+  `5b. address sent to the driver in ${
+    dropSealed.length
+  } B on ${dropTopic.slice(0, 12)}… — unreadable to the venue`
 );
 
 // 6. pickup: the counter signs its own registered pin; the driver signs the same
@@ -503,23 +567,6 @@ try {
   console.log("   a second rating is refused");
 }
 
-// Give back what the throwaway accounts didn't spend, so a run costs gas and
-// stranded escrow rather than everything it was funded with.
-for (const who of [venueOp, driver, session, customer]) {
-  const balance = await eth.getBalance(who.address);
-  const keep = 2n * 10n ** 17n; // leave enough for the gas of the refund itself
-  if (balance > keep) {
-    try {
-      await (
-        await who.sendTransaction({ to: funder.address, value: balance - keep })
-      ).wait();
-    } catch {
-      /* not worth failing a passed run over */
-    }
-  }
-}
-console.log(
-  `   funder back to ${formatEther(await eth.getBalance(funder.address))} PAS`
-);
+await giveBack();
 
 process.exit(0);

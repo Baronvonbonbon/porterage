@@ -94,6 +94,8 @@ interface Book {
   threads?: ThreadRecord[];
   /** Where this device says it is, and how far it cares to look. Never sent. */
   here?: { lat: number; lon: number; metres: number };
+  /** Drops this device has been given as the driver, by order id. */
+  drops?: Record<string, { lat: number; lon: number }>;
 }
 
 const KEY = "porterage.notes.v1";
@@ -368,6 +370,26 @@ export function saveHere(
     if (here) book.here = here;
     else delete book.here;
   });
+}
+
+/**
+ * Keep a drop a driver was given. The statement it arrived in expires, and an
+ * address that vanished halfway through a delivery would be worse than one that
+ * never came.
+ */
+export function rememberDrop(
+  orderId: bigint,
+  at: { lat: number; lon: number }
+): Promise<void> {
+  return update((book) => {
+    book.drops = { ...(book.drops ?? {}), [orderId.toString()]: at };
+  });
+}
+
+export function knownDrops(): Promise<
+  Record<string, { lat: number; lon: number }>
+> {
+  return queue.then(load).then((b) => b.drops ?? {});
 }
 
 export async function shieldedBalance(asset = NATIVE): Promise<bigint> {

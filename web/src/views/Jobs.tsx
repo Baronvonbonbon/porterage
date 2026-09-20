@@ -26,6 +26,8 @@ import { Camera } from "./Camera";
 import { commitPhoto } from "../order/evidence";
 import { formatDegrees, metresBetween, type Position } from "../order/geo";
 import { watchAreas } from "../order/area";
+import { watchDrop } from "../order/drop";
+import { knownDrops, rememberDrop } from "../shield/notes";
 import { HerePin, useHere } from "./Here";
 import { tell } from "../notify";
 import { errorText, pasWei } from "../format";
@@ -64,6 +66,8 @@ export function Jobs({
   const [here, setHere] = useHere();
   /** Coarse drop areas, for the orders whose customers chose to publish one. */
   const [areas, setAreas] = useState<Map<string, Position>>(new Map());
+  /** Drops the customers have sent for the jobs this driver holds. */
+  const [drops, setDrops] = useState<Map<string, Position>>(new Map());
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -158,6 +162,37 @@ export function Jobs({
       stop?.();
     };
   }, [open]);
+
+  useEffect(() => {
+    knownDrops().then((stored) =>
+      setDrops(
+        new Map(Object.entries(stored).map(([id, at]) => [id, at as Position]))
+      )
+    );
+  }, []);
+
+  // The customer sends the exact drop once this driver has the job. It arrives
+  // sealed to this device's session key, and is kept, because the statement it
+  // came in expires and an address that vanished mid-delivery would be worse
+  // than one that never came.
+  useEffect(() => {
+    const stops: (() => void)[] = [];
+    let gone = false;
+    for (const o of mine) {
+      const customerKey = talking.get(o.id.toString());
+      if (!customerKey || o.status >= Status.Delivered) continue;
+      watchDrop(sessionKey, customerKey, o.id, (at) => {
+        setDrops((all) => new Map(all).set(o.id.toString(), at));
+        rememberDrop(o.id, at).catch(() => undefined);
+      })
+        .then((stop) => (gone ? stop() : stops.push(stop)))
+        .catch(() => undefined);
+    }
+    return () => {
+      gone = true;
+      for (const stop of stops) stop();
+    };
+  }, [mine, talking, sessionKey]);
 
   useEffect(() => {
     refresh();
@@ -436,6 +471,30 @@ export function Jobs({
                     >
                       deliver it
                     </button>
+                  </>
+                )}
+                {o.status < Status.Delivered && (
+                  <>
+                    <br />
+                    {drops.get(o.id.toString()) ? (
+                      <span>
+                        deliver to{" "}
+                        {formatDegrees(drops.get(o.id.toString())!.lat)},{" "}
+                        {formatDegrees(drops.get(o.id.toString())!.lon)}
+                        {venues.get(o.venueId.toString()) &&
+                          ` — ${far(
+                            metresBetween(
+                              venues.get(o.venueId.toString())!.at,
+                              drops.get(o.id.toString())!
+                            )
+                          )} from the counter`}
+                      </span>
+                    ) : (
+                      <span className="muted">
+                        waiting for the address — the customer's app sends it
+                        once you've said hello
+                      </span>
+                    )}
                   </>
                 )}
                 {talking.get(o.id.toString()) &&
