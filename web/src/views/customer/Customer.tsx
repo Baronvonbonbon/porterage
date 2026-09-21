@@ -23,6 +23,7 @@ import { allVenues, type Venue } from "../../order/venue";
 import { menuOf, type Menu } from "../../order/menu";
 import { ratingText, venueRating } from "../../order/ratings";
 import { billFor } from "../../order/bag";
+import { linesOf, record as recordEntry } from "../../books/ledger";
 import { publishArea } from "../../order/area";
 import { placeOrder, type PlaceStage } from "../../order/flow";
 import { pasOrNull } from "../../money/amount";
@@ -37,6 +38,7 @@ import { Store } from "./Store";
 import { Bag } from "./Bag";
 import { Ordering } from "../Ordering";
 import { Wallet } from "../Wallet";
+import { Books } from "../Books";
 
 type Step = "browse" | "where" | "store" | "bag" | "orders" | "balance";
 
@@ -139,6 +141,19 @@ export function Customer() {
         },
         setStage
       );
+      // The receipt, written after the order exists so a storage failure can
+      // never lose an order that already went through. It stays on this
+      // device: nothing backs it up, because an itemised history of what a
+      // person eats is the one record this design should not make durable.
+      recordEntry({
+        kind: "purchase",
+        orderId: record.id,
+        at: Date.now(),
+        venueId: open.venue.id.toString(),
+        venue: open.menu.name || undefined,
+        ...linesOf(bill),
+      }).catch(() => undefined);
+
       if (tellArea) {
         // After the order exists, never as part of placing it: a failed area
         // must not lose an order that already went through.
@@ -241,7 +256,12 @@ export function Customer() {
 
       {step === "orders" && <Ordering />}
 
-      {step === "balance" && <Wallet />}
+      {step === "balance" && (
+        <>
+          <Wallet />
+          <Books kind="purchase" />
+        </>
+      )}
 
       {error && <p className="error">{error}</p>}
     </>

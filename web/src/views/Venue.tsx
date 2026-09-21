@@ -38,6 +38,9 @@ import { MENU_PUBLIC, VENUE_SEES } from "../copy/privacy";
 import { read } from "../contracts";
 import { Earnings } from "./Earnings";
 import { Funds } from "./Funds";
+import { Books } from "./Books";
+import { billFor } from "../order/bag";
+import { linesOf, record } from "../books/ledger";
 
 type Step = "counter" | "menu" | "takings" | "setup";
 
@@ -130,13 +133,28 @@ export function Venue() {
   useEffect(() => {
     if (!key || !mine.length) return;
     let stop: (() => void) | null = null;
-    watchBaskets(key, mine[0].id, (b) =>
-      setBaskets((all) => new Map(all).set(b.orderId.toString(), b))
-    )
+    watchBaskets(key, mine[0].id, (b) => {
+      setBaskets((all) => new Map(all).set(b.orderId.toString(), b));
+      // Write the sale down as it is charged. The basket is the only place the
+      // items ever exist -- the chain records how much, never what, and these
+      // statements expire in about an hour -- so if this row is not written
+      // now there is nothing to go back to.
+      const bill = billFor(menu, b.items);
+      const chain = orders.find((o) => o.id === b.orderId);
+      record({
+        kind: "sale",
+        orderId: b.orderId.toString(),
+        at: Date.now(),
+        venueId: mine[0].id.toString(),
+        venue: menu.name || undefined,
+        chainValue: chain?.orderValue.toString(),
+        ...linesOf(bill),
+      }).catch(() => undefined);
+    })
       .then((s) => (stop = s))
       .catch((e) => setError(errorText(e)));
     return () => stop?.();
-  }, [key, mine]);
+  }, [key, mine, menu, orders]);
 
   // A basket is sealed with a throwaway key, so whoever wants an answer says
   // hello separately, on the same topic and sealed the same way.
@@ -307,6 +325,7 @@ export function Venue() {
             </p>
           ))}
           <Earnings account={mine[0].payout} />
+          <Books kind="sale" backup />
           <Funds />
         </>
       )}

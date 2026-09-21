@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Wallet } from "ethers";
 import { customerKeyOf, orderTopic, placeBid } from "../order/bids";
 import { recentOrders, Status, type Order } from "../order/orders";
+import { read } from "../contracts";
 import { venueOf, type Venue } from "../order/venue";
 import {
   confirmPickup,
@@ -22,6 +23,7 @@ import { Thread } from "./Thread";
 import { Amount } from "./pickers";
 import { pasOrNull } from "../money/amount";
 import { progressOf } from "../order/progress";
+import { record as recordEntry } from "../books/ledger";
 import { introduce } from "../order/chat";
 import { fileDisputeAsDriver } from "../order/dispute";
 import { driverRating, ratingText } from "../order/ratings";
@@ -95,6 +97,12 @@ export function Jobs({
   const [areas, setAreas] = useState<Map<string, Position>>(new Map());
   /** Orders this driver has bid on and not yet heard about. */
   const bidOn = useRef<Set<string>>(new Set());
+  /**
+   * The protocol's cut, read from the contract rather than assumed. It is
+   * governance-settable, so a hardcoded 250 would quietly make every driver's
+   * income record wrong the day it changed.
+   */
+  const feeBps = useRef(250n);
   /** Recent bids that went to somebody else, so the list can say so. */
   const [lost, setLost] = useState<string[]>([]);
 
@@ -120,13 +128,31 @@ export function Jobs({
       }
 
       setOpen(stillOpen);
-      setMine(
-        all.filter(
-          (o) =>
-            o.driver.toLowerCase() === driver.toLowerCase() &&
-            o.status >= Status.Assigned
-        )
+      const yours = all.filter(
+        (o) =>
+          o.driver.toLowerCase() === driver.toLowerCase() &&
+          o.status >= Status.Assigned
       );
+      setMine(yours);
+      // A driver never sees the settlement land -- the customer submits it --
+      // so the only moment this device learns a job paid is when its status
+      // comes back Delivered. Writing the row here is what gives a driver an
+      // income record at all; the vault only ever shows a running balance.
+      // `record` replaces by order id, so re-seeing a delivered job is free.
+      for (const o of yours) {
+        if (o.status < Status.Delivered) continue;
+        const fee = (o.fare * feeBps.current) / 10_000n;
+        recordEntry({
+          kind: "earning",
+          orderId: o.id.toString(),
+          at: Date.now(),
+          venueId: o.venueId.toString(),
+          fare: o.fare.toString(),
+          tip: o.tip.toString(),
+          fee: fee.toString(),
+          net: (o.fare - fee + o.tip).toString(),
+        }).catch(() => undefined);
+      }
       const ids = [...new Set(all.map((o) => o.venueId.toString()))];
       setVenues(
         new Map(
@@ -248,6 +274,13 @@ export function Jobs({
       for (const stop of stops) stop();
     };
   }, [mine, talking, sessionKey]);
+
+  useEffect(() => {
+    read("orders")
+      .feeBps()
+      .then((b: bigint) => (feeBps.current = BigInt(b)))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     refresh();

@@ -26,6 +26,10 @@ export const LABEL = {
   note: (n: number) => `porterage:note:${n}`,
   payout: (n: number) => `porterage:payout:${n}`,
   ops: (epoch: number) => `porterage:ops:${epoch}`,
+  /** The books (books/ledger.ts): its own key, never the note book's. */
+  books: "porterage:books",
+  /** What the daily backup of the books is encrypted under. */
+  booksBackup: "porterage:books:backup",
 } as const;
 
 let source: Promise<KeySource> | null = null;

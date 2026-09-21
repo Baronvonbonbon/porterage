@@ -18,6 +18,7 @@ import { addressOf, deployed, encode, ethProvider, read } from "../contracts";
 import { errorText, pas, pasWei, short } from "../format";
 import { Earnings } from "./Earnings";
 import { Funds } from "./Funds";
+import { Books } from "./Books";
 import { Jobs } from "./Jobs";
 import { Helper } from "./Helper";
 import { Profile } from "./driver/Profile";
@@ -238,6 +239,7 @@ export function Driver() {
           {step === "earnings" && (
             <>
               <Earnings account={me.evm} />
+              <Books kind="earning" backup />
               <Funds />
             </>
           )}
