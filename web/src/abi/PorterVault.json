@@ -108,6 +108,19 @@
   "anonymous": false,
   "inputs": [
    {
+    "indexed": false,
+    "internalType": "bool",
+    "name": "open",
+    "type": "bool"
+   }
+  ],
+  "name": "ClearExitsSet",
+  "type": "event"
+ },
+ {
+  "anonymous": false,
+  "inputs": [
+   {
     "indexed": true,
     "internalType": "address",
     "name": "to",
@@ -680,6 +693,19 @@
  },
  {
   "inputs": [],
+  "name": "clearExitsOpen",
+  "outputs": [
+   {
+    "internalType": "bool",
+    "name": "",
+    "type": "bool"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
   "name": "contractVersion",
   "outputs": [
    {
@@ -1221,6 +1247,19 @@
    }
   ],
   "name": "setAuthorized",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "bool",
+    "name": "open",
+    "type": "bool"
+   }
+  ],
+  "name": "setClearExits",
   "outputs": [],
   "stateMutability": "nonpayable",
   "type": "function"

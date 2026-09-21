@@ -40,6 +40,12 @@ They are now behind `clearExitsOpen`, which **ships false**. While it is false t
 with `shielded-only`, and the only way out of the vault is a bucket of balance turned into a
 Kusama Shield note and spent with a proof that binds nothing to the earner.
 
+**Deployed 2026-09-21** at `0x21A7F0C49b4cd0B03ae4DD63df462722f12D0fDE`, replacing
+`0xe70ADDFDf619Bbc4f2500bb1e5840E839448910e`, with `clearExitsOpen` read back as `false` from the
+live chain rather than assumed from the source. The old vault's remaining 23.275 PAS is stranded:
+the keys that could have withdrawn it were `Wallet.createRandom()` in a test harness and no longer
+exist. That is the honest cost of this change and it is written here rather than left out.
+
 **Why a flag and not a deletion.** This contract's own rule is that nothing is ever trapped. If the
 shield pool were broken, unreachable, or its verifying key wrong, deleting the clear path would
 strand every balance in the vault for good. Governance can open the door; nobody else can.
