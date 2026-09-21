@@ -74,6 +74,10 @@ describe("FARE — stablecoin escrow (C3)", () => {
     await settlement.setLocationVerifier(verifier.target);
     await disputes.configure(orders.target, vault.target, drivers.target, treasury.address);
     await vault.setAuthorized(orders.target, true);
+    // These suites exercise the NAMED-ADDRESS withdrawal path, which ships
+    // shut (PorterVault.clearExitsOpen). Opening it here is deliberate and
+    // local to the tests; vault-shielded-only.test.ts asserts the default.
+    await vault.setClearExits(true);
     await vault.setAuthorized(disputes.target, true);
     await drivers.setAuthorized(orders.target, true);
     await drivers.setAuthorized(disputes.target, true);

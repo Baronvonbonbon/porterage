@@ -110,6 +110,10 @@ describe("shield notes — stablecoin payouts", function () {
 
     await verifier.setVerifyingKey(VK.alpha1, VK.beta2, VK.gamma2, VK.delta2, VK.IC0, VK.IC1, VK.IC2, VK.IC3, VK.IC4);
     await vault.setAuthorized(owner.address, true);
+    // This suite exercises the NAMED-ADDRESS withdrawal path, which ships
+    // shut (PorterVault.clearExitsOpen). Opening it here is deliberate;
+    // vault-shielded-only.test.ts asserts the default.
+    await vault.setClearExits(true);
     await vault.setShieldPool(pool.target);
     await vault.setShieldBuckets([PAS(1), PAS(5)]);
     await vault.setShieldPoseidon(adapter.target);

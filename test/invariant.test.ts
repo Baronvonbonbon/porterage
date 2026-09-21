@@ -91,6 +91,10 @@ describe("Invariant fuzz: escrow conservation & vault solvency", () => {
     await disputes.configure(orders.target, vault.target, driversC.target, treasury.address);
     await disputes.setDisputeBond(ethers.parseEther("0.01"));
     await vault.setAuthorized(orders.target, true);
+    // These suites exercise the NAMED-ADDRESS withdrawal path, which ships
+    // shut (PorterVault.clearExitsOpen). Opening it here is deliberate and
+    // local to the tests; vault-shielded-only.test.ts asserts the default.
+    await vault.setClearExits(true);
     await vault.setAuthorized(disputes.target, true);
     await driversC.setAuthorized(orders.target, true);
     await driversC.setAuthorized(disputes.target, true);

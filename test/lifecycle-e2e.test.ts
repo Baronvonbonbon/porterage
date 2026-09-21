@@ -140,6 +140,10 @@ describe("full lifecycle on a local chain: one delivery, every seam", function (
     await settlement.setLocationVerifier(verifier.target);
     await disputes.configure(orders.target, vault.target, drivers.target, treasury.address);
     await vault.setAuthorized(orders.target, true);
+    // These suites exercise the NAMED-ADDRESS withdrawal path, which ships
+    // shut (PorterVault.clearExitsOpen). Opening it here is deliberate and
+    // local to the tests; vault-shielded-only.test.ts asserts the default.
+    await vault.setClearExits(true);
     await drivers.setAuthorized(orders.target, true);
     await venues.setAuthorized(orders.target, true);
     await vault.setShieldPool(pool.target);

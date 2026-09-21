@@ -74,6 +74,9 @@ const MATRIX: Entry[] = [
 
   // ── PorterVault ───────────────────────────────────────────────────────────
   { c: "vault", fn: "setWithdrawFeeBps", args: [100], allow: ["owner"] },
+  // Shutting or opening the named-address exits is governance's alone: it is
+  // the difference between a private system and one anybody can leak from.
+  { c: "vault", fn: "setClearExits", args: [true], allow: ["owner"] },
   { c: "vault", fn: "setRouter", args: [A1], allow: ["owner"] },
   { c: "vault", fn: "setShieldPool", args: [A1], allow: ["owner"] },
   { c: "vault", fn: "setShieldBuckets", args: [[PAS(1)]], allow: ["owner"] },
@@ -211,6 +214,10 @@ describe("access control matrix", () => {
     // on an owner-gated call" is a real assertion rather than an artifact of one
     // address holding everything.
     await vault.setAuthorized(authorized.address, true);
+    // These suites exercise the NAMED-ADDRESS withdrawal path, which ships
+    // shut (PorterVault.clearExitsOpen). Opening it here is deliberate and
+    // local to the tests; vault-shielded-only.test.ts asserts the default.
+    await vault.setClearExits(true);
     await drivers.setAuthorized(authorized.address, true);
     await venues.setAuthorized(authorized.address, true);
     await disputes.setArbiter(arbiter.address);

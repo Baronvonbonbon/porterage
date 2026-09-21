@@ -153,6 +153,52 @@ contract PorterVault is Ownable2Step, PaseoSafeSender, PorterUpgradable, EIP712 
     event TokenCredited(address indexed token, address indexed to, address indexed from, uint256 amount, uint256 newBalance);
     event TokenWithdrawn(address indexed token, address indexed account, address indexed to, uint256 amount);
 
+    /// @notice Whether value may leave this vault to a NAMED ADDRESS.
+    ///
+    ///         Default CLOSED, and that is the whole point of it. A driver or
+    ///         a venue calling `withdraw()` moves their earnings to the
+    ///         account everybody already knows is theirs, in the clear, in an
+    ///         amount that says how much work they did. Everything else in
+    ///         this design spends effort making value flow unlinkable, and one
+    ///         convenience function undoes it for whoever reaches for it —
+    ///         which is, reliably, the person in a hurry.
+    ///
+    ///         So the ordinary way out is the only way out: `insertShieldNote`
+    ///         turns a bucket of balance into a note in Kusama Shield, and the
+    ///         note is spent by a ZK proof that binds nothing to the earner.
+    ///         That path is NEVER gated — not by this flag, not by the freeze,
+    ///         not by a pause. Money can always leave; it just has to leave
+    ///         privately.
+    ///
+    ///         WHY A FLAG AND NOT A DELETION. This contract's stated rule is
+    ///         that nothing is ever trapped (see PorterUpgradable). If the
+    ///         shield pool were ever broken, unreachable, or its verifying key
+    ///         wrong, deleting the clear path would strand every balance here
+    ///         for good. Governance can open this; nobody else can; and while
+    ///         it is shut the functions revert rather than quietly doing
+    ///         something private instead.
+    ///
+    ///         WHAT IT COSTS, plainly: a balance below the smallest bucket
+    ///         cannot be shielded, so it waits in the vault until more
+    ///         earnings push it over. Someone who stops using Porterage for
+    ///         ever leaves less than one bucket behind. That is the price of
+    ///         not offering a leak, and it is worth it.
+    bool public clearExitsOpen;
+
+    event ClearExitsSet(bool open);
+
+    /// Named-address withdrawals. Never put this on `insertShieldNote`.
+    modifier whenClearExits() {
+        require(clearExitsOpen, "shielded-only");
+        _;
+    }
+
+    /// @notice Open or shut withdrawals to a named address. Governance only.
+    function setClearExits(bool open) external onlyOwner {
+        clearExitsOpen = open;
+        emit ClearExitsSet(open);
+    }
+
     constructor() Ownable(msg.sender) EIP712("PorterVault", "1") {}
 
     /// @notice Fee (bps of the withdrawal) paid to the relay that submits a
@@ -377,23 +423,23 @@ contract PorterVault is Ownable2Step, PaseoSafeSender, PorterUpgradable, EIP712 
     }
 
     /// @notice Pull full `token` balance to self.
-    function withdrawToken(address token) external nonReentrant {
+    function withdrawToken(address token) external nonReentrant whenClearExits {
         _withdrawToken(token, msg.sender);
     }
 
     /// @notice Pull full `token` balance to a chosen recipient (cold wallet).
-    function withdrawTokenTo(address token, address recipient) external nonReentrant {
+    function withdrawTokenTo(address token, address recipient) external nonReentrant whenClearExits {
         require(recipient != address(0), "zero-addr");
         _withdrawToken(token, recipient);
     }
 
     /// @notice Pull full balance to self.
-    function withdraw() external nonReentrant {
+    function withdraw() external nonReentrant whenClearExits {
         _withdraw(msg.sender);
     }
 
     /// @notice Pull full balance to a chosen recipient (cold wallet).
-    function withdrawTo(address recipient) external nonReentrant {
+    function withdrawTo(address recipient) external nonReentrant whenClearExits {
         require(recipient != address(0), "zero-addr");
         _withdraw(recipient);
     }
@@ -410,7 +456,7 @@ contract PorterVault is Ownable2Step, PaseoSafeSender, PorterUpgradable, EIP712 
         address recipient,
         uint256 deadline,
         bytes calldata signature
-    ) external nonReentrant {
+    ) external nonReentrant whenClearExits {
         require(block.timestamp <= deadline, "expired");
         require(recipient != address(0), "zero-addr");
         bytes32 digest = _hashTypedDataV4(
@@ -450,7 +496,7 @@ contract PorterVault is Ownable2Step, PaseoSafeSender, PorterUpgradable, EIP712 
         address recipient,
         uint256 deadline,
         bytes calldata signature
-    ) external nonReentrant {
+    ) external nonReentrant whenClearExits {
         require(block.timestamp <= deadline, "expired");
         require(recipient != address(0), "zero-addr");
         bytes32 digest = _hashTypedDataV4(
