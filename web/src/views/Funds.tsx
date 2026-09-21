@@ -21,6 +21,7 @@ import { ethProvider } from "../contracts";
 import { MAX_MARGIN_BPS, WITHDRAW_GAS } from "../market/auction";
 import { describePlan, maxWithdrawable, planWithdrawal } from "../shield/plan";
 import { allNotes, type NoteRecord } from "../shield/notes";
+import { NoteBackup } from "./Backup";
 import { planTopUp, topUp } from "../shield/deposit";
 import {
   cashOut,
@@ -232,6 +233,8 @@ export function Funds() {
           </ul>
         </>
       )}
+
+      <NoteBackup />
 
       {busy && <p className="muted">{busy}…</p>}
       {done && <p className="ok">{done}</p>}

@@ -256,6 +256,95 @@ function update<T>(fn: (book: Book) => T | Promise<T>): Promise<T> {
 
 // ── the API the rest of the app uses ─────────────────────────────────────────
 
+/** The whole book, for a backup. */
+export function exportBook(): Promise<Book> {
+  return queue.then(load);
+}
+
+/**
+ * Merge a restored book into this device's.
+ *
+ * THE ONE RULE THAT MATTERS: spent is one-way. If either copy says a note was
+ * spent, the merged one says so too. A backup taken before a spend would
+ * otherwise resurrect that note, and the device would go on to build a proof
+ * for it, wait for a submitter and be told "Nullifier already spent" — having
+ * shown a nullifier to the world for nothing.
+ *
+ * Everything else prefers whichever copy knows more: a settled path beats none.
+ */
+export function mergeBook(incoming: Book): Promise<number> {
+  return update((book) => {
+    const { notes, added } = mergeNotes(book.notes, incoming.notes ?? []);
+    book.notes = notes;
+    // Counters must never go backwards, or a restored device would hand out a
+    // note or burner number that is already in use and overwrite live money.
+    book.next = Math.max(book.next ?? 0, incoming.next ?? 0);
+    book.burners = Math.max(book.burners ?? 0, incoming.burners ?? 0);
+    book.nextPayout = Math.max(book.nextPayout ?? 0, incoming.nextPayout ?? 0);
+    book.payouts = dedupe(book.payouts, incoming.payouts);
+    book.cashOuts = dedupeCashOuts(book.cashOuts, incoming.cashOuts);
+    return added;
+  });
+}
+
+/**
+ * Merge two lists of notes. Pure, so the rule can be tested without a browser.
+ *
+ * SPENT IS ONE-WAY. If either copy says a note was spent, the merged one does
+ * too. A backup taken before a spend would otherwise resurrect that note, and
+ * the device would build a proof for it, publish it, wait for a submitter and
+ * be told "Nullifier already spent" — having shown a nullifier to the world for
+ * nothing. Everything else prefers whichever copy knows more.
+ */
+export function mergeNotes(
+  ours: NoteRecord[],
+  theirs: NoteRecord[]
+): { notes: NoteRecord[]; added: number } {
+  const by = new Map(ours.map((r) => [r.n, r]));
+  let added = 0;
+  for (const t of theirs) {
+    const mine = by.get(t.n);
+    if (!mine) {
+      // Normalised on the way in, exactly like a merged one. Otherwise a note
+      // added by a restore keeps `spent: undefined` while a merged one becomes
+      // `spent: false`, and running the same restore twice produces two
+      // different books -- which is a nasty thing to discover while comparing
+      // a device against its backup.
+      by.set(t.n, { ...t, spent: !!t.spent });
+      added++;
+      continue;
+    }
+    by.set(t.n, {
+      ...t,
+      ...mine,
+      path: mine.path ?? t.path,
+      spent: !!(mine.spent || t.spent),
+      spending: mine.spending ?? t.spending,
+    });
+  }
+  return { notes: [...by.values()].sort((a, b) => a.n - b.n), added };
+}
+
+const dedupe = (
+  mine: PayoutRecord[] = [],
+  theirs: PayoutRecord[] = []
+): PayoutRecord[] => {
+  const by = new Map(theirs.map((r) => [r.n, r]));
+  for (const r of mine) by.set(r.n, { ...by.get(r.n), ...r });
+  return [...by.values()].sort((a, b) => a.n - b.n);
+};
+
+const dedupeCashOuts = (
+  mine: CashOutRecord[] = [],
+  theirs: CashOutRecord[] = []
+): CashOutRecord[] => {
+  const by = new Map(theirs.map((r) => [r.burner, r]));
+  for (const r of mine) by.set(r.burner, { ...by.get(r.burner), ...r });
+  return [...by.values()].sort((a, b) => a.burner - b.burner);
+};
+
+export type { Book };
+
 export function allNotes(): Promise<NoteRecord[]> {
   return queue.then(load).then((b) => b.notes);
 }

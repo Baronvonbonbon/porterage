@@ -28,6 +28,8 @@ export const LABEL = {
   ops: (epoch: number) => `porterage:ops:${epoch}`,
   /** The books (books/ledger.ts): its own key, never the note book's. */
   books: "porterage:books",
+  /** What a backup of the NOTE book is encrypted under (shield/recover.ts). */
+  notesBackup: "porterage:notes:backup",
   /** What the daily backup of the books is encrypted under. */
   booksBackup: "porterage:books:backup",
 } as const;

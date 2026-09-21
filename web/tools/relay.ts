@@ -9,7 +9,7 @@
 // Usage, from the repo root:  npm run relay
 // RELAY_KEY_FILE: Ethereum key that pays gas (default ~/.config/porterage/deploy-key)
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { JsonRpcProvider, Wallet, formatEther, getBytes } from "ethers";
@@ -42,9 +42,22 @@ const STORES = [
 const eth = new JsonRpcProvider(CHAIN.ethRpc, Number(CHAIN.chainId), {
   staticNetwork: true,
 });
+// The relay's OWN key, not the deploy key.
+//
+// It used to default to `deploy-key`, which on this testnet is also the
+// treasury, the arbiter and the upgrade authority. The relay is the only one of
+// those that runs unattended on a networked machine with its key loaded, so
+// that default made the most exposed key the most privileged one. A relay needs
+// gas and nothing else: the proofs it submits fix where every withdrawal goes,
+// so a stolen relay key costs the gas left in it.
+//
+// The deploy key still works, to avoid breaking a running relay, but it says so
+// every time. `npm run relay-key -- --fund 20` makes the warning go away.
+const CONFIG = join(homedir(), ".config", "porterage");
+const relayKeyFile = process.env.RELAY_KEY_FILE ?? join(CONFIG, "relay-key");
+const usingDeployKey = !existsSync(relayKeyFile);
 const key = readFileSync(
-  process.env.RELAY_KEY_FILE ??
-    join(homedir(), ".config", "porterage", "deploy-key"),
+  usingDeployKey ? join(CONFIG, "deploy-key") : relayKeyFile,
   "utf8"
 ).trim();
 const signer = new Wallet(key, eth);
@@ -196,4 +209,11 @@ log(
     await eth.getBalance(signer.address)
   )} PAS for gas`
 );
+if (usingDeployKey) {
+  log(
+    "WARNING: running on the DEPLOY key. That key is also the treasury, the " +
+      "arbiter and the upgrade authority, and it is now sitting on a networked " +
+      "machine. Run `npm run relay-key -- --fund 20` and restart."
+  );
+}
 STORES.forEach(watch);

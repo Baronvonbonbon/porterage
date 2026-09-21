@@ -25,6 +25,7 @@ import {
 } from "../shield/fund";
 import { errorText, pas, pasWei, short } from "../format";
 import { Choose } from "./pickers/Choose";
+import { NoteBackup } from "./Backup";
 import { Amount } from "./pickers/Amount";
 import { pasOrNull } from "../money/amount";
 
@@ -308,6 +309,8 @@ export function Wallet() {
           Fund a private account
         </button>
       </div>
+      <NoteBackup />
+
       {stage && <p className="muted">{STAGE_TEXT[stage.stage]}…</p>}
       {proveMs !== null && (
         <p className="muted">
