@@ -6,13 +6,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Wallet } from "ethers";
 import { deployed } from "../contracts";
-import { allVenues, venueOf, type Venue } from "../order/venue";
-import {
-  formatDegrees,
-  metresBetween,
-  parseDegrees,
-  type Position,
-} from "../order/geo";
+import { venueOf, type Venue } from "../order/venue";
+import { formatDegrees, type Position } from "../order/geo";
 import {
   acceptBid,
   cancelOrder,
@@ -21,12 +16,7 @@ import {
   type Order,
 } from "../order/orders";
 import { orderTopic, watchBids, type Bid } from "../order/bids";
-import {
-  fundingFor,
-  orderBurner,
-  placeOrder,
-  type PlaceStage,
-} from "../order/flow";
+import { orderBurner, type PlaceStage } from "../order/flow";
 import { allOrders, type OrderRecord } from "../shield/notes";
 import {
   confirmDropoff,
@@ -36,47 +26,32 @@ import {
   type DropRequest,
 } from "../order/handoff";
 import { QrScan, QrShow } from "./Qr";
-import { Choose, ChooseMany } from "./pickers/Choose";
-import { Amount, Count } from "./pickers";
-import { pasOrNull } from "../money/amount";
+
 import { settleDebts } from "../order/flow";
 import { progressOf } from "../order/progress";
 import { Waiting } from "./State";
 import { Thread } from "./Thread";
-import { MapPick } from "./pickers/MapPick";
+
 import {
   committedPhotoKey,
   driverKeyFromDropSignature,
   fetchPhoto,
 } from "../order/evidence";
-import { PHASE_DROPOFF } from "../order/handoff";
-import { basketTotal, basketText, menuOf, type Menu } from "../order/menu";
-import { LABELS, labelWord, matchesLabels, type Label } from "../order/labels";
+
+import { menuOf, type Menu } from "../order/menu";
+
 import { watchIntros } from "../order/chat";
-import { cellOf, cellVagueness, publishArea } from "../order/area";
+
 import { sendDrop } from "../order/drop";
 import { Directions } from "./Directions";
-import { HerePin, useHere } from "./Here";
+import { useHere } from "./Here";
 import { disputeOf, fileDispute, type Filed } from "../order/dispute";
-import {
-  driverRating,
-  rate,
-  ratingText,
-  venueRating,
-  wasRated,
-} from "../order/ratings";
+import { driverRating, rate, ratingText, wasRated } from "../order/ratings";
 import { Stars } from "./pickers/Stars";
 import { rememberOrder } from "../shield/notes";
 import { tell } from "../notify";
-import { errorText, metres, pasWei, short } from "../format";
-import {
-  BASKET_SEALED,
-  BASKET_UNSEALED,
-  coarseArea,
-  DROP_SENDING,
-  DROP_SENT,
-  DROP_WAITING,
-} from "../copy/privacy";
+import { errorText, pasWei, short } from "../format";
+import { DROP_SENDING, DROP_SENT, DROP_WAITING } from "../copy/privacy";
 
 const PAS = 10n ** 18n;
 
@@ -93,12 +68,6 @@ const STAGE_TEXT: Record<PlaceStage, string> = {
 };
 
 export function Ordering() {
-  const [venues, setVenues] = useState<Venue[]>([]);
-  const [venueId, setVenueId] = useState<string>("");
-  const [goods, setGoods] = useState("1");
-  const [maxFare, setMaxFare] = useState("2");
-  const [lat, setLat] = useState("37.784900");
-  const [lon, setLon] = useState("-122.419400");
   const [mine, setMine] = useState<OrderRecord[]>([]);
   const [live, setLive] = useState<{
     record: OrderRecord;
@@ -106,16 +75,12 @@ export function Ordering() {
     burner: Wallet;
   } | null>(null);
   const [bids, setBids] = useState<Bid[]>([]);
-  const [stage, setStage] = useState<PlaceStage | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [door, setDoor] = useState<DropRequest | null>(null);
   const [scanning, setScanning] = useState(false);
   const [proveMs, setProveMs] = useState<number | null>(null);
-  const [menu, setMenu] = useState<Menu | null>(null);
-  const [picked, setPicked] = useState<Map<string, number>>(new Map());
   const [photo, setPhoto] = useState<string | null>(null);
-  const [mapping, setMapping] = useState(false);
   // Who this order can talk to: the driver once it introduces itself, and the
   // kitchen whose key the menu published.
   const [driverKey, setDriverKey] = useState<string | null>(null);
@@ -131,15 +96,9 @@ export function Ordering() {
   const [stars, setStars] = useState<Map<string, string>>(new Map());
   const [here, setHere] = useHere();
   /** Publish a coarse area with the order, so drivers can judge the trip. */
-  const [tellArea, setTellArea] = useState(false);
   /** What the customer is looking for, and what each venue says it is. */
-  const [wanted, setWanted] = useState<Label[]>([]);
-  const [venueLabels, setVenueLabels] = useState<Map<string, Label[]>>(
-    new Map()
-  );
   const stop = useRef<(() => void) | null>(null);
   /** Distinguishes "still looking" from "there are none", which look the same. */
-  const [loadingVenues, setLoadingVenues] = useState(true);
   /** How each remembered order ended, so the list says more than a date. */
   const [past, setPast] = useState<Map<string, Order>>(new Map());
 
@@ -147,7 +106,6 @@ export function Ordering() {
     setError(null);
     try {
       if (!deployed()) return;
-      setVenues((await allVenues()).filter((v) => v.active));
       const records = await allOrders();
       setMine(records.sort((a, b) => b.placedAt - a.placedAt));
       // Read each one's state so the list can say how it ended. Cheap: these
@@ -163,9 +121,6 @@ export function Ordering() {
       );
     } catch (e) {
       setError(errorText(e));
-    } finally {
-      // In the finally, or a load that failed would spin for ever.
-      setLoadingVenues(false);
     }
   }, []);
 
@@ -193,56 +148,6 @@ export function Ordering() {
       );
     });
   }, []);
-
-  // The venue's menu lives on Bulletin; its pointer is the venue's metadata.
-  useEffect(() => {
-    setMenu(null);
-    setPicked(new Map());
-    const v = venues.find((x) => x.id.toString() === venueId);
-    if (!v?.metadataURI) return;
-    let live = true;
-    menuOf(v.metadataURI)
-      .then((m) => live && setMenu(m))
-      .catch(() => live && setMenu(null));
-    return () => {
-      live = false;
-    };
-  }, [venueId, venues]);
-
-  // Every venue's labels, which live in its menu. The first pass costs a
-  // Bulletin fetch each; after that the cache answers (order/menu.ts).
-  useEffect(() => {
-    let on = true;
-    Promise.all(
-      venues.map(async (v) => {
-        const m = v.metadataURI
-          ? await menuOf(v.metadataURI).catch(() => null)
-          : null;
-        return [v.id.toString(), m?.labels ?? []] as const;
-      })
-    )
-      .then((rows) => on && setVenueLabels(new Map(rows)))
-      .catch(() => undefined);
-    return () => {
-      on = false;
-    };
-  }, [venues]);
-
-  // Venue reputations, so a venue can be chosen on more than its distance.
-  useEffect(() => {
-    let on = true;
-    Promise.all(
-      venues.map(
-        async (v) =>
-          [v.id.toString(), ratingText(await venueRating(v.id))] as const
-      )
-    )
-      .then((rows) => on && setStars((m) => new Map([...m, ...rows])))
-      .catch(() => undefined);
-    return () => {
-      on = false;
-    };
-  }, [venues]);
 
   // And the reputation of whoever is bidding.
   useEffect(() => {
@@ -351,50 +256,6 @@ export function Ordering() {
       stopping?.();
     };
   }, [live]);
-
-  const drop = { lat: parseDegrees(lat), lon: parseDegrees(lon) };
-  const basket = menu ? basketTotal(menu, picked) : null;
-  // The amounts are parsed once, here, and the button is off until both read.
-  // The inline `Number(x) * 1e6` this replaces turned "one" into a thrown NaN
-  // and quietly rounded away anything past six decimals.
-  const goodsWei = basket !== null && basket > 0n ? basket : pasOrNull(goods);
-  const maxFareWei = pasOrNull(maxFare);
-  const plan =
-    venueId &&
-    drop.lat !== null &&
-    drop.lon !== null &&
-    goodsWei !== null &&
-    maxFareWei !== null
-      ? {
-          venueId: BigInt(venueId),
-          drop: { lat: drop.lat, lon: drop.lon },
-          orderValue: goodsWei,
-          basket: menu
-            ? { items: picked, counterKey: menu.counterKey }
-            : undefined,
-          tip: 0n,
-          maxFare: maxFareWei,
-        }
-      : null;
-
-  async function place() {
-    if (!plan) return;
-    setError(null);
-    try {
-      const { record } = await placeOrder(plan, setStage);
-      if (tellArea) {
-        // After the order exists, and never as part of placing it: a failed
-        // area must not lose an order that already went through.
-        await publishArea(BigInt(record.id), plan.drop).catch(() => undefined);
-      }
-      await refresh();
-      await openOrder(record);
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setStage(null);
-    }
-  }
 
   async function take(bid: Bid) {
     if (!live) return;
@@ -506,47 +367,6 @@ export function Ordering() {
     }
   }
 
-  /** Distance from the saved pin, nearest first, and only what's in range. */
-  const near = (() => {
-    const rows = venues.map((v) => ({
-      ...v,
-      away: here ? metresBetween({ lat: here.lat, lon: here.lon }, v.at) : null,
-    }));
-    const wantedOnly = rows.filter((v) =>
-      matchesLabels(venueLabels.get(v.id.toString()) ?? [], wanted)
-    );
-    if (!here) return wantedOnly;
-    return wantedOnly
-      .filter((v) => v.away !== null && v.away <= here.metres)
-      .sort((a, b) => (a.away ?? 0) - (b.away ?? 0));
-  })();
-
-  const fromHere = (away: number) => `${metres(away)} away`;
-
-  const chosenVenue = venues.find((v) => v.id.toString() === venueId);
-
-  if (mapping && chosenVenue) {
-    return (
-      <section>
-        <h2>Where to</h2>
-        <MapPick
-          venue={chosenVenue.at}
-          initial={
-            drop.lat !== null && drop.lon !== null
-              ? { lat: drop.lat, lon: drop.lon }
-              : undefined
-          }
-          onCancel={() => setMapping(false)}
-          onPick={(p) => {
-            setLat(formatDegrees(p.lat));
-            setLon(formatDegrees(p.lon));
-            setMapping(false);
-          }}
-        />
-      </section>
-    );
-  }
-
   if (live && scanning) {
     return (
       <section>
@@ -562,192 +382,36 @@ export function Ordering() {
 
   return (
     <section>
-      <h2>Order</h2>
-
       {!live && (
         <>
-          {near.length === 0 && venues.length > 0 ? (
-            <p className="notice">
-              No venues within {((here?.metres ?? 0) / 1000).toFixed(1)} km.{" "}
-              <button className="link" onClick={() => setHere(null)}>
-                Show them all
-              </button>
+          <h2>Your orders</h2>
+          {mine.length === 0 && (
+            <p className="muted">
+              Nothing yet. Browse a place and put something in a bag.
             </p>
-          ) : null}
-          {venues.length === 0 ? (
-            loadingVenues ? (
-              <Waiting what="Looking for venues" />
-            ) : (
-              <p className="notice">
-                No venues have registered yet. Open Sell on another phone to add
-                one.
-              </p>
-            )
-          ) : (
-            <div className="actions">
-              <HerePin
-                here={here}
-                onChange={setHere}
-                start={venues[0].at}
-                what="venues"
-              />
-              <p className="muted">Looking for</p>
-              <ChooseMany
-                label="What are you looking for"
-                values={wanted}
-                onPick={setWanted}
-                choices={LABELS.map((l) => ({ value: l, label: labelWord(l) }))}
-              />
-              <p className="muted">From</p>
-              <Choose
-                label="Venue"
-                value={venueId}
-                onPick={setVenueId}
-                choices={near.map((v) => ({
-                  value: v.id.toString(),
-                  label: `#${v.id.toString()}`,
-                  note: [
-                    (venueLabels.get(v.id.toString()) ?? [])
-                      .map(labelWord)
-                      .join(", "),
-                    stars.get(v.id.toString()) ?? "…",
-                    v.away === null ? "" : fromHere(v.away),
-                  ]
-                    .filter(Boolean)
-                    .join(" — "),
-                }))}
-              />
-              {menu ? (
-                <>
-                  <p>
-                    <b>{menu.name || `Venue #${venueId}`}</b>
-                  </p>
-                  {menu.items.map((i) => (
-                    <p key={i.id} className="line">
-                      <Count
-                        label={i.name}
-                        value={picked.get(i.id) ?? 0}
-                        onChange={(n) =>
-                          setPicked(new Map(picked).set(i.id, n))
-                        }
-                      />{" "}
-                      {i.name} — {pasWei(i.price)}
-                    </p>
-                  ))}
-                  <p className="muted">
-                    {basket && basket > 0n
-                      ? `${basketText(menu, picked)} — ${pasWei(basket)}`
-                      : "Pick something from the menu."}
-                    {menu.counterKey
-                      ? ` ${BASKET_SEALED}`
-                      : ` ${BASKET_UNSEALED}`}
-                  </p>
-                </>
-              ) : (
-                <Amount
-                  label="Goods worth"
-                  value={goods}
-                  onChange={setGoods}
-                  presets={[1, 5, 10]}
-                  hint={
-                    venueId ? "This venue has published no menu." : undefined
-                  }
-                />
-              )}
-              <Amount
-                label="Pay up to"
-                value={maxFare}
-                onChange={setMaxFare}
-                presets={[1, 2, 5]}
-                hint="The most the delivery may cost. Drivers bid under it."
-              />
-              <label>
-                Drop at{" "}
-                <input
-                  inputMode="decimal"
-                  value={lat}
-                  onChange={(e) => setLat(e.target.value)}
-                  size={11}
-                />
-                <input
-                  inputMode="decimal"
-                  value={lon}
-                  onChange={(e) => setLon(e.target.value)}
-                  size={11}
-                />
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={tellArea}
-                  onChange={(e) => setTellArea(e.target.checked)}
-                />{" "}
-                Let drivers see roughly where this goes
-              </label>
-              {tellArea && drop.lat !== null && drop.lon !== null && (
-                <p className="warn">
-                  {coarseArea(
-                    `${formatDegrees(
-                      cellOf({ lat: drop.lat, lon: drop.lon }).lat
-                    )}, ${formatDegrees(
-                      cellOf({ lat: drop.lat, lon: drop.lon }).lon
-                    )}`,
-                    cellVagueness(drop.lat)
-                  )}
-                </p>
-              )}
-              <button
-                className="link"
-                disabled={!chosenVenue}
-                onClick={() => setMapping(true)}
-              >
-                {chosenVenue
-                  ? "Choose it on a map"
-                  : "Choose a venue to use the map"}
-              </button>
-              {plan && (
-                <p className="muted">
-                  Needs {pasWei(fundingFor(plan))} in one note: the goods, the
-                  fare and its own gas. The drop stays on this phone — the order
-                  carries only a commitment to it.
-                </p>
-              )}
-              <button
-                className="primary"
-                disabled={!plan || !!stage}
-                onClick={place}
-              >
-                Place the order
-              </button>
-            </div>
           )}
-          {stage && <p className="muted">{STAGE_TEXT[stage]}…</p>}
-
           {mine.length > 0 && (
-            <>
-              <h3>Your orders</h3>
-              <ul>
-                {mine.map((r) => {
-                  const was = past.get(r.id);
-                  return (
-                    <li key={r.id}>
-                      <button className="link" onClick={() => openOrder(r)}>
-                        #{r.id} — {new Date(r.placedAt).toLocaleString()}
-                      </button>
-                      {was && (
-                        <>
-                          <br />
-                          <span className="muted">
-                            {progressOf(was, "customer").now}{" "}
-                            {pasWei(was.orderValue + was.fare)}
-                          </span>
-                        </>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </>
+            <ul>
+              {mine.map((r) => {
+                const was = past.get(r.id);
+                return (
+                  <li key={r.id}>
+                    <button className="link" onClick={() => openOrder(r)}>
+                      #{r.id} — {new Date(r.placedAt).toLocaleString()}
+                    </button>
+                    {was && (
+                      <>
+                        <br />
+                        <span className="muted">
+                          {progressOf(was, "customer").now}{" "}
+                          {pasWei(was.orderValue + was.fare)}
+                        </span>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </>
       )}

@@ -18,6 +18,8 @@ import { encodePickup, nowSeconds, signPickup } from "../order/handoff";
 import { QrShow } from "./Qr";
 import { menuOf, publishMenu, type Menu, type MenuItem } from "../order/menu";
 import { LABELS, MAX_LABELS, labelWord } from "../order/labels";
+import { MAX_TAX_LINES } from "../order/menu";
+import { publishPhoto, shrink } from "../order/shopfront";
 import { ChooseMany } from "./pickers/Choose";
 import { Amount } from "./pickers/Amount";
 import { pasPlain } from "../money/amount";
@@ -138,6 +140,14 @@ export function Venue() {
       .catch(() => undefined);
     return () => stop?.();
   }, [key, mine]);
+
+  /** Edit one tax line, or drop it when `patch` is null. */
+  const setTax = (n: number, patch: { name: string; bps: number } | null) => {
+    const lines = [...(menu.tax ?? [])];
+    if (patch === null) lines.splice(n, 1);
+    else lines[n] = patch;
+    setMenu({ ...menu, tax: lines });
+  };
 
   const setItem = (n: number, patch: Partial<MenuItem>) =>
     setMenu({
@@ -288,6 +298,27 @@ export function Venue() {
                     if (wei !== null) setItem(i, { price: wei });
                   }}
                 />
+                {/* Free text, and it stays free text: a section is only ever a
+                    heading on this one menu, so nobody else has to agree with
+                    it. Labels are the opposite — they're filtered on across
+                    every venue, so they come from a fixed list. */}
+                <label>
+                  under{" "}
+                  <input
+                    placeholder="Drinks"
+                    value={it.section ?? ""}
+                    onChange={(e) => setItem(i, { section: e.target.value })}
+                    size={10}
+                  />
+                </label>
+                <label>
+                  <input
+                    placeholder="a line about it (optional)"
+                    value={it.note ?? ""}
+                    onChange={(e) => setItem(i, { note: e.target.value })}
+                    size={20}
+                  />
+                </label>
               </div>
             ))}
             <button
@@ -308,6 +339,77 @@ export function Venue() {
             >
               Add another item
             </button>
+            {/* The shopfront picture. One host prompt and several seconds,
+                which is why it is its own button and not part of publishing:
+                a vendor changing a price shouldn't pay for an upload. */}
+            <label>
+              Picture{" "}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  await run("Storing the picture", async () => {
+                    const small = await shrink(file);
+                    setMenu({ ...menu, photo: await publishPhoto(small) });
+                  });
+                }}
+              />
+            </label>
+            {menu.photo && (
+              <p className="ok">
+                Picture stored. It goes live when you publish the menu.
+              </p>
+            )}
+
+            <p className="muted">
+              Charges on top of the goods — tax, VAT, a service charge.
+              Customers see each one named, with its rate, before they pay.
+              You're paid all of it at pickup, and remitting it is yours to do:
+              the contract can't tell tax from a croissant.
+            </p>
+            {(menu.tax ?? []).map((line, i) => (
+              <label key={i}>
+                <input
+                  placeholder="State tax"
+                  value={line.name}
+                  onChange={(e) =>
+                    setTax(i, { name: e.target.value, bps: line.bps })
+                  }
+                  size={12}
+                />{" "}
+                <input
+                  inputMode="decimal"
+                  size={4}
+                  value={(line.bps / 100).toString()}
+                  onChange={(e) =>
+                    setTax(i, {
+                      name: line.name,
+                      bps: Math.round((Number(e.target.value) || 0) * 100),
+                    })
+                  }
+                />{" "}
+                %{" "}
+                <button className="link" onClick={() => setTax(i, null)}>
+                  remove
+                </button>
+              </label>
+            ))}
+            {(menu.tax ?? []).length < MAX_TAX_LINES && (
+              <button
+                className="link"
+                onClick={() =>
+                  setMenu({
+                    ...menu,
+                    tax: [...(menu.tax ?? []), { name: "", bps: 0 }],
+                  })
+                }
+              >
+                Add a charge
+              </button>
+            )}
+
             <p className="muted">
               What kind of place is this? Up to {MAX_LABELS}, so customers can
               find you.

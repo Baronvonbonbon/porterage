@@ -3,9 +3,8 @@ import { inHost } from "./host";
 import { followHostTheme } from "./theme";
 import { deployed } from "./contracts";
 import { Driver } from "./views/Driver";
-import { Ordering } from "./views/Ordering";
+import { Customer } from "./views/customer/Customer";
 import { Venue } from "./views/Venue";
-import { Wallet } from "./views/Wallet";
 import { Ops } from "./views/Ops";
 import { Probe } from "./views/Probe";
 import { SHAPE } from "./copy/privacy";
@@ -110,12 +109,7 @@ export function App() {
       )}
 
       {role === "driver" && <Driver />}
-      {role === "customer" && (
-        <>
-          <Wallet />
-          <Ordering />
-        </>
-      )}
+      {role === "customer" && <Customer />}
       {role === "venue" && <Venue />}
       {role === "ops" && <Ops />}
       {role === "probe" && <Probe />}

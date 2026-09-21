@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Position } from "../../order/geo";
 import { formatDegrees, metresBetween } from "../../order/geo";
 import { MAP_TILES } from "../../copy/privacy";
+import { metres } from "../../format";
 
 import {
   MAX_ZOOM,
@@ -37,12 +38,17 @@ export function MapPick({
   onPick,
   onCancel,
 }: {
-  venue: Position;
+  /**
+   * Where to start, and what to measure from. Absent when there is nothing to
+   * measure from — someone setting their own location has no venue, and the
+   * distance line would be measuring from nowhere.
+   */
+  venue?: Position;
   initial?: Position;
   onPick: (p: Position) => void;
   onCancel: () => void;
 }) {
-  const start = initial ?? venue;
+  const start = initial ?? venue ?? { lat: 0, lon: 0 };
   const [zoom, setZoom] = useState(16);
   const [centre, setCentre] = useState<Position>(start);
   const box = useRef<HTMLDivElement>(null);
@@ -85,7 +91,7 @@ export function MapPick({
   const moveBy = (dx: number, dy: number, from: Position) =>
     setCentre(panned(from, dx, dy, zoom));
 
-  const away = metresBetween(centre, venue);
+  const away = venue ? metresBetween(centre, venue) : null;
 
   return (
     <div className="map-pick">
@@ -120,9 +126,9 @@ export function MapPick({
       </div>
 
       <p className="muted">
-        {formatDegrees(centre.lat)}, {formatDegrees(centre.lon)} —{" "}
-        {away < 1000 ? `${away} m` : `${(away / 1000).toFixed(1)} km`} from the
-        venue. Drag to move the pin.
+        {formatDegrees(centre.lat)}, {formatDegrees(centre.lon)}
+        {away !== null && ` — ${metres(away)} from the venue`}. Drag to move the
+        pin.
       </p>
       <p className="warn">{MAP_TILES}</p>
 

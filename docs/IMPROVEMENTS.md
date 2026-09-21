@@ -295,3 +295,61 @@ probe out.
 
 **Seam:** `probe.ts` is the questions and the record; the screen only runs them. Adding a fifth
 question is one entry in `QUESTIONS` and one function.
+
+---
+
+## 5. A flow, not a control panel — customer half DONE 2026-09-21 (`views/customer/`)
+
+The three role screens each did four jobs at once. `Ordering.tsx` was the worst: 1,040 lines and
+thirty pieces of state holding venue-finding, menu-reading, basket-building, price-naming,
+order-placing and live-order-watching **on one page at the same time** — so the screen was busiest
+exactly when someone knew least about what they were doing. The model is DoorDash and its like, not
+because they are beautiful but because everyone has already learned them.
+
+**What the customer does now**, one step per screen, each owning only its own state:
+
+1. **Where are you** (`Where.tsx`) — an address search, a map pin, and a radius.
+2. **Browse** (`Browse.tsx`) — tiles: picture, name, rating, top tag, price tier, distance.
+3. **A store** (`Store.tsx`) — the menu in the vendor's own sections.
+4. **The bag** (`Bag.tsx`) — every line, the vendor's named charges, one total.
+5. **Orders** (`Ordering.tsx`, now 704 lines) — the live order and nothing else.
+
+The shell (`Customer.tsx`) holds only what genuinely spans steps: where you are, the bag, and what
+is being placed. The private balance became a step too — it used to sit above every customer screen,
+so browsing started below a full page of shielding.
+
+**Address search is the one real privacy cost, and it is new.** The map tells a tile server which
+rough square is on screen; a search tells a server the **exact string somebody typed**, which is
+very often their own address. Nothing else in the design hands a third party anything that specific.
+It is in `order/geocode.ts` with the reasoning at the top, and: it never fires automatically, never
+fires while typing (search-as-you-type would send every prefix of an address), says what it costs
+next to the box, keeps the map pin as an equal alternative, and never stores the string.
+
+**Money decisions, written down because they are hard to reverse:**
+
+- **Tax is `orderValue`.** Vendor-named lines, shown itemised with their rates, added to what the
+  venue is owed and paid to it at pickup with everything else. The contract cannot tell tax from a
+  croissant and does not need to; remitting is the vendor's, as at any till. A separate on-chain
+  recipient would mean a new party, a new payout and a new thing to get wrong.
+- **One total, computed once** (`order/bag.ts`). Every screen showing a total calls `billFor`.
+  Tax is worked out on the goods, never on a running total — two 10% lines on 100 is 120, not 121 —
+  and the fraction of a planck goes to the customer.
+- **Tax lines are checked before they are charged.** A menu is a public document anyone can write,
+  so an unnamed, zero, negative, fractional or over-50% line is **dropped rather than clamped**:
+  showing 50% where the document said 5000% is a worse lie than showing nothing, because the
+  customer cannot see that anything was changed.
+- **The currency symbol is decoration.** It sets the glyph on a price tier and nothing else. Every
+  amount is PAS, and printing "$4.20" over a PAS figure would state an exchange rate nobody has.
+
+**Sections are free text; labels are not.** A section is only ever a heading on one venue's own
+menu, so the vendor should call it whatever it calls it. A label is filtered on across every venue,
+so it stays a fixed vocabulary — "coffee" and "Coffee" would be two filters.
+
+**Shopfront pictures are a Bulletin key, not a URL** (`order/shopfront.ts`). A URL would have every
+customer browsing the list fetch from the vendor's own server, which would tell that server who is
+shopping and when. The menu being public costs nothing; the *fetch* being public would. Shrunk to
+480px and capped at 90 kB, because a vendor chooses once and a hundred customers pay for it on every
+list.
+
+**Still to do on this flow:** the live order screen is next — bids with the distance always shown, a
+voice call over the existing WebRTC channel, and a pickup photo to match the dropoff one.

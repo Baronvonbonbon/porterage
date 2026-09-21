@@ -488,3 +488,140 @@ code {
   overflow-wrap: anywhere;
   user-select: text;
 }
+
+/* ── The customer's steps (views/customer/) ─────────────────────────────── */
+
+/* Two places to be, always visible, never more than two: a tab bar that grows
+   is a menu, and a menu is the thing this rework is removing. */
+.steps {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.steps button {
+  flex: 1;
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--fg);
+}
+.steps button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.where-bar {
+  margin-bottom: var(--space-2);
+}
+.places {
+  list-style: none;
+  padding: 0;
+}
+.places li {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Tiles. Two across on a phone, more when there's room — `auto-fill` rather
+   than a fixed count, so a Desktop window isn't two enormous cards. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-3);
+}
+.tile {
+  display: block;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--fg);
+  padding: 0 0 var(--space-3);
+  overflow: hidden;
+}
+/* Every tile reserves the same picture-shaped space whether or not a picture
+   ever arrives, so the grid can't reflow under a thumb already reaching. */
+.tile-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--line);
+}
+.tile-initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--step-2);
+  color: var(--muted);
+}
+.tile-name {
+  display: block;
+  padding: var(--space-2) var(--space-3) 0;
+}
+.tile-facts,
+.tile-tag {
+  display: block;
+  padding: 0 var(--space-3);
+  font-size: var(--step--1);
+  color: var(--muted);
+}
+
+.store-banner {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 1;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--line);
+}
+.menu-list {
+  list-style: none;
+  padding: 0;
+}
+.menu-list li {
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-3) 0;
+}
+.menu-item {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* The bag button follows the menu down rather than floating: a fixed bar would
+   sit over the last item, which is the one someone scrolled to reach. */
+.bag-bar {
+  position: sticky;
+  bottom: env(safe-area-inset-bottom, 0px);
+  padding: var(--space-3) 0;
+  background: var(--bg);
+}
+.bag-bar button {
+  width: 100%;
+}
+
+.bill {
+  list-style: none;
+  padding: 0;
+}
+.bill li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-3) 0;
+}
+.bill-amount {
+  white-space: nowrap;
+}
+.totals .total {
+  font-weight: 600;
+  font-size: var(--step-1);
+}
+/* `display: contents` so a grouped tax line still lands on the <dl> grid. */
+.totals .contents {
+  display: contents;
+}
