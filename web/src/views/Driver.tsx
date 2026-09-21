@@ -31,7 +31,19 @@ interface OnChain {
   failed: number;
 }
 
+type Step = "work" | "mine" | "earnings" | "setup";
+
 export function Driver() {
+  /**
+   * Onboarding, the funding helper, the job list, the active delivery and the
+   * earnings were all one page. A driver looking for work read past four other
+   * things to find it, and a driver halfway through a delivery read past the
+   * job list to find the delivery. One screen answers one question.
+   *
+   * It opens on Work, because that is what a driver opens the app for. Setup
+   * is last: it matters once.
+   */
+  const [step, setStep] = useState<Step>("work");
   const [me, setMe] = useState<HostAccount | null>(null);
   const [balance, setBalance] = useState<bigint | null>(null);
   const [key, setKey] = useState<Wallet | null>(null);
@@ -92,11 +104,37 @@ export function Driver() {
     chain.keyOnChain.toLowerCase() === key.address.toLowerCase();
   const keyLow = keyBalance !== null && keyBalance < SESSION_LOW_WEI;
 
+  // Everything below the bar needs a registered driver with a funded session
+  // key. Until then the setup block is the whole screen, which is right: there
+  // is nothing else a driver can do yet.
+  const ready = !!(chain?.registered && keyCurrent && !keyLow);
+
   return (
     <section>
       <h2>Drive</h2>
 
-      {me && (
+      {ready && (
+        <nav className="steps">
+          {(
+            [
+              ["work", "Work"],
+              ["mine", "Yours"],
+              ["earnings", "Earnings"],
+              ["setup", "Setup"],
+            ] as [Step, string][]
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              className={step === id ? "on" : ""}
+              onClick={() => setStep(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      {me && (!ready || step === "setup") && (
         <dl>
           <dt>Your account</dt>
           <dd title={me.address}>{short(me.address)}</dd>
@@ -124,14 +162,14 @@ export function Driver() {
         </dl>
       )}
 
-      {me && balance === 0n && (
+      {me && balance === 0n && (!ready || step === "setup") && (
         <p className="notice">
           Your account has no PAS. Get some from the Paseo faucet for{" "}
           <code>{me.address}</code>, then refresh.
         </p>
       )}
 
-      {me && key && deployed() && chain && (
+      {me && key && deployed() && chain && (!ready || step === "setup") && (
         <div className="actions">
           {!chain.registered && (
             <button
@@ -184,14 +222,20 @@ export function Driver() {
               Ready. Bids and handoffs sign on this phone with no taps.
             </p>
           )}
-          {chain.registered && keyCurrent && !keyLow && (
-            <Helper sessionKey={key} />
-          )}
-          {chain.registered && keyCurrent && (
-            <Jobs sessionKey={key} driver={me.evm} />
-          )}
-          {chain.registered && <Earnings account={me.evm} />}
         </div>
+      )}
+
+      {ready && key && me && (
+        <>
+          {step === "work" && (
+            <Jobs sessionKey={key} driver={me.evm} show="work" />
+          )}
+          {step === "mine" && (
+            <Jobs sessionKey={key} driver={me.evm} show="mine" />
+          )}
+          {step === "earnings" && <Earnings account={me.evm} />}
+          {step === "setup" && <Helper sessionKey={key} />}
+        </>
       )}
 
       {busy && <p className="muted">{busy}… approve it in the Polkadot app.</p>}

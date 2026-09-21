@@ -38,7 +38,16 @@ import { MENU_PUBLIC, VENUE_SEES } from "../copy/privacy";
 import { read } from "../contracts";
 import { Earnings } from "./Earnings";
 
+type Step = "counter" | "menu" | "takings" | "setup";
+
 export function Venue() {
+  /**
+   * The venue's details, its takings, the whole menu editor and the live
+   * orders were one page. A counter with a queue read past a menu editor to
+   * find its orders, which is the wrong way round: the menu changes weekly and
+   * the orders change all day. So Counter is where this opens.
+   */
+  const [step, setStep] = useState<Step>("counter");
   const [me, setMe] = useState<HostAccount | null>(null);
   const [key, setKey] = useState<Wallet | null>(null);
   const [mine, setMine] = useState<VenueRow[]>([]);
@@ -215,58 +224,93 @@ export function Venue() {
         </>
       )}
 
-      {mine.map((v) => (
-        <div key={v.id.toString()}>
-          <p className="lead">
-            {stars.get(v.id.toString()) ?? "…"} ·{" "}
-            {takings.has(v.id.toString())
-              ? `${pasWei(takings.get(v.id.toString())!)} waiting`
-              : "…"}
-          </p>
-          <p className="muted">
-            {v.pickups === 1
-              ? "One order collected from this counter."
-              : `${v.pickups} orders collected from this counter.`}{" "}
-            Takings land in the vault when the driver collects, not when the
-            order is delivered — the goods are yours to be paid for either way.
-          </p>
-          <dl>
-            <dt>Venue</dt>
-            <dd>#{v.id.toString()}</dd>
-            <dt>Counter at</dt>
-            <dd>
-              {formatDegrees(v.at.lat)}, {formatDegrees(v.at.lon)}
-            </dd>
-            <dt>Signs with</dt>
-            <dd title={v.signer}>
-              {key && v.signer.toLowerCase() === key.address.toLowerCase() ? (
-                "this phone"
-              ) : (
-                <>
-                  {short(v.signer)}{" "}
-                  <button
-                    className="link"
-                    disabled={!!busy || !key}
-                    onClick={() =>
-                      run("Updating", () => setVenueSigner(v.id, key!))
-                    }
-                  >
-                    use this phone
-                  </button>
-                </>
-              )}
-            </dd>
-          </dl>
-        </div>
-      ))}
-
       {mine.length > 0 && (
-        <>
-          {/* The way the takings above actually come out, on the same screen
-              rather than on the driver's. The payout address is the venue's,
-              which may not be this phone's account. */}
-          <Earnings account={mine[0].payout} />
+        <nav className="steps">
+          {(
+            [
+              ["counter", "Counter"],
+              ["menu", "Menu"],
+              ["takings", "Takings"],
+              ["setup", "Setup"],
+            ] as [Step, string][]
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              className={step === id ? "on" : ""}
+              onClick={() => setStep(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      )}
 
+      {step === "setup" &&
+        mine.map((v) => (
+          <div key={v.id.toString()}>
+            <p className="lead">
+              {stars.get(v.id.toString()) ?? "…"} ·{" "}
+              {takings.has(v.id.toString())
+                ? `${pasWei(takings.get(v.id.toString())!)} waiting`
+                : "…"}
+            </p>
+            <p className="muted">
+              {v.pickups === 1
+                ? "One order collected from this counter."
+                : `${v.pickups} orders collected from this counter.`}{" "}
+              Takings land in the vault when the driver collects, not when the
+              order is delivered — the goods are yours to be paid for either
+              way.
+            </p>
+            <dl>
+              <dt>Venue</dt>
+              <dd>#{v.id.toString()}</dd>
+              <dt>Counter at</dt>
+              <dd>
+                {formatDegrees(v.at.lat)}, {formatDegrees(v.at.lon)}
+              </dd>
+              <dt>Signs with</dt>
+              <dd title={v.signer}>
+                {key && v.signer.toLowerCase() === key.address.toLowerCase() ? (
+                  "this phone"
+                ) : (
+                  <>
+                    {short(v.signer)}{" "}
+                    <button
+                      className="link"
+                      disabled={!!busy || !key}
+                      onClick={() =>
+                        run("Updating", () => setVenueSigner(v.id, key!))
+                      }
+                    >
+                      use this phone
+                    </button>
+                  </>
+                )}
+              </dd>
+            </dl>
+          </div>
+        ))}
+
+      {step === "takings" && mine.length > 0 && (
+        <>
+          {/* The rating and the money on one screen, and the way the money
+              actually comes out right underneath. The payout address is the
+              venue's, which may not be this phone's account. */}
+          {mine.map((v) => (
+            <p className="lead" key={v.id.toString()}>
+              {stars.get(v.id.toString()) ?? "…"} ·{" "}
+              {takings.has(v.id.toString())
+                ? `${pasWei(takings.get(v.id.toString())!)} waiting`
+                : "…"}
+            </p>
+          ))}
+          <Earnings account={mine[0].payout} />
+        </>
+      )}
+
+      {step === "menu" && mine.length > 0 && (
+        <>
           <h3>Menu</h3>
           <p className="muted">{MENU_PUBLIC}</p>
           <div className="actions">
@@ -440,7 +484,11 @@ export function Venue() {
               Publish the menu
             </button>
           </div>
+        </>
+      )}
 
+      {step === "counter" && mine.length > 0 && (
+        <>
           <h3>Orders</h3>
           {orders.length === 0 && <p className="muted">No orders yet.</p>}
           <p className="muted">{VENUE_SEES}</p>

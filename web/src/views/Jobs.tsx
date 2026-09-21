@@ -45,9 +45,21 @@ import { photoSealed } from "../copy/privacy";
 export function Jobs({
   sessionKey,
   driver,
+  show,
 }: {
   sessionKey: Wallet;
   driver: string;
+  /**
+   * Which half to draw. Both used to be on one page, under the onboarding and
+   * the earnings and the funding helper — so a driver looking for work read
+   * past four other things first, and a driver mid-delivery read past the job
+   * list to find the delivery. One screen answers one question.
+   *
+   * The data behind both is loaded either way: the venues, the saved pin and
+   * the coarse areas are shared, and a driver switching tabs should not wait
+   * for a reload.
+   */
+  show: "work" | "mine";
 }) {
   const [open, setOpen] = useState<Order[]>([]);
   const [venues, setVenues] = useState<Map<string, Venue>>(new Map());
@@ -424,79 +436,101 @@ export function Jobs({
 
   return (
     <div>
-      <h3>Work</h3>
-      <p className="muted">Your rating: {rating}</p>
-      <HerePin
-        here={here}
-        onChange={setHere}
-        start={venues.values().next().value?.at ?? { lat: 0, lon: 0 }}
-        what="jobs"
-      />
-      {open.length === 0 && (
-        <p className="muted">No orders are open right now.</p>
+      {show === "work" && (
+        <>
+          <h3>Work</h3>
+          <p className="muted">Your rating: {rating}</p>
+          <HerePin
+            here={here}
+            onChange={setHere}
+            start={venues.values().next().value?.at ?? { lat: 0, lon: 0 }}
+            what="jobs"
+          />
+          {open.length === 0 && (
+            <p className="muted">No orders are open right now.</p>
+          )}
+          {open.length > 0 && jobs.length === 0 && (
+            <p className="muted">
+              Nothing within {((here?.metres ?? 0) / 1000).toFixed(1)} km —{" "}
+              {open.length} open further out.
+            </p>
+          )}
+          {jobs.map(({ order: o, venue: v, pickup, trip }) => {
+            return (
+              <div key={o.id.toString()} className="job">
+                {/* What a driver decides on, in the order they decide it: how
+                    much, how far to the counter, how far after that. The
+                    order number comes last — it identifies the job and sells
+                    it to nobody. */}
+                <p className="lead">
+                  up to {pasWei(o.maxFare)}
+                  {pickup !== null && (
+                    <span className="muted">
+                      {" "}
+                      · {far(pickup)} to the counter
+                    </span>
+                  )}
+                  {trip !== null && (
+                    <span className="muted"> · {far(trip)} on from there</span>
+                  )}
+                </p>
+                <p className="muted">
+                  #{o.id.toString()} from venue #{o.venueId.toString()}
+                  {pickup === null &&
+                    v &&
+                    ` at ${formatDegrees(v.at.lat)}, ${formatDegrees(
+                      v.at.lon
+                    )}`}
+                  , carrying {pasWei(o.orderValue)} of goods.
+                  {trip === null &&
+                    " The drop isn't said — you'll learn it once the job is yours."}
+                  {v && (
+                    <>
+                      {" "}
+                      <Directions
+                        at={v.at}
+                        label={`Venue #${o.venueId}`}
+                        what="the counter"
+                      />
+                    </>
+                  )}
+                </p>
+                <Amount
+                  label="Bid"
+                  value={amounts.get(o.id.toString()) ?? ""}
+                  onChange={(text) =>
+                    setAmounts(new Map(amounts).set(o.id.toString(), text))
+                  }
+                  max={o.maxFare}
+                  hint={`Up to ${pasWei(
+                    o.maxFare
+                  )}. The customer sees your bid privately and may take any of them.`}
+                />
+                <button
+                  className="primary"
+                  disabled={
+                    !!busy ||
+                    pasOrNull(amounts.get(o.id.toString()) ?? "", {
+                      max: o.maxFare,
+                    }) === null
+                  }
+                  onClick={() => bid(o)}
+                >
+                  Bid on #{o.id.toString()}
+                </button>
+              </div>
+            );
+          })}
+        </>
       )}
-      {open.length > 0 && jobs.length === 0 && (
+
+      {show === "mine" && mine.length === 0 && (
         <p className="muted">
-          Nothing within {((here?.metres ?? 0) / 1000).toFixed(1)} km —{" "}
-          {open.length} open further out.
+          Nothing on the go. Bid for something on <b>Work</b>.
         </p>
       )}
-      {jobs.map(({ order: o, venue: v, pickup, trip }) => {
-        return (
-          <div key={o.id.toString()} className="actions">
-            <p>
-              <b>#{o.id.toString()}</b> — collect from venue #
-              {o.venueId.toString()}
-              {pickup !== null
-                ? `, ${far(pickup)} from you`
-                : v &&
-                  ` at ${formatDegrees(v.at.lat)}, ${formatDegrees(v.at.lon)}`}
-              , goods {pasWei(o.orderValue)}, pays up to {pasWei(o.maxFare)}
-              <br />
-              <span className="muted">
-                {trip !== null
-                  ? `drop: about ${far(trip)} from the venue`
-                  : "drop: not said — you'll learn it at the door"}
-              </span>
-              {v && (
-                <>
-                  {" "}
-                  <Directions
-                    at={v.at}
-                    label={`Venue #${o.venueId}`}
-                    what="the counter"
-                  />
-                </>
-              )}
-            </p>
-            <Amount
-              label="Bid"
-              value={amounts.get(o.id.toString()) ?? ""}
-              onChange={(text) =>
-                setAmounts(new Map(amounts).set(o.id.toString(), text))
-              }
-              max={o.maxFare}
-              hint={`Up to ${pasWei(
-                o.maxFare
-              )}. The customer sees your bid privately and may take any of them.`}
-            />
-            <button
-              className="primary"
-              disabled={
-                !!busy ||
-                pasOrNull(amounts.get(o.id.toString()) ?? "", {
-                  max: o.maxFare,
-                }) === null
-              }
-              onClick={() => bid(o)}
-            >
-              Bid on #{o.id.toString()}
-            </button>
-          </div>
-        );
-      })}
 
-      {mine.length > 0 && (
+      {show === "mine" && mine.length > 0 && (
         <>
           <h3>Yours</h3>
           <ul>

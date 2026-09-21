@@ -381,4 +381,27 @@ anything committed before today still opens. The arbiter's flow is unchanged: it
 content key, and what opens is now an album. The counter photo waits in the encrypted book between
 pickup and delivery, because evidence that only exists in a component's state is not evidence.
 
-**Still to do:** the driver, vendor and ops/admin flows get the same treatment the customer got.
+### The driver and the vendor — DONE 2026-09-21
+
+Same problem, same fix, and in both cases the ordering was the tell.
+
+**The driver** had onboarding, the funding helper, the job list, the active delivery and the
+earnings on one page. Someone looking for work read past four other things to find it, and someone
+halfway through a delivery read past the job list to find the delivery. It is now **Work / Yours /
+Earnings / Setup**, opening on Work because that is what a driver opens the app for. The bar appears
+only once the driver is registered with a funded session key — until then the setup block is the
+whole screen, which is right, because there is nothing else a driver can do yet.
+
+The job card now leads with **the fare, the distance to the counter and the distance on from there**,
+in the order a driver decides on them. The order number moved to the second line: it identifies the
+job and sells it to nobody.
+
+**The vendor** had its details, its takings, the whole menu editor and its live orders stacked
+together, so a counter with a queue read past a menu editor to find its orders. That is the wrong
+way round — a menu changes weekly and orders change all day. It is now **Counter / Menu / Takings /
+Setup**, opening on Counter.
+
+**What is left:** the operations console is the arbiter's screen and already does one job, so it has
+not been split. There is no "admin" role in the product — the closest things are the pause registry
+and the governance router, which are contract-level and have no UI at all. Whether that should
+become a screen is a product question, not a layout one.
