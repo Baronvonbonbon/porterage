@@ -41,9 +41,10 @@ They are now behind `clearExitsOpen`, which **ships false**. While it is false t
 with `shielded-only`, and the only way out of the vault is a bucket of balance turned into a
 Kusama Shield note and spent with a proof that binds nothing to the earner.
 
-**Deployed 2026-09-21** at `0x21A7F0C49b4cd0B03ae4DD63df462722f12D0fDE`, replacing
-`0xe70ADDFDf619Bbc4f2500bb1e5840E839448910e`, with `clearExitsOpen` read back as `false` from the
-live chain rather than assumed from the source. The old vault's remaining 23.275 PAS is stranded:
+**Deployed 2026-09-21**, and redeployed the same day at
+`0x013fd0C18f8EaC04Cb700330fDDC1A14ca833Bf3` to add the fee rail below, with `clearExitsOpen` read
+back as `false` from the live chain each time rather than assumed from the source. The first
+vault's remaining 23.275 PAS is stranded:
 the keys that could have withdrawn it were `Wallet.createRandom()` in a test harness and no longer
 exist. That is the honest cost of this change and it is written here rather than left out.
 
@@ -60,7 +61,7 @@ a default quietly stops being one.
 waits in the vault until more earnings push it over. Someone who stops using Porterage for ever
 leaves less than one bucket behind. That is the price of not offering a leak.
 
-## What is still in the clear, and why it is listed rather than fixed
+## The fee rail, which was the last one open
 
 **The funding tip — CLOSED 2026-09-21.** When a stranger submitted a customer's shield withdrawal,
 the burner paid them a plain transfer. That never leaked the *customer* — the burner is unlinked to
@@ -77,6 +78,8 @@ vault and never leaves it in the clear.
 It did not need the change to the proof that this file once predicted. The fee was never a public
 signal of the circuit; it was always paid separately, which is why routing it somewhere else cost a
 vault function rather than a new trusted setup.
+
+## What is still in the clear
 
 **The driver's session key gas.** `hostFund` moves PAS from a driver's host account to their
 session key in the clear. This leaks nothing new: `registerWithSessionKey` publishes that mapping
@@ -97,7 +100,8 @@ At the parameters deployed on 2026-09-21, for a delivery of 10 PAS of goods with
   Porterage takes nothing from the goods, nothing from the tip, nothing from the tax.
 - **Gas, all three sides, steady state: about 0.99 PAS**, or 9% of the delivery's value at Paseo's
   testnet gas price. That is the cost of using a chain, not a fee.
-- **Plus 0.3 PAS** to whoever submits the customer's withdrawal. A market price, not a fee.
+- **Plus whatever the submission auction clears at**, between 1.5x and 4x the withdrawal's gas
+  (`web/src/market/auction.ts`). A market price, not a fee, and paid to another participant.
 
 The expensive single operation is `insertShieldNote` at 715,796 gas — twelve times a plain
 withdrawal — because it walks a 16-level Poseidon tree on-chain. It is paid **once per bucket**,
