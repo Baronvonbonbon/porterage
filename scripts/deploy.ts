@@ -152,7 +152,22 @@ async function main() {
   const driversC = await ethers.getContractAt("PorterDrivers", drivers, deployer);
   const venuesC = await ethers.getContractAt("PorterVenues", venues, deployer);
 
-  if ((await ordersC.settlement()) !== settlement) {
+  // Check EVERY address `configure` sets, not just one of them. This guard used
+  // to compare `settlement` alone, which made a single-contract redeploy quietly
+  // dangerous: delete `vault` from deployed-addresses.json, re-run, and the new
+  // vault deploys while this line sees an unchanged `settlement`, prints
+  // "already configured", and leaves orders paying into the DEAD vault. The
+  // validation block below would have caught it — after the fact, on a live
+  // chain, with a contract already deployed. Cheaper to notice here.
+  const wiring: Array<[string, string]> = [
+    [await ordersC.vault(), vault],
+    [await ordersC.drivers(), drivers],
+    [await ordersC.venues(), venues],
+    [await ordersC.settlement(), settlement],
+    [await ordersC.disputes(), disputes],
+    [await ordersC.treasury(), treasury],
+  ];
+  if (wiring.some(([have, want]) => have !== want)) {
     await send("orders.configure", () =>
       ordersC.configure(vault, drivers, venues, settlement, disputes, treasury, { gasLimit: GAS_LIMIT })
     );
@@ -165,7 +180,10 @@ async function main() {
     );
   } else console.log("  = stablecoin already accepted");
 
-  if ((await settlementC.orders()) !== orders) {
+  if (
+    (await settlementC.orders()) !== orders ||
+    (await settlementC.venues()) !== venues
+  ) {
     await send("settlement.configure", () =>
       settlementC.configure(orders, venues, { gasLimit: GAS_LIMIT })
     );
@@ -200,7 +218,12 @@ async function main() {
     );
   } else console.log("  = settlement verifier already wired");
 
-  if ((await disputesC.orders()) !== orders) {
+  if (
+    (await disputesC.orders()) !== orders ||
+    (await disputesC.vault()) !== vault ||
+    (await disputesC.drivers()) !== drivers ||
+    (await disputesC.treasury()) !== treasury
+  ) {
     await send("disputes.configure", () =>
       disputesC.configure(orders, vault, drivers, treasury, { gasLimit: GAS_LIMIT })
     );
@@ -330,6 +353,8 @@ async function main() {
     ["settlement.drivers", (await settlementC.drivers()) === drivers],
     ["verifier VK set", await verifierC.vkSet()],
     ["disputes.orders", (await disputesC.orders()) === orders],
+    ["disputes.vault", (await disputesC.vault()) === vault],
+    ["disputes.drivers", (await disputesC.drivers()) === drivers],
     ["ratings.orders", (await ratingsC.orders()) === orders],
     ["disputes.arbiter set", (await disputesC.arbiter()) !== ethers.ZeroAddress],
     ["vault auth orders", await vaultC.authorized(orders)],
