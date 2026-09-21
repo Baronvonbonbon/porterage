@@ -77,3 +77,22 @@ export async function tell(
 export function _forget(): void {
   told.clear();
 }
+
+/**
+ * A notification timed to land after the app is put away, for the phone probe
+ * (probe.ts). It carries no order and no amount — the discipline above is not
+ * suspended for a measurement, and the text is about the probe itself.
+ *
+ * Returns how long the host took to accept it, or null if it wouldn't.
+ */
+export async function scheduleProbe(inSeconds: number): Promise<number | null> {
+  const n = await notifications();
+  if (!n) return null;
+  const started = Date.now();
+  await n.push({
+    text: "Porterage: this is the notification probe.",
+    // Milliseconds, and a bigint on the wire — a number is refused by the type.
+    scheduledAt: BigInt(Date.now() + inSeconds * 1000),
+  });
+  return Date.now() - started;
+}

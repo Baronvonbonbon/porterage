@@ -228,7 +228,7 @@ these.
 **Seam:** `progressOf` is a pure function of (status, party); `settleDebts` is a pure retry over a
 record; the copy is strings. All three are swappable without touching a view's logic.
 
-## Needs a phone before it can be built honestly
+## Needs a phone before it can be built honestly — NOW ONE SCREEN, 2026-09-20 (`probe.ts`)
 
 - Does `navigateTo` open a map app from `geo:`?
 - Does a Bulletin write cost a tap each time, or only the first? This decides how freely the
@@ -236,3 +236,35 @@ record; the copy is strings. All three are swappable without touching a view's l
 - Do the QR handoffs, the camera, the basket to the counter and the swap work on a device at all?
   None have been run outside a test.
 - Does a host notification actually arrive when the app is backgrounded?
+
+These sat here because nothing in a test could answer them, and that is the problem with them:
+a comment saying "unmeasured" is honest once, and after that it is a thing everyone routes around.
+`views/Probe.tsx` ("Check this phone", under the role chooser) turns all four into runs of a
+couple of minutes and writes down what the phone actually did. Nothing in it touches an order, an
+account or any money.
+
+Three things make a probe different from an ordinary screen, and they are the whole design:
+
+- **A probe can destroy the page that started it.** `navigateTo` with an `https` URL navigates the
+  WebView, and what it does with `geo:` is the very thing being asked. So a probe writes "I am
+  about to do X" to `localStorage` **before** it does X, and the screen asks about any unfinished
+  probe when it next loads. `"probe"` is a saved role for the same reason: the app has to come back
+  to the screen that knows a run was in flight. Surviving the thing being measured is the trick.
+- **The interesting part is usually invisible to code.** The app cannot see an approval prompt and
+  cannot see a notification land on a lock screen. So each probe pairs what it *can* measure (an
+  outcome, a duration) with a plain question for the person holding the phone, and the two are
+  recorded separately and never merged. A resolved promise is not a map app opening.
+- **The result is meant to leave the phone**, as text to paste into this repo, because a
+  measurement nobody wrote down has to be taken again.
+
+The camera probe is a loopback: it builds a real signed pickup code, shows it, and asks the phone
+to scan its own screen — the handoff minus the second phone, exercising the encoder and the scanner
+together.
+
+Found while building it: the host's `scheduledAt` is a **bigint** of milliseconds, not a number.
+
+**Still needs the phone**, and only the phone: the basket to the counter and the token swap are not
+in here, because both spend real money and belong in the Phase 7 run rather than in a probe.
+
+**Seam:** `probe.ts` is the questions and the record; the screen only runs them. Adding a fifth
+question is one entry in `QUESTIONS` and one function.

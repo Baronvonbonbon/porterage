@@ -458,4 +458,33 @@ code {
 }
 
 /* The one line that says what is happening (order/progress.ts). */
-.lead { font-size: var(--step-1); margin: var(--space-3) 0; }
+.lead {
+  font-size: var(--step-1);
+  margin: var(--space-3) 0;
+}
+
+/* Phone probes (views/Probe.tsx). One card per question, so a screen of four
+   reads as four things to do rather than one long page. */
+.probe {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  padding: var(--space-3);
+  margin: var(--space-4) 0;
+}
+.probe .lead {
+  margin-top: 0;
+}
+/* The report is the thing that leaves the phone, so it must be selectable and
+   must not reflow: its own scroller, never the page's. */
+.report {
+  font-size: var(--step--1);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}

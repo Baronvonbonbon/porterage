@@ -7,15 +7,23 @@ import { Ordering } from "./views/Ordering";
 import { Venue } from "./views/Venue";
 import { Wallet } from "./views/Wallet";
 import { Ops } from "./views/Ops";
+import { Probe } from "./views/Probe";
 import { SHAPE } from "./copy/privacy";
 
-type Role = "customer" | "driver" | "venue" | "ops";
+type Role = "customer" | "driver" | "venue" | "ops" | "probe";
 const ROLE_KEY = "porterage.role";
 
 function savedRole(): Role | null {
   try {
     const r = localStorage.getItem(ROLE_KEY);
-    return r === "customer" || r === "driver" || r === "venue" || r === "ops"
+    // "probe" belongs here for a reason: if a probe navigates the WebView
+    // away, the app restarts, and it has to come back to the screen that
+    // knows a probe was in flight (probe.ts).
+    return r === "customer" ||
+      r === "driver" ||
+      r === "venue" ||
+      r === "ops" ||
+      r === "probe"
       ? r
       : null;
   } catch {
@@ -90,6 +98,11 @@ export function App() {
           <button className="link" onClick={() => choose("ops")}>
             Operations console
           </button>
+          {/* Not a role either: four measurements that need a real phone,
+              which is why they have sat in the backlog (probe.ts). */}
+          <button className="link" onClick={() => choose("probe")}>
+            Check this phone
+          </button>
           {/* Said once, on the only screen nobody is mid-task on. Every
               screen after this says its own share of it (copy/privacy.ts). */}
           <p className="muted">{SHAPE}</p>
@@ -105,6 +118,7 @@ export function App() {
       )}
       {role === "venue" && <Venue />}
       {role === "ops" && <Ops />}
+      {role === "probe" && <Probe />}
     </main>
   );
 }
