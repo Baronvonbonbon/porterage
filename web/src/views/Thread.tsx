@@ -38,6 +38,9 @@ export function Thread({
   /** This side's messages the statement can no longer carry (order/chat.ts). */
   const [losing, setLosing] = useState(0);
   const [saving, setSaving] = useState(false);
+  /** Whether this phone's microphone is on the line (order/live.ts). */
+  const [onCall, setOnCall] = useState(false);
+  const [micRefused, setMicRefused] = useState(false);
   const foot = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -166,12 +169,50 @@ export function Thread({
           {busy ? "Sending…" : "Send"}
         </button>
       </div>
+      {/* The voice line was negotiated when the connection opened, so this
+          only puts a microphone on it — no second offer, no waiting for a
+          statement to go round. It appears only when there IS a connection:
+          without one there is nothing to talk over, and a Call button that
+          can't call is worse than none. */}
+      {live && (
+        <div className="actions">
+          <button
+            className={onCall ? "" : "primary"}
+            onClick={async () => {
+              if (onCall) {
+                live.hangUp();
+                setOnCall(false);
+                return;
+              }
+              const started = await live.call();
+              setOnCall(started);
+              setMicRefused(!started);
+            }}
+          >
+            {onCall ? "End the call" : "Call"}
+          </button>
+          {onCall && (
+            <span className="ok">
+              You're on the line. Voice goes straight between the two phones.
+            </span>
+          )}
+        </div>
+      )}
+      {micRefused && (
+        <p className="warn">
+          No microphone, or this phone wouldn't share it. Messages still work.
+        </p>
+      )}
+
       {error && <p className="error">{error}</p>}
       <p className="muted">
         Only the two of you can find this thread or read it. It holds the recent
         messages, not the whole conversation, and everything in it disappears
         within the hour.
-        {live ? " You're connected directly, so messages arrive at once." : ""}
+        {live
+          ? " You're connected directly, so messages arrive at once and a call" +
+            " never touches a server."
+          : ""}
       </p>
     </div>
   );

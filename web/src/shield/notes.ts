@@ -106,6 +106,14 @@ interface Book {
   drops?: Record<string, { lat: number; lon: number }>;
   /** Menus already fetched, by the Bulletin URI they came from. */
   menus?: { uri: string; doc: string; used: number }[];
+  /**
+   * A photo taken at the counter, by order id, base64. It waits here because
+   * the contract allows a driver ONE evidence commitment per order
+   * (order/evidence.ts), so the pickup and door photos are committed together
+   * at the door. Between the two it has to survive the app being closed —
+   * evidence that only exists in a component's state is not evidence.
+   */
+  pickupPhotos?: Record<string, string>;
 }
 
 const KEY = "porterage.notes.v1";
@@ -430,6 +438,35 @@ export function cacheMenu(uri: string, doc: string): Promise<void> {
     // Oldest use first out, so a phone that has browsed a city doesn't grow
     // without bound.
     book.menus = menus.sort((a, b) => b.used - a.used).slice(0, MENU_CACHE);
+  });
+}
+
+/** Keep the photo taken at the counter until the door photo joins it. */
+export function rememberPickupPhoto(
+  orderId: bigint,
+  photo: Uint8Array
+): Promise<void> {
+  return update((book) => {
+    book.pickupPhotos ??= {};
+    book.pickupPhotos[orderId.toString()] = btoa(String.fromCharCode(...photo));
+  });
+}
+
+/** The counter photo for an order, if one was taken. */
+export async function pickupPhoto(orderId: bigint): Promise<Uint8Array | null> {
+  const kept = (await load()).pickupPhotos?.[orderId.toString()];
+  if (!kept) return null;
+  try {
+    return Uint8Array.from(atob(kept), (c) => c.charCodeAt(0));
+  } catch {
+    return null;
+  }
+}
+
+/** Once it is committed it is on Bulletin, so the copy here is just bulk. */
+export function forgetPickupPhoto(orderId: bigint): Promise<void> {
+  return update((book) => {
+    if (book.pickupPhotos) delete book.pickupPhotos[orderId.toString()];
   });
 }
 

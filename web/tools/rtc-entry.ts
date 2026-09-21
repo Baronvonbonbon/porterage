@@ -44,6 +44,14 @@ async function main() {
   const a = new RTCPeerConnection({ iceServers: [] });
   const b = new RTCPeerConnection({ iceServers: [] });
   const channel = a.createDataChannel("porterage", { ordered: true });
+  // The voice line is negotiated on every connection, silent until somebody
+  // calls. The point of checking it here is that the audio m-line is rebuilt
+  // from a template too, and a template that is wrong fails at
+  // setRemoteDescription with nothing readable to debug.
+  a.addTransceiver("audio", { direction: "sendrecv" });
+  const gotAudio = new Promise<string>((r) => {
+    b.ontrack = (e) => r(e.track.kind);
+  });
   const heard = new Promise<string>((r) => {
     b.ondatachannel = (e) => (e.channel.onmessage = (m) => r(String(m.data)));
   });
@@ -75,6 +83,24 @@ async function main() {
       setTimeout(() => x(new Error("nothing came back")), 5000)
     ),
   ]);
+  // The far side has to have been given a working audio line by the rebuilt
+  // SDP, or a call would fail later with the connection apparently fine.
+  const kind = await Promise.race([
+    gotAudio,
+    new Promise<string>((_, x) =>
+      setTimeout(() => x(new Error("no audio track was negotiated")), 5000)
+    ),
+  ]);
+  if (kind !== "audio")
+    throw new Error(`negotiated a ${kind} track, not audio`);
+
+  // And the voice line must be usable without a second offer: replaceTrack on
+  // the already-negotiated sender is what makes a call start at once.
+  const sender = a
+    .getTransceivers()
+    .find((t) => t.sender.track === null)?.sender;
+  if (!sender) throw new Error("no sender to put a microphone on");
+
   // 63 bytes is the sealed envelope's header and tag; 512 is a statement.
   report(
     `OK offer ${a.localDescription!.sdp.length} B of SDP → ${
@@ -83,7 +109,7 @@ async function main() {
       offer.bytes + 63
     } B sealed (a statement holds 512); answer ${
       answer.bytes
-    } B; heard "${back}"`
+    } B; heard "${back}"; audio line negotiated`
   );
 }
 

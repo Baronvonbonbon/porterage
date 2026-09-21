@@ -351,5 +351,34 @@ shopping and when. The menu being public costs nothing; the *fetch* being public
 480px and capped at 90 kB, because a vendor chooses once and a hundred customers pay for it on every
 list.
 
-**Still to do on this flow:** the live order screen is next — bids with the distance always shown, a
-voice call over the existing WebRTC channel, and a pickup photo to match the dropoff one.
+### The live order — DONE 2026-09-21
+
+**Bids now say how far the trip is**, once, above them rather than on each row: it is the same
+distance whoever takes the job, and repeating it per bid would imply it varied. The phone works it
+out without asking anybody — the venue's pin is public and the drop is already on the device — so no
+driver has to publish a position to make a bid comparable.
+
+**A voice call rides the WebRTC connection that chat already opens.** The interesting part is that
+the voice line is negotiated on EVERY connection and left silent, rather than added when somebody
+taps Call. Adding it later would mean a second offer and answer, and each of those is a statement
+that takes seconds to come round — a phone that rings a quarter of a minute after the tap is a phone
+nobody uses. So the line is there from the start with no microphone attached, which costs no
+permission prompt and no bandwidth, and Call is a `replaceTrack` on a sender that already exists.
+
+Only Opus is offered: every peer is this same app, so a codec list is a negotiation with itself.
+
+**Measured, because the SDP is rebuilt from a template and a wrong template fails unreadably:**
+Chrome puts media sections *before* the data channel whatever order they were created in. The first
+attempt put audio second and was refused with "the order of m-lines in answer doesn't match order in
+offer". `npm run test:rtc` now drives a real handshake and asserts the far side gets a working audio
+track. The signal grew from 113 B to 163 B — **226 B sealed, still inside a 512 B statement.**
+
+**A photo at the counter, and the contract decided how.** `PorterDisputes.commitEvidence` refuses a
+second commitment from the same party, so a driver gets exactly ONE key per order — a pickup photo
+would have consumed the slot the delivery photo needs, and the second commit would revert. So both
+photos travel inside the one sealed blob, framed so a single photo still sends as bare bytes and
+anything committed before today still opens. The arbiter's flow is unchanged: it is handed one
+content key, and what opens is now an album. The counter photo waits in the encrypted book between
+pickup and delivery, because evidence that only exists in a component's state is not evidence.
+
+**Still to do:** the driver, vendor and ops/admin flows get the same treatment the customer got.

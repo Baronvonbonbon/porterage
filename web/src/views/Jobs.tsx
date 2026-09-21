@@ -27,6 +27,11 @@ import { fileDisputeAsDriver } from "../order/dispute";
 import { driverRating, ratingText } from "../order/ratings";
 import { Camera } from "./Camera";
 import { commitPhoto } from "../order/evidence";
+import {
+  forgetPickupPhoto,
+  pickupPhoto,
+  rememberPickupPhoto,
+} from "../shield/notes";
 import { formatDegrees, metresBetween, type Position } from "../order/geo";
 import { watchAreas } from "../order/area";
 import { watchDrop } from "../order/drop";
@@ -58,7 +63,10 @@ export function Jobs({
   const [handback, setHandback] = useState<{ id: string; text: string } | null>(
     null
   );
-  const [photoFor, setPhotoFor] = useState<Order | null>(null);
+  const [photoFor, setPhotoFor] = useState<{
+    order: Order;
+    where: "counter" | "door";
+  } | null>(null);
   /** Order id to the customer's key, once we've said hello on that order. */
   const [talking, setTalking] = useState<Map<string, string>>(new Map());
   const [talkTo, setTalkTo] = useState<Order | null>(null);
@@ -245,6 +253,11 @@ export function Jobs({
       if (!venue) throw new Error("couldn't read the venue");
       await confirmPickup(sessionKey, driver, code, venue.signer);
       setNote(`Collected #${o.id}. The venue has been paid.`);
+      // The counter photo, offered right after the handover while the goods
+      // are still in front of the driver. It is kept on this phone and
+      // committed at the door with the delivery photo, because the contract
+      // allows one evidence commitment per order (order/evidence.ts).
+      setPhotoFor({ order: o, where: "counter" });
       await refresh();
     } catch (e) {
       setError(errorText(e));
@@ -273,7 +286,7 @@ export function Jobs({
         id: o.id.toString(),
         text: encodeDropSignature({ orderId: o.id, timestamp, signature }),
       });
-      setPhotoFor(o);
+      setPhotoFor({ order: o, where: "door" });
       setNote(
         "Show this back to the customer. You signed their code without learning the address."
       );
@@ -284,14 +297,37 @@ export function Jobs({
     }
   }
 
-  async function photographed(o: Order, jpeg: Uint8Array) {
+  async function photographed(
+    o: Order,
+    where: "counter" | "door",
+    jpeg: Uint8Array
+  ) {
     setPhotoFor(null);
+    // The counter photo goes nowhere yet: it waits in the encrypted book for
+    // the door photo, and the two are committed together under the single
+    // evidence key the contract allows.
+    if (where === "counter") {
+      await rememberPickupPhoto(o.id, jpeg).catch(() => undefined);
+      setNote(
+        "Photo of the collection kept on this phone. It's sent with the " +
+          "delivery photo at the door."
+      );
+      return;
+    }
+
     setBusy("Storing the photo");
     setError(null);
     try {
       const key = await customerKeyOf(o.id);
       if (!key) throw new Error("this order's account hasn't published a key");
-      const { bytes } = await commitPhoto(sessionKey, o.id, key, jpeg);
+      const earlier = await pickupPhoto(o.id).catch(() => null);
+      const { bytes } = await commitPhoto(
+        sessionKey,
+        o.id,
+        key,
+        earlier ? [earlier, jpeg] : [jpeg]
+      );
+      await forgetPickupPhoto(o.id).catch(() => undefined);
       setNote(photoSealed(bytes));
     } catch (e) {
       setError(errorText(e));
@@ -301,17 +337,22 @@ export function Jobs({
   }
 
   if (photoFor) {
+    const atCounter = photoFor.where === "counter";
     return (
       <div>
-        <h3>Photograph the delivery</h3>
+        <h3>
+          {atCounter
+            ? "Photograph what you collected"
+            : "Photograph the delivery"}
+        </h3>
         <p className="muted">
-          Only you and this customer can open it. Its key goes on-chain now,
-          before the order settles, so it counts as evidence if anything is
-          disputed later.
+          {atCounter
+            ? "Optional, and worth it if what you're carrying is easy to argue about later. It stays on this phone until the door, then goes with the delivery photo under one key."
+            : "Only you and this customer can open it. Its key goes on-chain now, before the order settles, so it counts as evidence if anything is disputed later."}
         </p>
         <Camera
           onCancel={() => setPhotoFor(null)}
-          onTaken={(jpeg) => photographed(photoFor, jpeg)}
+          onTaken={(jpeg) => photographed(photoFor.order, photoFor.where, jpeg)}
         />
       </div>
     );

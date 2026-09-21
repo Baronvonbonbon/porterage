@@ -198,29 +198,62 @@ export function writeSdp(s: Signal, role: "offer" | "answer"): string {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join(":")
     .toUpperCase();
+  const setup = `a=setup:${role === "offer" ? "actpass" : "active"}`;
+  const ice = [
+    "a=ice-options:trickle",
+    `a=ice-ufrag:${s.ufrag}`,
+    `a=ice-pwd:${s.pwd}`,
+    `a=fingerprint:sha-256 ${print}`,
+    setup,
+  ];
   const lines = [
     "v=0",
     "o=- 4611731400430051336 2 IN IP4 127.0.0.1",
     "s=-",
     "t=0 0",
-    "a=group:BUNDLE 0",
+    // Both media sections share one transport, so the candidates, the ICE
+    // credentials and the fingerprint are stated once and apply to both.
+    "a=group:BUNDLE 0 1",
     "a=extmap-allow-mixed",
     "a=msid-semantic: WMS",
-    "m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
+    // AUDIO FIRST, AND THIS ORDER IS NOT A PREFERENCE. An answer's m-lines
+    // must appear in the same order as the offer's, and Chrome puts media
+    // sections before the data channel whatever order they were created in —
+    // measured, after a rebuilt answer was refused with "the order of m-lines
+    // in answer doesn't match order in offer" (tools/rtc-entry.ts, 2026-09-21).
+    //
+    // The voice line is negotiated on every connection and silent until
+    // somebody calls. Negotiating it up front is what keeps a call cheap:
+    // adding audio later would mean a second offer and answer, and each of
+    // those is a statement that takes seconds to come round — a phone that
+    // rings a quarter of a minute after the tap is a phone nobody uses.
+    //
+    // Only Opus is offered. Every peer is this same app, so a codec list is a
+    // negotiation with itself, and the shorter the m-line the better.
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111",
     "c=IN IP4 0.0.0.0",
+    // The candidates ride on the first media section; BUNDLE gives them to
+    // the second.
     ...s.candidates.map(
       (c, i) =>
         `a=candidate:${i + 1} 1 ${c.protocol} ${c.priority} ${c.address} ${
           c.port
         } typ ${c.type} generation 0`
     ),
-    "a=ice-options:trickle",
-    `a=ice-ufrag:${s.ufrag}`,
-    `a=ice-pwd:${s.pwd}`,
-    `a=fingerprint:sha-256 ${print}`,
-    // The offerer takes the active role, so the answerer must be passive.
-    `a=setup:${role === "offer" ? "actpass" : "active"}`,
+    ...ice,
     "a=mid:0",
+    "a=rtcp-mux",
+    // Both ends may speak and both may listen. A transceiver with no
+    // microphone attached sends nothing, so this costs no permission prompt
+    // and no bandwidth until `call()` puts a track on it.
+    "a=sendrecv",
+    "a=rtpmap:111 opus/48000/2",
+    "a=fmtp:111 minptime=10;useinbandfec=1",
+    "a=rtcp-fb:111 transport-cc",
+    "m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
+    "c=IN IP4 0.0.0.0",
+    ...ice,
+    "a=mid:1",
     "a=sctp-port:5000",
     "a=max-message-size:262144",
     "",
@@ -232,6 +265,18 @@ export function writeSdp(s: Signal, role: "offer" | "answer"): string {
 
 export interface Live {
   send: (text: string) => boolean;
+  /**
+   * Put this phone's microphone on the line. Asks for the mic the first time,
+   * which is why it is a separate call and not part of connecting: a chat
+   * window should not demand a microphone.
+   *
+   * Returns false when there is no mic or the person refused it.
+   */
+  call: () => Promise<boolean>;
+  /** Take the microphone off the line. The connection stays up. */
+  hangUp: () => void;
+  /** True while this phone's microphone is on the line. */
+  speaking: () => boolean;
   close: () => void;
 }
 
@@ -296,6 +341,24 @@ export async function connectLive(
   const wire = (channel: RTCDataChannel) => {
     channel.onmessage = (e) => typeof e.data === "string" && heard(e.data);
   };
+
+  // The voice line, created before the offer so it is in the SDP from the
+  // start (see writeSdp). The answerer gets its matching transceiver from
+  // setRemoteDescription, so only the offerer adds one by hand.
+  if (initiate) pc.addTransceiver("audio", { direction: "sendrecv" });
+
+  // Whatever the far side sends arrives here. An <audio> element is created
+  // rather than reused so a second call after a hang-up still plays.
+  pc.ontrack = (e) => {
+    const sound = new Audio();
+    sound.srcObject = e.streams[0] ?? new MediaStream([e.track]);
+    sound.autoplay = true;
+    // A browser may refuse to play audio nobody asked for. Nothing to do about
+    // it here — the person taps Call, which is the gesture that unblocks it.
+    sound.play().catch(() => undefined);
+  };
+
+  let microphone: MediaStream | null = null;
 
   let channel: RTCDataChannel | null = null;
   if (initiate) {
@@ -379,7 +442,46 @@ export async function connectLive(
         channel.send(text);
         return true;
       },
-      close: shut,
+
+      call: async () => {
+        if (microphone) return true;
+        const sender = pc
+          .getTransceivers()
+          .find((t) => t.receiver.track?.kind === "audio")?.sender;
+        if (!sender) return false;
+        try {
+          microphone = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false,
+          });
+        } catch {
+          // No microphone, or the person said no. Both are answers, not faults.
+          return false;
+        }
+        // replaceTrack, not addTrack: the line was negotiated when the
+        // connection opened, so putting a microphone on it needs no second
+        // offer — which is what makes the call start at once rather than
+        // after a statement has been round.
+        await sender.replaceTrack(microphone.getAudioTracks()[0] ?? null);
+        return true;
+      },
+
+      hangUp: () => {
+        const sender = pc
+          .getTransceivers()
+          .find((t) => t.receiver.track?.kind === "audio")?.sender;
+        sender?.replaceTrack(null).catch(() => undefined);
+        microphone?.getTracks().forEach((t) => t.stop());
+        microphone = null;
+      },
+
+      speaking: () => microphone !== null,
+
+      close: () => {
+        microphone?.getTracks().forEach((t) => t.stop());
+        microphone = null;
+        shut();
+      },
     };
   } catch {
     shut();

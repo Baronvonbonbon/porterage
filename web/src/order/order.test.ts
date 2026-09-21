@@ -20,7 +20,7 @@ import {
   randomSalt,
 } from "./geo";
 import { TILE, latToY, lonToX, panned, wrapX, xToLon, yToLat } from "./tiles";
-import { openWithKey, photoKeyOf } from "./evidence";
+import { openWithKey, photoKeyOf, packAlbum, unpackAlbum } from "./evidence";
 import { decodeCase, encodeCase } from "./dispute";
 import { ratingText } from "./ratings";
 import {
@@ -846,5 +846,50 @@ describe("what is happening", () => {
     expect(progressOf({ status: Status.Delivered }, "driver").next).toBe(
       undefined
     );
+  });
+});
+
+describe("two photos under one evidence key", () => {
+  // PorterDisputes.commitEvidence refuses a second commitment from the same
+  // party, so a driver gets one key per order. The counter photo and the door
+  // photo therefore travel inside one sealed blob.
+  const bytes = (n: number, fill: number) => new Uint8Array(n).fill(fill);
+
+  it("carry both photos, in the order they were taken", () => {
+    const album = packAlbum([bytes(40, 1), bytes(9000, 2)]);
+    const back = unpackAlbum(album);
+    expect(back.length).toBe(2);
+    expect(back[0].length).toBe(40);
+    expect(back[1].length).toBe(9000);
+    expect(back[0][0]).toBe(1);
+    expect(back[1][0]).toBe(2);
+  });
+
+  it("send one photo as bare bytes, so nothing pays for a frame it doesn't need", () => {
+    const one = bytes(40, 7);
+    expect(packAlbum([one])).toBe(one);
+    expect(unpackAlbum(one).length).toBe(1);
+  });
+
+  it("read a photo committed before albums existed", () => {
+    // Anything already on Bulletin is a bare JPEG. It still has to open.
+    const old = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+    expect(unpackAlbum(old)).toEqual([old]);
+  });
+
+  it("give back what it can from a truncated album rather than nothing", () => {
+    // Bulletin dropped bytes, or someone meddled: one readable photo beats a
+    // thrown exception in the middle of a dispute.
+    const album = packAlbum([bytes(10, 1), bytes(10, 2)]);
+    const cut = album.slice(0, album.length - 4);
+    expect(unpackAlbum(cut).length).toBe(1);
+  });
+
+  it("not mistake a JPEG that happens to start with the marker", () => {
+    // "PA1" then a length longer than what follows: not an album.
+    const tricky = Uint8Array.from([
+      0x50, 0x41, 0x31, 2, 0xff, 0xff, 0xff, 0xff,
+    ]);
+    expect(unpackAlbum(tricky)).toEqual([tricky]);
   });
 });

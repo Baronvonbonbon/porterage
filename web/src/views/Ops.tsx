@@ -23,6 +23,7 @@ import { openCase, type Case } from "../order/dispute";
 import { queue, paused, type QueueRow } from "../ops/queue";
 import { bondGoesTo, slashExceedsStake, splitEscrow } from "../ops/ruling";
 import { evidenceFor } from "../order/dispute";
+import { asDataUrl, unpackAlbum } from "../order/evidence";
 import { errorText, pasWei, short } from "../format";
 import { NOT_ARBITER } from "../copy/privacy";
 
@@ -37,7 +38,9 @@ export function Ops() {
   const [note, setNote] = useState<string | null>(null);
   const [showing, setShowing] = useState<bigint | null>(null);
   const [papers, setPapers] = useState<Case | null>(null);
-  const [photo, setPhoto] = useState<string | null>(null);
+  /** Every photo in the album — a driver may have sent one at the counter
+   *  and one at the door, both under the one evidence key. */
+  const [photos, setPhotos] = useState<string[]>([]);
   const [share, setShare] = useState("5000");
   const [slash, setSlash] = useState("0");
   const [openerWins, setOpenerWins] = useState(true);
@@ -69,7 +72,7 @@ export function Ops() {
   async function look(r: QueueRow) {
     setShowing(r.disputeId);
     setPapers(null);
-    setPhoto(null);
+    setPhotos([]);
     if (!key || !mine) return;
     setBusy(`Opening #${r.disputeId}`);
     setError(null);
@@ -87,12 +90,7 @@ export function Ops() {
           other.party,
           c.photoKey
         ).catch(() => null);
-        if (found)
-          setPhoto(
-            `data:image/jpeg;base64,${btoa(
-              String.fromCharCode(...found.photo)
-            )}`
-          );
+        if (found) setPhotos(unpackAlbum(found.photo).map(asDataUrl));
       }
     } catch (e) {
       setError(errorText(e));
@@ -224,18 +222,23 @@ export function Ops() {
                     <p>
                       <b>“{papers.reason}”</b>
                     </p>
-                    {papers.photoKey && !photo && (
+                    {papers.photoKey && photos.length === 0 && (
                       <p className="muted">
-                        A photo key came with it; the photo didn't load.
+                        A photo key came with it; nothing loaded.
                       </p>
                     )}
-                    {photo && (
+                    {photos.map((src, i) => (
                       <img
+                        key={i}
                         className="evidence"
-                        src={photo}
-                        alt="the evidence"
+                        src={src}
+                        alt={
+                          photos.length > 1
+                            ? `evidence ${i + 1} of ${photos.length}`
+                            : "the evidence"
+                        }
                       />
-                    )}
+                    ))}
                   </>
                 ) : (
                   <p className="muted">

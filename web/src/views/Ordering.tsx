@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Wallet } from "ethers";
 import { deployed } from "../contracts";
 import { venueOf, type Venue } from "../order/venue";
-import { formatDegrees, type Position } from "../order/geo";
+import { formatDegrees, metresBetween, type Position } from "../order/geo";
 import {
   acceptBid,
   cancelOrder,
@@ -50,7 +50,7 @@ import { driverRating, rate, ratingText, wasRated } from "../order/ratings";
 import { Stars } from "./pickers/Stars";
 import { rememberOrder } from "../shield/notes";
 import { tell } from "../notify";
-import { errorText, pasWei, short } from "../format";
+import { errorText, metres, pasWei, short } from "../format";
 import { DROP_SENDING, DROP_SENT, DROP_WAITING } from "../copy/privacy";
 
 const PAS = 10n ** 18n;
@@ -128,6 +128,18 @@ export function Ordering() {
     refresh();
     return () => stop.current?.();
   }, [refresh]);
+
+  /**
+   * How far the delivery actually is: the venue's public pin to this phone's
+   * own drop. Null until the venue's position has loaded.
+   */
+  const trip =
+    liveVenueAt && live
+      ? metresBetween(liveVenueAt, {
+          lat: live.record.lat,
+          lon: live.record.lon,
+        })
+      : null;
 
   const openOrder = useCallback(async (record: OrderRecord) => {
     stop.current?.();
@@ -467,6 +479,18 @@ export function Ordering() {
           {live.order.status === 1 && (
             <>
               <h3>Bids</h3>
+              {/* The trip, stated once, above the bids rather than on each of
+                  them: it is the same distance whoever takes the job, and
+                  repeating it per row would imply it varied. This phone can
+                  work it out without asking anyone — the venue's pin is
+                  public and the drop is already here — so nobody has to
+                  publish a position to make a bid comparable. */}
+              {trip !== null && (
+                <p className="muted">
+                  {metres(trip)} from the counter to your door. A bid is what
+                  that driver wants for the trip.
+                </p>
+              )}
               {bids.length === 0 && (
                 <Waiting what="Waiting for drivers to bid" />
               )}
