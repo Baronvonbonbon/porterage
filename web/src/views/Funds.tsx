@@ -15,7 +15,11 @@
 // privacy is a second button with the cost written beside it.
 
 import { useCallback, useEffect, useState } from "react";
+import { formatEther } from "ethers";
 import { freeBalance, hostAccount, type HostAccount } from "../hostchain";
+import { ethProvider } from "../contracts";
+import { MAX_MARGIN_BPS, WITHDRAW_GAS } from "../market/auction";
+import { describePlan, maxWithdrawable, planWithdrawal } from "../shield/plan";
 import { allNotes, type NoteRecord } from "../shield/notes";
 import { planTopUp, topUp } from "../shield/deposit";
 import {
@@ -59,6 +63,7 @@ export function Funds() {
   const [stage, setStage] = useState<CashOutStage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [gasPrice, setGasPrice] = useState(10n ** 12n);
 
   const refresh = useCallback(async () => {
     try {
@@ -67,6 +72,7 @@ export function Funds() {
       setBalance(await freeBalance(acct.address));
       setNotes(await allNotes());
       setKept(await cashOutBalances());
+      setGasPrice((await ethProvider().getFeeData()).gasPrice ?? 10n ** 12n);
     } catch (e) {
       setError(errorText(e));
     }
@@ -76,9 +82,17 @@ export function Funds() {
     refresh();
   }, [refresh]);
 
-  const shielded = notes
-    .filter((n) => n.path && !n.spent)
-    .reduce((a, n) => a + BigInt(n.value), 0n);
+  const spendable = notes.filter((n) => n.path && !n.spent);
+  const shielded = spendable.reduce((a, n) => a + BigInt(n.value), 0n);
+
+  // What can ACTUALLY come out, which is not the shielded total: every note
+  // spent pays its own submitter, and a note worth less than that fee makes
+  // the answer smaller rather than larger. Showing the raw total here is what
+  // let someone ask for 25 out of 57 and be told no.
+  const ceiling = (WITHDRAW_GAS * gasPrice * MAX_MARGIN_BPS) / 10_000n;
+  const most = maxWithdrawable(spendable, ceiling);
+  const asking = pasOrNull(outAmount);
+  const plan = asking ? planWithdrawal(asking, spendable, ceiling) : null;
 
   async function run(label: string, fn: () => Promise<unknown>) {
     setBusy(label);
@@ -96,9 +110,9 @@ export function Funds() {
   }
 
   const want = pasOrNull(addAmount);
-  const plan = want ? planTopUp(want) : null;
+  const topUpPlan = want ? planTopUp(want) : null;
   const canAdd =
-    !!plan && balance !== null && plan.total / PLANCK_PER_WEI < balance;
+    !!topUpPlan && balance !== null && topUpPlan.total / PLANCK_PER_WEI < balance;
 
   return (
     <div>
@@ -126,7 +140,7 @@ export function Funds() {
           className="primary"
           disabled={!!busy || !canAdd}
           onClick={() =>
-            run(`Shielding ${plan ? pasWei(plan.total) : ""}`, async () => {
+            run(`Shielding ${topUpPlan ? pasWei(topUpPlan.total) : ""}`, async () => {
               const r = await topUp(want!);
               setDone(
                 `Shielded ${pasWei(r.deposited)} as ${r.rungs.length} note${
@@ -139,15 +153,19 @@ export function Funds() {
           Shield it
         </button>
       </div>
-      {plan && !canAdd && balance !== null && (
+      {topUpPlan && !canAdd && balance !== null && (
         <p className="warn">
           Your account holds {pas(balance)}; this needs{" "}
-          {pasWei(plan.total / PLANCK_PER_WEI)}.
+          {pasWei(topUpPlan.total / PLANCK_PER_WEI)}.
         </p>
       )}
 
       <h3>Take money out</h3>
       <p className="muted">{CASH_OUT_PRIVATE}</p>
+      <p className="muted">
+        Most you can take out now: <b>{pasWei(most)}</b>. That's your{" "}
+        {pasWei(shielded)} less the fee on each note it takes to get there.
+      </p>
       <div className="actions">
         <Amount
           label="Take out"
@@ -155,9 +173,17 @@ export function Funds() {
           onChange={setOutAmount}
           presets={[1, 5, 25]}
         />
+        {most > 0n && (
+          <button
+            disabled={!!busy}
+            onClick={() => setOutAmount(formatEther(most))}
+          >
+            All of it
+          </button>
+        )}
         <button
           className="primary"
-          disabled={!!busy || !pasOrNull(outAmount) || shielded === 0n}
+          disabled={!!busy || !asking || !plan}
           onClick={() =>
             run("Taking it out", async () => {
               const r = await cashOut(pasOrNull(outAmount)!, setStage);
@@ -168,6 +194,20 @@ export function Funds() {
           Take it out
         </button>
       </div>
+      {!!asking && !plan && most > 0n && (
+        <p className="warn">
+          {pasWei(asking)} is more than your notes can cover once each one's fee
+          is counted. {pasWei(most)} is the most right now.
+        </p>
+      )}
+      {plan && plan.notes.length > 1 && (
+        <p className="warn">{describePlan(plan)}</p>
+      )}
+      {plan && (
+        <p className="muted">
+          Fees up to {pasWei(plan.fees)}, taken from what comes out.
+        </p>
+      )}
       {stage && <p className="muted">{STAGE_TEXT[stage]}…</p>}
 
       {kept.length > 0 && (

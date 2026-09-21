@@ -5,6 +5,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { parseEther } from "ethers";
 import { freeBalance, hostAccount, type HostAccount } from "../hostchain";
+import { ethProvider } from "../contracts";
+import { MAX_MARGIN_BPS, WITHDRAW_GAS } from "../market/auction";
+import { maxWithdrawable } from "../shield/plan";
 import { allNotes, type NoteRecord } from "../shield/notes";
 import {
   MAX_NOTES_PER_TAP,
@@ -44,6 +47,7 @@ export function Wallet() {
   const [source, setSource] = useState<Token | null>(null); // null = PAS
   const [held, setHeld] = useState<Map<number, bigint>>(new Map());
   const [swapQuote, setSwapQuote] = useState<bigint | null>(null);
+  const [gasPrice, setGasPrice] = useState(10n ** 12n);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -52,6 +56,7 @@ export function Wallet() {
       setMe(acct);
       setBalance(await freeBalance(acct.address));
       setNotes(await allNotes());
+      setGasPrice((await ethProvider().getFeeData()).gasPrice ?? 10n ** 12n);
       setHeld(
         new Map(
           await Promise.all(
@@ -80,6 +85,12 @@ export function Wallet() {
   }, [refresh]);
 
   const unspent = notes.filter((n) => n.path && !n.spent);
+  // Not the shielded total: each note spent pays its own submitter, so the
+  // real ceiling is lower and a note smaller than that fee lowers it further.
+  const mostFundable = maxWithdrawable(
+    unspent,
+    (WITHDRAW_GAS * gasPrice * MAX_MARGIN_BPS) / 10_000n
+  );
   const pending = notes.filter((n) => n.pendingSince);
   const shielded = unspent.reduce((a, n) => a + BigInt(n.value), 0n);
   const byRung = new Map<string, number>();
@@ -273,11 +284,15 @@ export function Wallet() {
 
       <h3>Try a private account</h3>
       <p className="muted">
-        Each order gets a fresh account funded from one note, with nothing
-        on-chain linking it to you. The note must hold the amount plus a fee for
-        whoever submits the withdrawal: it opens at their cost and climbs for 30
+        Each order gets a fresh account funded from your notes, with nothing
+        on-chain linking it to you. Each note spent pays a fee to whoever
+        submits its withdrawal: the fee opens at their cost and climbs for 30
         seconds until someone takes it, capped at four times the gas. Whatever
         it doesn't reach stays with the account and pays its own fees.
+      </p>
+      <p className="muted">
+        Most you can fund right now: <b>{pasWei(mostFundable)}</b>. An amount
+        bigger than one note takes several withdrawals, one fee each.
       </p>
       <div className="actions">
         <Amount

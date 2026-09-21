@@ -1,10 +1,12 @@
 // Funding a fresh burner from the private balance (docs/PLAN.md §5.3–5.4).
 //
-//   1. pick one note that covers the amount plus the submitter's tip
-//   2. prove a withdrawal of that much to the burner; the rest becomes a change note
+//   1. plan which notes to spend (shield/plan.ts): one withdrawal spends one
+//      note, so an amount larger than any single note takes several, and each
+//      one spent costs its own fee
+//   2. for each, prove a withdrawal to the burner; the rest becomes a change note
 //   3. post the proof as a funding request; any online participant submits it
 //   4. when the burner is funded: mark the note spent, find and record the change
-//      note, and tip whoever submitted it, from the burner
+//      note, and pay whoever submitted it, from the burner
 //
 // Nothing here is signed by the user's account: the proof is made on the phone,
 // the request is signed by the product's statement account, the withdrawal by a
@@ -21,6 +23,7 @@ import {
 import { Contract } from "ethers";
 import { SHIELD_POOL } from "../config";
 import { addressOf, ethProvider, writable } from "../contracts";
+import { maxWithdrawable, planWithdrawal } from "./plan";
 import {
   WITHDRAW_GAS,
   nowSeconds,
@@ -174,7 +177,6 @@ export async function fundBurner(
 ): Promise<Funded> {
   const burnerIndex = await nextBurner();
   const burner = (await burnerKey(burnerIndex)).connect(ethProvider());
-  const provider = ethProvider();
 
   // The CEILING is what gets reserved out of the note, because at proving time
   // nobody knows what the job will actually clear at. The difference between
@@ -182,14 +184,63 @@ export async function fundBurner(
   // it pays that burner's own gas.
   onStage("proving");
   const sched = scheduleFor(await gasCostNow());
-  const need = amount + sched.ceiling;
 
-  const note = (await spendable()).find((r) => BigInt(r.value) >= need);
-  if (!note)
+  // One withdrawal spends one note, so an amount bigger than any single note
+  // is covered by several, run one after another into the same account. The
+  // plan accounts for the fact that each note spent costs its own fee
+  // (shield/plan.ts) -- the requirement grows as the plan grows, and a
+  // selection that forgot that would come up short by exactly the fees.
+  const held = await spendable();
+  const plan = planWithdrawal(amount, held, sched.ceiling);
+  if (!plan) {
+    const most = maxWithdrawable(held, sched.ceiling);
     throw new Error(
-      `no single note holds ${formatEther(need)} PAS; shield more first`
+      most > 0n
+        ? `the most you can take out right now is ${formatEther(most)} PAS, ` +
+          `after the fee on each note spent`
+        : `nothing here covers the fee to spend it; shield more first`
     );
-  const [change] = await reserveNotes([BigInt(note.value) - need]);
+  }
+
+  let received = 0n;
+  let last: Awaited<ReturnType<typeof finish>> | null = null;
+  for (let i = 0; i < plan.notes.length; i++) {
+    const note = held.find((r) => r.n === plan.notes[i].n)!;
+    const draw = plan.draws[i];
+    if (i > 0) onStage("proving");
+    last = await drawOne(
+      note,
+      draw,
+      burner,
+      burnerIndex,
+      sched,
+      received,
+      onStage
+    );
+    received = last.received;
+  }
+  return { ...last!, received };
+}
+
+/**
+ * One note out of the pool and into `burner`.
+ *
+ * `already` is what the account held before this draw, because `waitForFunds`
+ * watches a balance rather than an event: on the second note of a plan the
+ * account is not empty, and waiting for `draw` alone would return immediately
+ * on money that arrived for the first one.
+ */
+async function drawOne(
+  note: NoteRecord,
+  draw: bigint,
+  burner: Wallet,
+  burnerIndex: number,
+  sched: Schedule,
+  already: bigint,
+  onStage: (s: FundStage) => void
+): Promise<Funded> {
+  const provider = ethProvider();
+  const [change] = await reserveNotes([BigInt(note.value) - draw]);
   const startBlock = await provider.getBlockNumber();
 
   const proof = await proveWithdrawal({
@@ -199,7 +250,7 @@ export async function fundBurner(
     path: note.path!,
     change: await noteOf(change),
     recipient: burner.address,
-    withdrawnValue: need,
+    withdrawnValue: draw,
     fromSubstrate: inserts(),
   });
 
@@ -207,7 +258,7 @@ export async function fundBurner(
   // The clock starts when the request is posted, not when proving began: a
   // seven-second proof should not have already eaten a quarter of the climb.
   const schedule = { ...sched, startedAt: nowSeconds() };
-  await publishRequest(encodeRequest({ proof, withdrawn: need, schedule }));
+  await publishRequest(encodeRequest({ proof, withdrawn: draw, schedule }));
   await markSpending(note.n, {
     burner: burnerIndex,
     change: change.n,
@@ -222,7 +273,7 @@ export async function fundBurner(
   });
 
   onStage("waiting");
-  const received = await waitForFunds(burner.address, need);
+  const received = await waitForFunds(burner.address, already + draw);
   return finish(
     note,
     change,
