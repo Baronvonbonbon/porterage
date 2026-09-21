@@ -17,7 +17,7 @@
 // pastes as text.
 
 import { AbiCoder, Contract, getBytes, hexlify, type Wallet } from "ethers";
-import { ABI, addressOf, ethProvider, read } from "../contracts";
+import { ABI, addressOf, ethProvider, read, writable } from "../contracts";
 import {
   b32,
   dropNullifier,
@@ -236,7 +236,7 @@ const settlementWith = (signer: Wallet) =>
   new Contract(
     addressOf("settlement"),
     ABI.settlement.fragments as never,
-    signer
+    writable(signer)
   );
 
 /**

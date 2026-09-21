@@ -22,7 +22,7 @@ import {
   keccak256,
   type Wallet,
 } from "ethers";
-import { ABI, addressOf, ethProvider, read } from "../contracts";
+import { ABI, addressOf, ethProvider, read, writable } from "../contracts";
 import { hostGet, hostPut } from "../host";
 import { PHASE_DROPOFF } from "./handoff";
 
@@ -226,7 +226,7 @@ export async function commitPhoto(
   const disputes = new Contract(
     addressOf("disputes"),
     ABI.disputes.fragments as never,
-    sessionKey
+    writable(sessionKey)
   );
   await (
     await disputes.commitEvidence(

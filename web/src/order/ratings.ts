@@ -10,7 +10,7 @@
 // a person — which is the trade this whole design keeps making.
 
 import { Contract, type Wallet } from "ethers";
-import { ABI, addressOf, read } from "../contracts";
+import { ABI, addressOf, read, writable } from "../contracts";
 
 export interface Rating {
   /** Average in hundredths of a star: 437 is 4.37★. */
@@ -43,7 +43,7 @@ export async function rate(
   const ratings = new Contract(
     addressOf("ratings"),
     ABI.ratings.fragments as never,
-    burner
+    writable(burner)
   );
   await (await ratings.rate(orderId, driverStars, venueStars)).wait();
 }

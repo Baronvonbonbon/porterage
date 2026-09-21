@@ -22,7 +22,7 @@ import {
   toUtf8Bytes,
 } from "ethers";
 
-import { ABI, addressOf, read } from "../contracts";
+import { ABI, addressOf, read, writable } from "../contracts";
 import { publishStatement, subscribeTopics } from "../market/statements";
 import { VERSION, open, seal, type Reader } from "./seal";
 
@@ -141,7 +141,7 @@ export async function placeBid(
   const write = new Contract(
     addressOf("orders"),
     ABI.orders.fragments as never,
-    sessionKey
+    writable(sessionKey)
   );
   await (await write.commitBid(orderId, bidHash, revokeHash)).wait();
   await publishStatement(

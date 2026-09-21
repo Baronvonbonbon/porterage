@@ -24,7 +24,7 @@ import {
   toUtf8String,
   type Wallet,
 } from "ethers";
-import { ABI, addressOf, read } from "../contracts";
+import { ABI, addressOf, read, writable } from "../contracts";
 import { hostGet } from "../host";
 import { hostCall } from "../hostchain";
 import { arbiterKey } from "./arbiter";
@@ -102,7 +102,7 @@ export async function fileDispute(
   const disputes = new Contract(
     addressOf("disputes"),
     ABI.disputes.fragments as never,
-    burner
+    writable(burner)
   );
   await (await disputes.openDispute(orderId, uri, { value: bond })).wait();
   return { disputeId: await read("disputes").disputeOfOrder(orderId) };

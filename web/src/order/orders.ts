@@ -6,7 +6,7 @@
 // session key, which needs no taps. Neither path asks the host to sign.
 
 import { Contract, type Wallet } from "ethers";
-import { ABI, addressOf, ethProvider, read } from "../contracts";
+import { ABI, addressOf, ethProvider, read, writable } from "../contracts";
 
 export const Status = {
   Open: 1,
@@ -76,7 +76,7 @@ export interface NewOrder {
 }
 
 const orderContract = (signer: Wallet) =>
-  new Contract(addressOf("orders"), ABI.orders.fragments as never, signer);
+  new Contract(addressOf("orders"), ABI.orders.fragments as never, writable(signer));
 
 /** What a burner must hold to place this order: the escrow plus room for gas. */
 export const escrowFor = (o: NewOrder): bigint => o.orderValue + o.tip;
