@@ -12,6 +12,7 @@ import { formatDegrees, type Position } from "../order/geo";
 import { metres } from "../format";
 import { saveHere, savedHere } from "../shield/notes";
 import { MapPick } from "./pickers/MapPick";
+import { HERE_STAYS } from "../copy/privacy";
 
 export interface Here {
   lat: number;
@@ -78,7 +79,7 @@ export function HerePin({
         <button className="link" onClick={() => setMoving(true)}>
           Set where you are
         </button>{" "}
-        to see only {what} near you. It stays on this device.
+        to see only {what} near you. {HERE_STAYS}
       </p>
     );
   }

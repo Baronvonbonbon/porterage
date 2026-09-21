@@ -456,3 +456,6 @@ code {
   gap: var(--space-2);
   flex-wrap: wrap;
 }
+
+/* The one line that says what is happening (order/progress.ts). */
+.lead { font-size: var(--step-1); margin: var(--space-3) 0; }

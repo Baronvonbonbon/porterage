@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCount, parsePas } from "../money/amount";
+import { parseCount, parsePas, pasPlain } from "../money/amount";
 import { poseidon2 } from "poseidon-lite";
 import { LADDER_PAS, cover, decompose, sum } from "./ladder";
 import { authPath, batchNotePaths, commitmentOf, rootFrom } from "./pool";
@@ -299,6 +299,21 @@ describe("amounts someone typed", () => {
       wei: 1_234_567_800_000_000_000n,
     });
     expect(parsePas(`0.${"1".repeat(19)}`).ok).toBe(false);
+  });
+
+  it("show an amount back the way it was typed", () => {
+    // A field that reformats what someone typed fights them, so the round
+    // trip has to be exact — and the menu editor now types into one.
+    for (const text of ["1", "1.5", "0.0001", "1.2345678", "0"])
+      expect(
+        pasPlain(
+          parsePas(text, { allowZero: true }).ok
+            ? (parsePas(text, { allowZero: true }) as { wei: bigint }).wei
+            : 0n
+        )
+      ).toBe(text === "0" ? "0" : text);
+    expect(pasPlain(10n ** 18n)).toBe("1");
+    expect(pasPlain(1n)).toBe("0.000000000000000001");
   });
 
   it("read a whole number only when it is one, and in range", () => {

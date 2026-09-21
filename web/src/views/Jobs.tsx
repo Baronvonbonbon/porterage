@@ -21,6 +21,7 @@ import { QrScan, QrShow } from "./Qr";
 import { Thread } from "./Thread";
 import { Amount } from "./pickers";
 import { pasOrNull } from "../money/amount";
+import { progressOf } from "../order/progress";
 import { introduce } from "../order/chat";
 import { fileDisputeAsDriver } from "../order/dispute";
 import { driverRating, ratingText } from "../order/ratings";
@@ -34,6 +35,7 @@ import { knownDrops, rememberDrop } from "../shield/notes";
 import { HerePin, useHere } from "./Here";
 import { tell } from "../notify";
 import { errorText, metres, pasWei } from "../format";
+import { photoSealed } from "../copy/privacy";
 
 export function Jobs({
   sessionKey,
@@ -290,11 +292,7 @@ export function Jobs({
       const key = await customerKeyOf(o.id);
       if (!key) throw new Error("this order's account hasn't published a key");
       const { bytes } = await commitPhoto(sessionKey, o.id, key, jpeg);
-      setNote(
-        `Photo stored, sealed to the customer (${(bytes / 1024).toFixed(
-          0
-        )} kB), and its key is on-chain.`
-      );
+      setNote(photoSealed(bytes));
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -491,6 +489,10 @@ export function Jobs({
                     </button>
                   </>
                 )}
+                <br />
+                <span className="muted">
+                  {progressOf(o, "driver").next ?? progressOf(o, "driver").now}
+                </span>
                 {o.status < Status.Delivered && (
                   <>
                     <br />

@@ -14,6 +14,7 @@ import {
   webMapUrl,
 } from "../order/directions";
 import type { Position } from "../order/geo";
+import { MAP_FALLBACK } from "../copy/privacy";
 
 export function Directions({
   at,
@@ -58,11 +59,7 @@ export function Directions({
             open a web map
           </a>
           <br />
-          <span className="muted">
-            This phone wouldn't open a map app. Copying sends nothing anywhere;
-            the web map tells openstreetmap.org where you're going, and may
-            close Porterage to do it.
-          </span>
+          <span className="muted">{MAP_FALLBACK}</span>
         </>
       )}
     </span>

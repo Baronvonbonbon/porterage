@@ -64,23 +64,52 @@ export async function placeOrder(
   await rememberOrder(record);
 
   onStage("announcing");
-  await announceOrder(burner, orderId);
-  // The counter needs to know what to make. Sealed to its key, on the venue's topic.
-  if (plan.basket?.counterKey && plan.basket.items.size) {
-    await sendBasket(plan.venueId, plan.basket.counterKey, {
-      orderId,
-      items: plan.basket.items,
-    });
-    // And the key to answer on: a basket is sealed with a throwaway key, so
-    // without this the kitchen could read the order but not reply to it.
-    await introduce(
-      burner,
-      plan.basket.counterKey,
-      venueTopic(plan.venueId),
-      orderId,
-      "customer"
-    );
+  // From here the order exists and its money is escrowed, so nothing below may
+  // throw: a statement that failed would otherwise leave someone looking at an
+  // error while an order sits on-chain, funded, with no way to be bid on.
+  // Whatever fails is written down and retried when the order is opened.
+  const owes: ("announce" | "basket")[] = [];
+  const keep =
+    plan.basket?.counterKey && plan.basket.items.size
+      ? {
+          items: [...plan.basket.items].filter(([, n]) => n > 0) as [
+            string,
+            number
+          ][],
+          counterKey: plan.basket.counterKey,
+          venueId: plan.venueId.toString(),
+        }
+      : undefined;
+
+  try {
+    await announceOrder(burner, orderId);
+  } catch {
+    owes.push("announce");
   }
+
+  if (keep) {
+    try {
+      await sendBasket(plan.venueId, keep.counterKey, {
+        orderId,
+        items: new Map(keep.items),
+      });
+      // And the key to answer on: a basket is sealed with a throwaway key, so
+      // without this the kitchen could read the order but not reply to it.
+      await introduce(
+        burner,
+        keep.counterKey,
+        venueTopic(plan.venueId),
+        orderId,
+        "customer"
+      );
+    } catch {
+      owes.push("basket");
+    }
+  }
+
+  if (owes.length || keep)
+    await rememberOrder({ ...record, basket: keep, owes });
+
   onStage("placed");
   return { orderId, burner, record };
 }
@@ -88,6 +117,49 @@ export async function placeOrder(
 /** The account that placed one of this device's orders. */
 export async function orderBurner(rec: OrderRecord): Promise<Wallet> {
   return (await burnerKey(rec.burner)).connect(ethProvider());
+}
+
+/**
+ * Try again whatever an order still owes. Called when its screen opens, which
+ * is the moment the device is awake and someone is watching.
+ */
+export async function settleDebts(
+  record: OrderRecord,
+  burner: Wallet
+): Promise<OrderRecord> {
+  if (!record.owes?.length) return record;
+  const orderId = BigInt(record.id);
+  const still: ("announce" | "basket")[] = [];
+
+  for (const owed of record.owes) {
+    try {
+      if (owed === "announce") {
+        await announceOrder(burner, orderId);
+      } else if (record.basket) {
+        await sendBasket(
+          BigInt(record.basket.venueId),
+          record.basket.counterKey,
+          {
+            orderId,
+            items: new Map(record.basket.items),
+          }
+        );
+        await introduce(
+          burner,
+          record.basket.counterKey,
+          venueTopic(BigInt(record.basket.venueId)),
+          orderId,
+          "customer"
+        );
+      }
+    } catch {
+      still.push(owed);
+    }
+  }
+
+  const settled = { ...record, owes: still };
+  await rememberOrder(settled);
+  return settled;
 }
 
 export const myOrders = allOrders;

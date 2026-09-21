@@ -69,3 +69,17 @@ export function parseCount(
   if (opts.max !== undefined && n > opts.max) return null;
   return n;
 }
+
+/**
+ * Wei as bare text for an editable field: no unit, no separators, no trailing
+ * zeroes. `parsePas(pasPlain(w)).wei === w` for every value this app can hold,
+ * which is the point — a field that reformats what someone typed fights them.
+ */
+export function pasPlain(wei: bigint): string {
+  const whole = wei / 10n ** 18n;
+  const rest = (wei % 10n ** 18n)
+    .toString()
+    .padStart(18, "0")
+    .replace(/0+$/, "");
+  return rest ? `${whole}.${rest}` : whole.toString();
+}

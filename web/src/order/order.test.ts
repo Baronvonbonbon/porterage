@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { progressOf } from "./progress";
+import { Status } from "./orders";
 import { MAX_LABELS, cleanLabels, matchesLabels, type Label } from "./labels";
 import { asText, geoUrl, webMapUrl } from "./directions";
 import { decodeDrop, encodeDrop } from "./drop";
@@ -798,5 +800,42 @@ describe("venue labels", () => {
     expect(
       decodeMenu(encodeMenu({ name: "x", items: menu.items })).labels
     ).toBe(undefined);
+  });
+});
+
+describe("what is happening", () => {
+  it("tell each party what their own next move is", () => {
+    const assigned = { status: Status.Assigned };
+    expect(progressOf(assigned, "driver").next).toMatch(/counter/i);
+    expect(progressOf(assigned, "customer").next).toMatch(/collect/i);
+    // The venue's part ends at the counter, so it is told so rather than being
+    // left watching an order it can no longer affect.
+    expect(progressOf({ status: Status.PickedUp }, "venue").done).toBe(true);
+    expect(progressOf({ status: Status.PickedUp }, "customer").next).toMatch(
+      /door/i
+    );
+  });
+
+  it("say when an order is over, and when it only looks over", () => {
+    expect(progressOf({ status: Status.Delivered }, "customer").done).toBe(
+      true
+    );
+    expect(progressOf({ status: Status.Cancelled }, "customer").done).toBe(
+      true
+    );
+    // A dispute is not finished, however final it feels to whoever filed it.
+    expect(progressOf({ status: Status.Disputed }, "customer").done).toBe(
+      false
+    );
+    expect(progressOf({ status: 7 }, "customer").done).toBe(true);
+  });
+
+  it("offer a rating only to the one who can give it", () => {
+    expect(progressOf({ status: Status.Delivered }, "customer").next).toMatch(
+      /rate/i
+    );
+    expect(progressOf({ status: Status.Delivered }, "driver").next).toBe(
+      undefined
+    );
   });
 });

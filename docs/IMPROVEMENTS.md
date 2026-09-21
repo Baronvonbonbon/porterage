@@ -179,7 +179,7 @@ took — if the extra links appear, rung 1 was refused.
 
 ---
 
-## Smaller things worth doing
+## Smaller things worth doing — ALL DONE 2026-09-20
 
 - **Order history.** `allOrders()` is in the book; nothing shows a finished order.
 - **A "what is happening" line** on the order screen. Stages exist (`PlaceStage`) but only during
@@ -189,6 +189,44 @@ took — if the extra links appear, rung 1 was refused.
 - **The venue's own rating and takings** on one screen. Both exist, neither is prominent.
 - **Copy for the privacy warnings.** There are now six or seven of them, written at different
   times. They should read as one voice and be one module, not string literals in views.
+
+**Done**, and three of the five turned out to be bigger than "smaller".
+
+`order/progress.ts` is the "what is happening" line, and writing it forced a question the status
+enum never answered: *whose* next move is it? `progressOf(order, who)` takes the party, because
+"waiting for the driver to collect it" and "collect it from the counter" are the same status seen
+from two ends, and a screen that shows a driver the customer's sentence is telling it to wait for
+itself. Delivered is `done` for everyone; Disputed is not done for anybody, and says so rather than
+reading as finished.
+
+**Retrying the half-failed sends was the one with a real bug under it.** Placing an order did
+`createOrder`, then `announceOrder`, then the basket, then the intro — four awaits in a row, and
+only the first is on-chain. A statement that failed after the order existed left an order nobody
+could bid on and no record that anything was missing, and the customer's screen showed an order
+sitting there attracting nothing. `flow.ts` now records what it owes on the order (`owes`), keeps
+the basket it needs to resend, and `settleDebts` retries when the order is reopened — which is the
+moment someone is looking at it and a stall is most visible. Nothing after `createOrder` can throw
+any more: the order exists, so the screen must open.
+
+The venue's takings needed a fact checking before the copy could be written: `PorterOrders`
+credits the venue at **pickup**, not delivery, so the sentence on screen says so. The Sell screen
+now leads with the rating and the money waiting, carries the contract's own `pickups` count, and
+has the `Earnings` block that takes it out — it was previously only on the driver's screen, so a
+venue could see what it was owed and not collect it. It also had the last hand-rolled amount parse
+in the app, in the menu price field; `pasPlain` and the `Amount` control replaced it, with a
+round-trip test, because a price field that silently reformats what someone typed is a field people
+fight.
+
+`copy/privacy.ts` holds the eight warnings and the rules they follow, written down at the top:
+name who learns it, cost before comfort, never say "secure" or "private" (those are conclusions,
+and the conclusion is the reader's), present tense. The point is not tidiness — consistent phrasing
+is how someone learns the shape of the thing, and once learned they can predict what the next
+screen costs them without reading it. Headless rendering caught the first sentence promising
+warnings "below" on a screen with nothing below it, which is how you teach someone to stop reading
+these.
+
+**Seam:** `progressOf` is a pure function of (status, party); `settleDebts` is a pure retry over a
+record; the copy is strings. All three are swappable without touching a view's logic.
 
 ## Needs a phone before it can be built honestly
 

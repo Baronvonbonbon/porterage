@@ -24,6 +24,7 @@ import { queue, paused, type QueueRow } from "../ops/queue";
 import { bondGoesTo, slashExceedsStake, splitEscrow } from "../ops/ruling";
 import { evidenceFor } from "../order/dispute";
 import { errorText, pasWei, short } from "../format";
+import { NOT_ARBITER } from "../copy/privacy";
 
 export function Ops() {
   const [key, setKey] = useState<Wallet | null>(null);
@@ -172,10 +173,8 @@ export function Ops() {
 
       {!mine && (
         <p className="notice">
-          This device isn't the arbiter, so it can read the queue but not a case
-          — every case is sealed to the arbiter's key — and a ruling it signed
-          would be refused. To make this device the arbiter, point the contract
-          at the key above and rebuild the app with its public key.
+          {NOT_ARBITER} To make this device the arbiter, point the contract at
+          the key above and rebuild the app with its public key.
         </p>
       )}
 

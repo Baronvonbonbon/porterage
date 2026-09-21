@@ -17,6 +17,9 @@ export interface Venue {
   payout: string;
   at: Position;
   active: boolean;
+  /** Completed pickups. The contract's own count, and the closest thing
+   *  to takings that is public — it says how many, never how much. */
+  pickups: number;
   metadataURI: string;
 }
 
@@ -29,6 +32,7 @@ export async function venueOf(id: bigint): Promise<Venue> {
     payout: v.payout,
     at: { lat: Number(v.lat), lon: Number(v.lon) },
     active: v.active,
+    pickups: Number(v.pickups),
     metadataURI: v.metadataURI,
   };
 }

@@ -7,6 +7,7 @@ import { Ordering } from "./views/Ordering";
 import { Venue } from "./views/Venue";
 import { Wallet } from "./views/Wallet";
 import { Ops } from "./views/Ops";
+import { SHAPE } from "./copy/privacy";
 
 type Role = "customer" | "driver" | "venue" | "ops";
 const ROLE_KEY = "porterage.role";
@@ -89,6 +90,9 @@ export function App() {
           <button className="link" onClick={() => choose("ops")}>
             Operations console
           </button>
+          {/* Said once, on the only screen nobody is mid-task on. Every
+              screen after this says its own share of it (copy/privacy.ts). */}
+          <p className="muted">{SHAPE}</p>
         </section>
       )}
 

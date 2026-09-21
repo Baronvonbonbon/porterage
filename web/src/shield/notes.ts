@@ -70,6 +70,14 @@ export interface OrderRecord {
   placedAt: number;
   /** The driver's signing key, recovered at the door: it opens the sealed photo. */
   driverKey?: string;
+  /**
+   * Statements this order still owes. The order exists on-chain and its money
+   * is escrowed the moment it is created, so a statement that failed after
+   * that must never lose the order — it is written down here and tried again.
+   */
+  owes?: ("announce" | "basket")[];
+  /** What the basket was, so an owed one can actually be re-sent. */
+  basket?: { items: [string, number][]; counterKey: string; venueId: string };
 }
 
 /** One side of a message thread: what this device has said on it (order/chat.ts). */

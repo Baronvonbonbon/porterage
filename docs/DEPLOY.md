@@ -47,3 +47,4 @@ signed. Registering an unowned label needs `--register` and the label typed back
 | 2026-09-20 | Published menu caching and venue labels | `bafybeifr3pmtpygxyn5mzrofds2kxzr5j3ogce5vukm24ota56snmrs7ri` |
 | 2026-09-20 | Published the visual pass | `bafybeihvfjquhslmygvlmu3lc3oakqidt7cwhwmc3nareu7avegrn5drmi`. Type and space scale, tokens with dark values, marked primary actions, host theme followed. |
 | 2026-09-20 | Published the picker module | `bafybeihdflnqtdgyoge5kjmb73m7biwwrv2iugebo2zlprnwef5j2jyigu`. One amount parser, presets, steppers, validation beside the field. |
+| 2026-09-20 | Published the smaller items | `bafybeibd7ezbdy6ylpbwbqxcyjgqys75tzruejp47ekb4pv2qxk4vk6paa`. Order history, a "what happens next" line per role, half-failed sends retried when the order is reopened, the venue's rating and takings on one screen, and the privacy copy gathered into `copy/privacy.ts`. |

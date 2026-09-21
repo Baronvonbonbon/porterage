@@ -39,6 +39,8 @@ import { QrScan, QrShow } from "./Qr";
 import { Choose, ChooseMany } from "./pickers/Choose";
 import { Amount, Count } from "./pickers";
 import { pasOrNull } from "../money/amount";
+import { settleDebts } from "../order/flow";
+import { progressOf } from "../order/progress";
 import { Waiting } from "./State";
 import { Thread } from "./Thread";
 import { MapPick } from "./pickers/MapPick";
@@ -67,6 +69,14 @@ import { Stars } from "./pickers/Stars";
 import { rememberOrder } from "../shield/notes";
 import { tell } from "../notify";
 import { errorText, metres, pasWei, short } from "../format";
+import {
+  BASKET_SEALED,
+  BASKET_UNSEALED,
+  coarseArea,
+  DROP_SENDING,
+  DROP_SENT,
+  DROP_WAITING,
+} from "../copy/privacy";
 
 const PAS = 10n ** 18n;
 
@@ -130,6 +140,8 @@ export function Ordering() {
   const stop = useRef<(() => void) | null>(null);
   /** Distinguishes "still looking" from "there are none", which look the same. */
   const [loadingVenues, setLoadingVenues] = useState(true);
+  /** How each remembered order ended, so the list says more than a date. */
+  const [past, setPast] = useState<Map<string, Order>>(new Map());
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -138,6 +150,17 @@ export function Ordering() {
       setVenues((await allVenues()).filter((v) => v.active));
       const records = await allOrders();
       setMine(records.sort((a, b) => b.placedAt - a.placedAt));
+      // Read each one's state so the list can say how it ended. Cheap: these
+      // are single reads, and there are as many as this device has placed.
+      const states = await Promise.all(
+        records.map(
+          async (r) =>
+            [r.id, await orderOf(BigInt(r.id)).catch(() => null)] as const
+        )
+      );
+      setPast(
+        new Map(states.filter((row): row is [string, Order] => !!row[1]))
+      );
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -158,7 +181,9 @@ export function Ordering() {
       orderOf(BigInt(record.id)),
       orderBurner(record),
     ]);
-    setLive({ record, order, burner });
+    // Anything the order still owes gets another go now that someone is here.
+    const settled = await settleDebts(record, burner).catch(() => record);
+    setLive({ record: settled, order, burner });
     stop.current = await watchBids(burner, BigInt(record.id), (bid) => {
       tell("bid", bid.bidHash);
       setBids((all) =>
@@ -614,8 +639,8 @@ export function Ordering() {
                       ? `${basketText(menu, picked)} — ${pasWei(basket)}`
                       : "Pick something from the menu."}
                     {menu.counterKey
-                      ? " The counter is told what to make, sealed to it alone."
-                      : " This menu has no counter key, so the venue will only see the amount."}
+                      ? ` ${BASKET_SEALED}`
+                      : ` ${BASKET_UNSEALED}`}
                   </p>
                 </>
               ) : (
@@ -661,14 +686,14 @@ export function Ordering() {
               </label>
               {tellArea && drop.lat !== null && drop.lon !== null && (
                 <p className="warn">
-                  Publishes a square about a kilometre across —{" "}
-                  {formatDegrees(cellOf({ lat: drop.lat, lon: drop.lon }).lat)},{" "}
-                  {formatDegrees(cellOf({ lat: drop.lat, lon: drop.lon }).lon)},
-                  give or take {cellVagueness(drop.lat)} m — so drivers can see
-                  how far the trip is before bidding. It is public, and it is
-                  the same square every time you deliver here, so a home that
-                  orders often is a home in a known square. Your exact drop
-                  still never leaves this phone.
+                  {coarseArea(
+                    `${formatDegrees(
+                      cellOf({ lat: drop.lat, lon: drop.lon }).lat
+                    )}, ${formatDegrees(
+                      cellOf({ lat: drop.lat, lon: drop.lon }).lon
+                    )}`,
+                    cellVagueness(drop.lat)
+                  )}
                 </p>
               )}
               <button
@@ -702,13 +727,25 @@ export function Ordering() {
             <>
               <h3>Your orders</h3>
               <ul>
-                {mine.map((r) => (
-                  <li key={r.id}>
-                    <button className="link" onClick={() => openOrder(r)}>
-                      #{r.id} — {new Date(r.placedAt).toLocaleString()}
-                    </button>
-                  </li>
-                ))}
+                {mine.map((r) => {
+                  const was = past.get(r.id);
+                  return (
+                    <li key={r.id}>
+                      <button className="link" onClick={() => openOrder(r)}>
+                        #{r.id} — {new Date(r.placedAt).toLocaleString()}
+                      </button>
+                      {was && (
+                        <>
+                          <br />
+                          <span className="muted">
+                            {progressOf(was, "customer").now}{" "}
+                            {pasWei(was.orderValue + was.fare)}
+                          </span>
+                        </>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </>
           )}
@@ -717,6 +754,15 @@ export function Ordering() {
 
       {live && (
         <>
+          {(() => {
+            const p = progressOf(live.order, "customer");
+            return (
+              <p className={p.done ? "ok lead" : "lead"}>
+                {p.now}
+                {p.next && <span className="muted"> {p.next}</span>}
+              </p>
+            );
+          })()}
           <dl>
             <dt>Order</dt>
             <dd>#{live.record.id}</dd>
@@ -790,11 +836,7 @@ export function Ordering() {
           {live.order.status === 2 && (
             <p className="muted">
               Assigned. The driver collects it from the counter next.{" "}
-              {dropSent
-                ? "It has your drop, sealed to it alone — it needs that to find you, and nobody else can read it."
-                : driverKey
-                ? "Sending it your drop…"
-                : "It gets your drop as soon as it says hello."}
+              {dropSent ? DROP_SENT : driverKey ? DROP_SENDING : DROP_WAITING}
             </p>
           )}
 

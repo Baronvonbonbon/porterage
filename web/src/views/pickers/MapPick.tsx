@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Position } from "../../order/geo";
 import { formatDegrees, metresBetween } from "../../order/geo";
+import { MAP_TILES } from "../../copy/privacy";
 
 import {
   MAX_ZOOM,
@@ -123,11 +124,7 @@ export function MapPick({
         {away < 1000 ? `${away} m` : `${(away / 1000).toFixed(1)} km`} from the
         venue. Drag to move the pin.
       </p>
-      <p className="warn">
-        The map fetches tiles from openstreetmap.org, so that server sees
-        roughly where you're looking. Typing the coordinates instead sends
-        nothing.
-      </p>
+      <p className="warn">{MAP_TILES}</p>
 
       <div className="actions">
         <div className="map-zoom">

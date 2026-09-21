@@ -19,6 +19,8 @@ import { QrShow } from "./Qr";
 import { menuOf, publishMenu, type Menu, type MenuItem } from "../order/menu";
 import { LABELS, MAX_LABELS, labelWord } from "../order/labels";
 import { ChooseMany } from "./pickers/Choose";
+import { Amount } from "./pickers/Amount";
+import { pasPlain } from "../money/amount";
 import {
   basketLine,
   venueTopic,
@@ -30,6 +32,9 @@ import { ratingText, venueRating } from "../order/ratings";
 import { tell } from "../notify";
 import { Thread } from "./Thread";
 import { errorText, pasWei, short } from "../format";
+import { MENU_PUBLIC, VENUE_SEES } from "../copy/privacy";
+import { read } from "../contracts";
+import { Earnings } from "./Earnings";
 
 export function Venue() {
   const [me, setMe] = useState<HostAccount | null>(null);
@@ -48,6 +53,10 @@ export function Venue() {
   const [callers, setCallers] = useState<Map<string, Intro>>(new Map());
   const [talkTo, setTalkTo] = useState<string | null>(null);
   const [stars, setStars] = useState<Map<string, string>>(new Map());
+  /** What the vault is holding for each venue's payout address. */
+  const [takings, setTakings] = useState<Map<string, bigint>>(new Map());
+  /** Price text while it is being typed: "1." is not yet a number. */
+  const [prices, setPrices] = useState<Map<string, string>>(new Map());
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -71,19 +80,25 @@ export function Venue() {
             }
           );
         }
-        setStars(
-          new Map(
-            await Promise.all(
-              rows.map(
-                async (v) =>
-                  [
-                    v.id.toString(),
-                    ratingText(await venueRating(v.id)),
-                  ] as const
-              )
+        // How it is rated and what it is owed, together: they are the two
+        // numbers an operator opens this screen for.
+        const vault = read("vault");
+        const [rated, owed] = await Promise.all([
+          Promise.all(
+            rows.map(
+              async (v) =>
+                [v.id.toString(), ratingText(await venueRating(v.id))] as const
             )
-          )
-        );
+          ),
+          Promise.all(
+            rows.map(
+              async (v) =>
+                [v.id.toString(), await vault.balanceOf(v.payout)] as const
+            )
+          ),
+        ]);
+        setStars(new Map(rated));
+        setTakings(new Map(owed));
         const ids = new Set(rows.map((v) => v.id.toString()));
         setOrders(
           (await recentOrders()).filter((o) => ids.has(o.venueId.toString()))
@@ -191,46 +206,59 @@ export function Venue() {
       )}
 
       {mine.map((v) => (
-        <dl key={v.id.toString()}>
-          <dt>Venue</dt>
-          <dd>#{v.id.toString()}</dd>
-          <dt>Rated</dt>
-          <dd>{stars.get(v.id.toString()) ?? "…"}</dd>
-          <dt>Counter at</dt>
-          <dd>
-            {formatDegrees(v.at.lat)}, {formatDegrees(v.at.lon)}
-          </dd>
-          <dt>Signs with</dt>
-          <dd title={v.signer}>
-            {key && v.signer.toLowerCase() === key.address.toLowerCase() ? (
-              "this phone"
-            ) : (
-              <>
-                {short(v.signer)}{" "}
-                <button
-                  className="link"
-                  disabled={!!busy || !key}
-                  onClick={() =>
-                    run("Updating", () => setVenueSigner(v.id, key!))
-                  }
-                >
-                  use this phone
-                </button>
-              </>
-            )}
-          </dd>
-        </dl>
+        <div key={v.id.toString()}>
+          <p className="lead">
+            {stars.get(v.id.toString()) ?? "…"} ·{" "}
+            {takings.has(v.id.toString())
+              ? `${pasWei(takings.get(v.id.toString())!)} waiting`
+              : "…"}
+          </p>
+          <p className="muted">
+            {v.pickups === 1
+              ? "One order collected from this counter."
+              : `${v.pickups} orders collected from this counter.`}{" "}
+            Takings land in the vault when the driver collects, not when the
+            order is delivered — the goods are yours to be paid for either way.
+          </p>
+          <dl>
+            <dt>Venue</dt>
+            <dd>#{v.id.toString()}</dd>
+            <dt>Counter at</dt>
+            <dd>
+              {formatDegrees(v.at.lat)}, {formatDegrees(v.at.lon)}
+            </dd>
+            <dt>Signs with</dt>
+            <dd title={v.signer}>
+              {key && v.signer.toLowerCase() === key.address.toLowerCase() ? (
+                "this phone"
+              ) : (
+                <>
+                  {short(v.signer)}{" "}
+                  <button
+                    className="link"
+                    disabled={!!busy || !key}
+                    onClick={() =>
+                      run("Updating", () => setVenueSigner(v.id, key!))
+                    }
+                  >
+                    use this phone
+                  </button>
+                </>
+              )}
+            </dd>
+          </dl>
+        </div>
       ))}
 
       {mine.length > 0 && (
         <>
+          {/* The way the takings above actually come out, on the same screen
+              rather than on the driver's. The payout address is the venue's,
+              which may not be this phone's account. */}
+          <Earnings account={mine[0].payout} />
+
           <h3>Menu</h3>
-          <p className="muted">
-            The menu is a small public document on Bulletin, and the venue
-            points at it. Customers read it before they have an account, which
-            is why it isn't sealed. Bulletin keeps it about two weeks, so
-            republish now and then.
-          </p>
+          <p className="muted">{MENU_PUBLIC}</p>
           <div className="actions">
             <label>
               Called{" "}
@@ -241,29 +269,26 @@ export function Venue() {
               />
             </label>
             {menu.items.map((it, i) => (
-              <label key={it.id}>
-                <input
-                  placeholder="item"
-                  value={it.name}
-                  onChange={(e) => setItem(i, { name: e.target.value })}
-                  size={14}
-                />{" "}
-                <input
-                  inputMode="decimal"
-                  size={4}
-                  value={(Number(it.price) / 1e18).toString()}
-                  onChange={(e) =>
-                    setItem(i, {
-                      price:
-                        BigInt(
-                          Math.round((Number(e.target.value) || 0) * 1e6)
-                        ) *
-                        10n ** 12n,
-                    })
-                  }
-                />{" "}
-                PAS
-              </label>
+              <div className="menu-row" key={it.id}>
+                <label>
+                  <input
+                    placeholder="item"
+                    value={it.name}
+                    onChange={(e) => setItem(i, { name: e.target.value })}
+                    size={14}
+                  />
+                </label>
+                {/* The last screen still parsing an amount by hand. A price
+                    typed as "1.2345678" used to round away in silence. */}
+                <Amount
+                  label="costs"
+                  value={prices.get(it.id) ?? pasPlain(it.price)}
+                  onChange={(text, wei) => {
+                    setPrices(new Map(prices).set(it.id, text));
+                    if (wei !== null) setItem(i, { price: wei });
+                  }}
+                />
+              </div>
             ))}
             <button
               className="link"
@@ -316,10 +341,7 @@ export function Venue() {
 
           <h3>Orders</h3>
           {orders.length === 0 && <p className="muted">No orders yet.</p>}
-          <p className="muted">
-            What was ordered reaches only this counter: the chain says how much,
-            never what.
-          </p>
+          <p className="muted">{VENUE_SEES}</p>
           <ul>
             {orders.map((o) => {
               const venue = mine.find((v) => v.id === o.venueId)!;
