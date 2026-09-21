@@ -6,7 +6,14 @@
 // that a thread is a window, not a history.
 
 import { useEffect, useRef, useState } from "react";
-import { MAX_TEXT, say, watchThread, type Message } from "../order/chat";
+import {
+  archiveThread,
+  MAX_TEXT,
+  say,
+  unsaved,
+  watchThread,
+  type Message,
+} from "../order/chat";
 import type { Reader } from "../order/seal";
 import { connectLive, type Live } from "../order/live";
 import { tell } from "../notify";
@@ -28,6 +35,9 @@ export function Thread({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState<Live | null>(null);
+  /** This side's messages the statement can no longer carry (order/chat.ts). */
+  const [losing, setLosing] = useState(0);
+  const [saving, setSaving] = useState(false);
   const foot = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -82,6 +92,7 @@ export function Thread({
       live?.send(text);
       await say(mine, theirs, orderId, text);
       setText("");
+      setLosing(await unsaved(mine, theirs, orderId));
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -105,6 +116,39 @@ export function Thread({
         ))}
         <div ref={foot} />
       </div>
+
+      {losing > 0 && (
+        <p className="notice">
+          {losing === 1
+            ? "One of your older messages"
+            : `${losing} of your older messages`}{" "}
+          no longer fits in the thread, so the other side will lose{" "}
+          {losing === 1 ? "it" : "them"}. Saving them puts your side of the
+          conversation on Bulletin, sealed so only they can read it.{" "}
+          <b>The Polkadot app will ask once, and it takes a few seconds</b> —
+          measured at 6 to 31 seconds on a phone, which is why it isn't done for
+          you.
+          <br />
+          <button
+            className="link"
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              setError(null);
+              try {
+                await archiveThread(mine, theirs, orderId);
+                setLosing(await unsaved(mine, theirs, orderId));
+              } catch (e) {
+                setError(errorText(e));
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            {saving ? "saving…" : "save the older messages"}
+          </button>
+        </p>
+      )}
 
       <div className="actions">
         <input

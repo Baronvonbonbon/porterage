@@ -145,7 +145,9 @@ export const QUESTIONS: Question[] = [
     asks: "Does the camera work in the WebView, and can it read a QR code?",
     expect:
       "The scanner opens and reads the code shown above it — this phone " +
-      "scanning its own screen is a real handoff, minus the second phone.",
+      "scanning its own screen is a real handoff, minus the second phone. " +
+      "Pasting it instead answers a different question: it proves the code " +
+      "encodes and decodes, and says nothing about the camera.",
     decides:
       "Whether the pickup and dropoff handoffs work at all on a phone. If not, " +
       "the pasted-code fallback becomes the main path, not the fallback.",

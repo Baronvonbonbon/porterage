@@ -290,36 +290,75 @@ export async function say(
   const topic = threadTopic(mine.signingKey, theirs);
   const said = await rememberSaid(topic, trimmed);
 
-  // A long conversation outgrows one statement, and the oldest of it would
-  // simply be lost. Before that happens, the whole transcript goes to Bulletin,
-  // sealed to the same reader, and the statement carries its key.
+  // The message goes now, carrying whatever archive key the thread already
+  // has. It does NOT wait for a new one.
   //
-  // This is deliberately NOT per message: a Bulletin write goes through the
-  // host and may cost a tap, so it happens only when the window is about to
-  // drop something that isn't stored yet — and it stores everything said so
-  // far, which buys another windowful before the next one.
+  // It used to. A Bulletin write was awaited here whenever the window was
+  // about to drop a message, on the guess that it "may cost a tap" — and the
+  // guess was right, but nowhere near pessimistic enough. Measured on a phone
+  // (2026-09-21, probe.ts): a write costs an approval prompt EVERY time, and
+  // took 31.5 s and then 5.6 s. So the old code stalled a sent message for
+  // half a minute behind a prompt the person never asked for, in the middle of
+  // typing. Saving the old messages is worth doing; it is not worth doing
+  // there. `archiveThread` below does it deliberately, and the UI asks first.
   const record = await threadRecord(topic);
-  let archive = record?.archive;
-  const dropped = dropsFrom(orderId, said, archive);
-  if (dropped > (record?.archivedUpTo ?? 0)) {
-    try {
-      const key = await hostPut(
-        await seal(theirs, ARCHIVE, encodeArchive(orderId, said))
-      );
-      await rememberArchive(topic, key, said.length);
-      archive = key;
-    } catch {
-      // No Bulletin here, or the host refused: the window still works, and the
-      // message still goes. The oldest messages age out, as they did before.
-    }
-  }
-
   await publishStatement(
     topic,
     sideChannel(topic, mine.signingKey),
-    await seal(theirs, CHAT, encodeThread(orderId, said, archive))
+    await seal(theirs, CHAT, encodeThread(orderId, said, record?.archive))
   );
   return said;
+}
+
+/**
+ * How many of this side's messages the statement can no longer carry and no
+ * archive holds — the number that the other party will lose if nothing is
+ * written. Zero for most conversations, which never outgrow one statement.
+ */
+export async function unsaved(
+  mine: Reader,
+  theirs: string,
+  orderId: bigint
+): Promise<number> {
+  const topic = threadTopic(mine.signingKey, theirs);
+  const record = await threadRecord(topic);
+  if (!record) return 0;
+  const said = record.mine;
+  const dropped = dropsFrom(orderId, said, record.archive);
+  return Math.max(0, dropped - (record.archivedUpTo ?? 0));
+}
+
+/**
+ * Put this side's whole transcript on Bulletin, sealed to the same reader, and
+ * point the thread's statement at it. One host prompt and several seconds, so
+ * it is never done behind someone's back — see `unsaved` and the banner in
+ * views/Thread.tsx.
+ *
+ * It stores everything said so far, not just what is falling out of the
+ * window, which buys another windowful before the next one is needed.
+ */
+export async function archiveThread(
+  mine: Reader,
+  theirs: string,
+  orderId: bigint
+): Promise<boolean> {
+  const topic = threadTopic(mine.signingKey, theirs);
+  const record = await threadRecord(topic);
+  const said = record?.mine ?? [];
+  if (!said.length) return false;
+
+  const key = await hostPut(
+    await seal(theirs, ARCHIVE, encodeArchive(orderId, said))
+  );
+  await rememberArchive(topic, key, said.length);
+  // Republish so the other side can find it. Same channel, so this replaces
+  // the statement rather than adding one, and a statement costs no tap.
+  await publishStatement(
+    topic,
+    sideChannel(topic, mine.signingKey),
+    await seal(theirs, CHAT, encodeThread(orderId, said, key))
+  );
+  return true;
 }
 
 /** The full transcript, as it goes to Bulletin: the same shape, no window. */

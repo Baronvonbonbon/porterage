@@ -62,6 +62,16 @@ truapi 0.13.1), 2026-09-19, unless dated otherwise. The details and code live in
 | Historical contract reads | Work | The Paseo Ethereum RPC honours `blockTag` for `eth_call` and `eth_getCode` at any depth tested. A light client such as pine-rpc can't: it keeps no history |
 | Groth16 on the phone | **Not measured** | 420–645 ms on desktop for the same circuit. Measured first (Phase 0) |
 
+Four more, measured by Porterage's own "Check this phone" screen (`probe.ts`) on 2026-09-21,
+same device:
+
+| Need | Status | What it means here |
+|---|---|---|
+| `navigateTo` with a `geo:` URI | **Works, and does not navigate the WebView** | Accepted in 51 ms; a map app opened on the pin and Porterage was still there on return. Rung 1 of `order/directions.ts` is real, so directions are one tap and the web-map rung is a genuine fallback |
+| A Bulletin write | **A tap every time** | Two writes back to back cost two prompts: 31.5 s then 5.6 s. So a write is not just a tap, it is slow — the first went through a cold allowance and permission, the second still took 5.6 s. Anything that writes per message is unusable (`order/chat.ts`) |
+| Host notification while backgrounded | **Arrives** | Scheduled 30 s ahead, accepted in 1.3 s, and it landed while the app was away. The notification code is worth keeping, and `scheduledAt` is a bigint of ms |
+| Camera reading a QR | **Still unmeasured** | The first run was answered by pasting the code, which the probe wrongly recorded as a scan. `QrScan` now reports whether a code arrived by camera or by paste, and a paste no longer answers the question |
+
 ---
 
 ## 3. Identity and keys

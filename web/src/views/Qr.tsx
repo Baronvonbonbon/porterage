@@ -42,14 +42,24 @@ export function QrShow({
  * Anything that isn't a Porterage code of `expect` is ignored, so the scanner
  * stays open until the real one is in frame.
  */
+/**
+ * `onRead` is told HOW the code arrived. Every real caller treats a scan and a
+ * paste the same — the code is the same base64 either way, which is the point
+ * of the fallback — but a caller measuring the camera must be able to tell
+ * them apart. The phone probe reported a pasted code as a successful scan
+ * until this argument existed (2026-09-21).
+ */
 export function QrScan({
   expect,
   onRead,
   onCancel,
+  onTrouble,
 }: {
   expect: Kind;
-  onRead: (text: string) => void;
+  onRead: (text: string, how: "camera" | "paste") => void;
   onCancel: () => void;
+  /** Why the camera never started, for anyone measuring rather than using it. */
+  onTrouble?: (why: string) => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +87,7 @@ export function QrScan({
         return false;
       }
       done = true;
-      onRead(text.trim());
+      onRead(text.trim(), "camera");
       return true;
     };
 
@@ -119,11 +129,12 @@ export function QrScan({
         await el.play();
         frame = requestAnimationFrame(tick);
       } catch (e) {
-        setError(
+        const why =
           (e as { name?: string }).name === "NotAllowedError"
             ? "The camera was refused. Paste the code instead."
-            : `No camera: ${(e as Error).message}`
-        );
+            : `No camera: ${(e as Error).message}`;
+        setError(why);
+        onTrouble?.(why);
       }
     })();
 
@@ -132,7 +143,7 @@ export function QrScan({
       cancelAnimationFrame(frame);
       stream?.getTracks().forEach((t) => t.stop());
     };
-  }, [expect, onRead]);
+  }, [expect, onRead, onTrouble]);
 
   return (
     <div className="qr-scan">
@@ -151,7 +162,7 @@ export function QrScan({
             try {
               if (decodePayload(pasted).kind !== expect)
                 throw new Error("wrong code");
-              onRead(pasted.trim());
+              onRead(pasted.trim(), "paste");
             } catch {
               setError("That isn't the code this step expects.");
             }

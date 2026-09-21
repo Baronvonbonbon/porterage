@@ -266,5 +266,32 @@ Found while building it: the host's `scheduledAt` is a **bigint** of millisecond
 **Still needs the phone**, and only the phone: the basket to the counter and the token swap are not
 in here, because both spend real money and belong in the Phase 7 run rather than in a probe.
 
+### What the phone said, 2026-09-21
+
+Three of the four are answered (the table in `PLAN.md` §2 has them), and one of the four caught the
+probe out.
+
+- **`geo:` works.** 51 ms, the map app opened on the pin, Porterage was still running on return. So
+  §4's rung 1 is the path, not a hope. The comments in `order/directions.ts` that hedged are now
+  measurements, and rungs 2 and 3 stay exactly as they were — a host on another phone may still
+  refuse, and the reason rung 2 isn't automatic was never about whether rung 1 works.
+- **A Bulletin write costs a prompt every time, and is slow:** 31.5 s, then 5.6 s for the second.
+  The thread archive guessed "may cost a tap" and was right, but acted on it far too mildly —
+  `say()` awaited the write whenever the window was about to drop a message, so **sending a message
+  stalled for half a minute behind a prompt nobody asked for, mid-conversation**. The write is now
+  off the message path entirely: `say()` publishes immediately with whatever archive key the thread
+  has, `unsaved()` counts what the other side stands to lose, and `archiveThread()` is a button in
+  a banner that says what it will cost before it costs it. A measurement that only changes a
+  comment wasn't worth taking; this one changed the shape of the feature.
+- **Notifications arrive while the app is backgrounded.** Accepted in 1.3 s, scheduled 30 s out,
+  delivered. The `notify.ts` discipline — text names a kind of event and nothing else — is now
+  protecting something real rather than something hypothetical.
+- **The camera is still unmeasured, and the probe said otherwise.** The run was answered by pasting
+  the code, and `QrScan` called `onRead` identically for a scan and a paste, so the probe recorded
+  "scanned its own code". That is precisely the conflation `probe.ts` opens by forbidding — a
+  resolved callback is not a camera working. `onRead` now takes how the code arrived, `onTrouble`
+  reports a camera that never started, and a paste records what it actually proves: that the
+  encoder and decoder agree. The question is open again and wants a real scan.
+
 **Seam:** `probe.ts` is the questions and the record; the screen only runs them. Adding a fifth
 question is one entry in `QUESTIONS` and one function.

@@ -673,6 +673,15 @@ describe("long threads", () => {
     );
   });
 
+  it("clear the unsaved count once the whole transcript is archived", () => {
+    // `archiveThread` records archivedUpTo = said.length, and `unsaved` is
+    // dropsFrom − archivedUpTo. If the window could ever report dropping more
+    // messages than exist, the banner asking someone to save would never go
+    // away, and they'd be asked for a host prompt for ever.
+    expect(dropsFrom(1n, many, key)).toBeLessThanOrEqual(many.length);
+    expect(dropsFrom(1n, many)).toBeLessThanOrEqual(many.length);
+  });
+
   it("hold the whole conversation in an archive, window or no window", () => {
     const whole = decodeThread(encodeArchive(1n, many))!;
     expect(whole.said.length).toBe(many.length);

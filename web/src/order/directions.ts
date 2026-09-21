@@ -6,9 +6,9 @@
 //
 // The ladder, and why it is in this order:
 //
-//   1. `geo:` through the host's `navigateTo`. If the host passes it to the OS,
-//      the phone's own map app opens, Porterage stays where it was, and nothing
-//      is sent to anybody. This is the only rung that is free.
+//   1. `geo:` through the host's `navigateTo`. The host passes it to the OS, the
+//      phone's own map app opens, Porterage stays where it was, and nothing is
+//      sent to anybody. This is the only rung that is free, and it works.
 //   2. A web map, but only on a SECOND deliberate tap. `navigateTo` with an
 //      http(s) URL navigates the WebView — sonde measured exactly that, by
 //      pointing it at its own page and watching it reload — so this does not
@@ -18,10 +18,15 @@
 //   3. The coordinates, copied. Sends nothing anywhere, works with whatever the
 //      person already uses, and is the rung that can never fail.
 //
-// Whether rung 1 works at all is UNMEASURED: `navigateTo` passes on the phone
-// (sonde, 28–44 ms) but nothing has yet checked what it does with a `geo:` URI.
-// So the result is reported rather than assumed, and the UI shows rung 2 and 3
-// the moment rung 1 says no.
+// MEASURED 2026-09-21 (probe.ts, Pixel 10 Pro XL / Android 16): rung 1 works.
+// `navigateTo` took the `geo:` URI in 51 ms, the phone's map app opened on the
+// pin, and Porterage was still running when the person came back. So this is
+// one tap, and rungs 2 and 3 are a real fallback rather than the likely path.
+//
+// They stay, and they stay manual. A host that refuses on some other phone
+// still needs an answer, and the reason rung 2 is not automatic has nothing to
+// do with whether rung 1 works: an https URL navigates the WebView, so trying
+// it after a failure would throw away an order in progress.
 
 import { navigateTo } from "@parity/product-sdk-host";
 import { inHost } from "../host";

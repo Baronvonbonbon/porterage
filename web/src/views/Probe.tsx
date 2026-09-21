@@ -203,11 +203,28 @@ export function Probe() {
                 {scanning ? (
                   <QrScan
                     expect="pickup"
-                    onRead={() => {
+                    onRead={(_text, how) => {
                       setScanning(false);
-                      setCode(null);
-                      record("camera", "scanned its own code");
-                      answer("camera", "Scanned it");
+                      if (how === "camera") {
+                        setCode(null);
+                        record(
+                          "camera",
+                          "the camera read the code off the screen"
+                        );
+                        answer("camera", "Scanned it");
+                      } else {
+                        // A paste proves the encoder and the decoder agree and
+                        // nothing else. It used to be recorded as a scan, which
+                        // is the one mistake this whole module is against.
+                        record(
+                          "camera",
+                          "pasted — the code decoded, the camera was not exercised"
+                        );
+                      }
+                      reload();
+                    }}
+                    onTrouble={(why) => {
+                      record("camera", `camera never started — ${why}`);
                       reload();
                     }}
                     onCancel={() => setScanning(false)}
