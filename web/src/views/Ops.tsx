@@ -28,6 +28,8 @@ import { errorText, pasWei, short } from "../format";
 import { NOT_ARBITER } from "../copy/privacy";
 import { Earnings } from "./Earnings";
 import { Funds } from "./Funds";
+import { Controls } from "./Controls";
+import { MarketHealth } from "./MarketHealth";
 
 export function Ops() {
   const [key, setKey] = useState<Wallet | null>(null);
@@ -170,6 +172,10 @@ export function Ops() {
           </>
         )}
       </dl>
+
+      <Controls signer={key} />
+
+      <MarketHealth />
 
       <Treasury />
 
