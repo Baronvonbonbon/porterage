@@ -111,3 +111,29 @@ export const NOT_ARBITER =
   "This device isn't the arbiter, so it can read the queue but not a case — " +
   "every case is sealed to the arbiter's key — and a ruling it signed would " +
   "be refused.";
+
+/**
+ * Cashing out, in two sentences that have to do different jobs.
+ *
+ * The first is the good news and it is specific about WHY it is good news:
+ * "every unspent note" is the anonymity set, and naming it is what stops the
+ * sentence being a boast (rule 3). The second is the cost, and it comes
+ * attached to the button that spends it rather than to the screen, because a
+ * warning read three minutes earlier is a warning nobody read.
+ */
+export const CASH_OUT_PRIVATE =
+  "The account this lands in is new, and what paid it could be any unspent " +
+  "note. Nothing says it was your work.";
+
+export const sendOnwardCost = (to: string) =>
+  `Anyone watching sees ${to} receive this much, now. What it was earned ` +
+  `from stays hidden.`;
+
+/**
+ * The timing hint. It is a hint and not a rule because the alternative is
+ * holding someone's money behind a timer, and a person who needs paying today
+ * will work around a timer in a way that leaks more than sending early does.
+ */
+export const CASH_OUT_TIMING =
+  "Sending the same amount minutes later is easy to match up. Leaving it a " +
+  "while, or sending part of it, is harder.";

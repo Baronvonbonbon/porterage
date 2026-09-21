@@ -106,6 +106,32 @@ export interface ThreadRecord {
   archivedUpTo?: number;
 }
 
+/**
+ * An account holding money taken out of the shield and kept, rather than spent
+ * on an order.
+ *
+ * It is an ordinary burner — same derivation, same unlinkability — and the
+ * distinction is entirely about intent: an order burner is spent and forgotten,
+ * this one is somewhere a person's money sits until they decide what to do with
+ * it. Keeping them apart matters because the app must never quietly spend
+ * someone's cash-out on an order, and must never offer to "send to my wallet"
+ * an account that is mid-delivery.
+ */
+export interface CashOutRecord {
+  /** Which burner holds it: deriveEntropy("porterage:burner:<n>"). */
+  burner: number;
+  /** Its address, so a balance can be read without deriving the key. */
+  address: string;
+  at: number;
+  /**
+   * Where it was sent on, if it ever was. Set the moment the person chooses to
+   * give up the unlinkability — it is the record of a decision, not a step in a
+   * flow, and the app shows it so they can see what they have already revealed.
+   */
+  sentTo?: string;
+  sentAt?: number;
+}
+
 interface Book {
   next: number;
   notes: NoteRecord[];
@@ -114,6 +140,8 @@ interface Book {
   orders?: OrderRecord[];
   /** Burners handed out so far; burner n's key is deriveEntropy("porterage:burner:<n>"). */
   burners?: number;
+  /** Money taken out of the shield to be kept rather than spent on an order. */
+  cashOuts?: CashOutRecord[];
   threads?: ThreadRecord[];
   /** Where this device says it is, and how far it cares to look. Never sent. */
   here?: { lat: number; lon: number; metres: number };
@@ -273,6 +301,29 @@ export function nextBurner(): Promise<number> {
     const n = book.burners ?? 0;
     book.burners = n + 1;
     return n;
+  });
+}
+
+export async function allCashOuts(): Promise<CashOutRecord[]> {
+  return (await load()).cashOuts ?? [];
+}
+
+export function rememberCashOut(r: CashOutRecord): Promise<void> {
+  return update((book) => {
+    book.cashOuts = [...(book.cashOuts ?? []), r];
+  });
+}
+
+export function markCashOutSent(
+  burner: number,
+  sentTo: string
+): Promise<void> {
+  return update((book) => {
+    for (const r of book.cashOuts ?? [])
+      if (r.burner === burner) {
+        r.sentTo = sentTo;
+        r.sentAt = Date.now();
+      }
   });
 }
 

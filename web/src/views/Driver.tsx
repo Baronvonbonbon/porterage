@@ -17,6 +17,7 @@ import { sessionKey, keySource, type KeySource } from "../keys";
 import { addressOf, deployed, encode, ethProvider, read } from "../contracts";
 import { errorText, pas, pasWei, short } from "../format";
 import { Earnings } from "./Earnings";
+import { Funds } from "./Funds";
 import { Jobs } from "./Jobs";
 import { Helper } from "./Helper";
 import { Profile } from "./driver/Profile";
@@ -234,7 +235,12 @@ export function Driver() {
           {step === "mine" && (
             <Jobs sessionKey={key} driver={me.evm} show="mine" />
           )}
-          {step === "earnings" && <Earnings account={me.evm} />}
+          {step === "earnings" && (
+            <>
+              <Earnings account={me.evm} />
+              <Funds />
+            </>
+          )}
           {step === "setup" && (
             <>
               <Profile driver={me.evm} />

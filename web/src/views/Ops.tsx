@@ -26,6 +26,8 @@ import { evidenceFor } from "../order/dispute";
 import { asDataUrl, unpackAlbum } from "../order/evidence";
 import { errorText, pasWei, short } from "../format";
 import { NOT_ARBITER } from "../copy/privacy";
+import { Earnings } from "./Earnings";
+import { Funds } from "./Funds";
 
 export function Ops() {
   const [key, setKey] = useState<Wallet | null>(null);
@@ -168,6 +170,8 @@ export function Ops() {
           </>
         )}
       </dl>
+
+      <Treasury />
 
       {!mine && (
         <p className="notice">
@@ -348,4 +352,64 @@ function Balance({ of }: { of: string }) {
     };
   }, [of]);
   return <>{pas}</>;
+}
+
+/**
+ * The protocol's own takings.
+ *
+ * Every order credits `feeBps` of the fare to the treasury, and until now
+ * nothing in this app could see that, let alone shield it. Leaving it out was
+ * the same leak the vault change closed for everyone else — it just happened to
+ * be the operator's income rather than a driver's, which is exactly the reason
+ * it was easy not to notice.
+ *
+ * On this testnet the treasury is the deploy key, which lives on a computer and
+ * not on a phone, so most of the time this panel can only report. It says so
+ * rather than offering a button that would fail: a screen that pretends to be
+ * able to move money it cannot reach is worse than one that explains why.
+ */
+function Treasury() {
+  const [treasury, setTreasury] = useState<string | null>(null);
+  const [balance, setBalance] = useState<bigint | null>(null);
+  const [key, setKey] = useState<Wallet | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const who = (await read("orders").treasury()) as string;
+        setTreasury(who);
+        setBalance(await read("vault").balanceOf(who));
+        setKey(await opsKey());
+      } catch {
+        /* not deployed, or unreachable */
+      }
+    })();
+  }, []);
+
+  const ours =
+    !!key && !!treasury && key.address.toLowerCase() === treasury.toLowerCase();
+
+  return (
+    <>
+      <h3>Protocol fees</h3>
+      <dl>
+        <dt>Treasury</dt>
+        <dd title={treasury ?? ""}>{treasury ? short(treasury) : "…"}</dd>
+        <dt>Waiting in the vault</dt>
+        <dd>{balance === null ? "…" : pasWei(balance)}</dd>
+      </dl>
+      {ours ? (
+        <>
+          <Earnings account={treasury!} />
+          <Funds />
+        </>
+      ) : (
+        <p className="muted">
+          The treasury key isn't on this device, so this is a read-only view. It
+          shields the same way everyone else's earnings do — a bucket at a time,
+          from whichever device holds that key.
+        </p>
+      )}
+    </>
+  );
 }

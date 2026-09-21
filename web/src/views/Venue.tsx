@@ -37,6 +37,7 @@ import { errorText, pasWei, short } from "../format";
 import { MENU_PUBLIC, VENUE_SEES } from "../copy/privacy";
 import { read } from "../contracts";
 import { Earnings } from "./Earnings";
+import { Funds } from "./Funds";
 
 type Step = "counter" | "menu" | "takings" | "setup";
 
@@ -306,6 +307,7 @@ export function Venue() {
             </p>
           ))}
           <Earnings account={mine[0].payout} />
+          <Funds />
         </>
       )}
 
