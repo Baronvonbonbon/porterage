@@ -25,7 +25,8 @@ identity by sending payments directly between accounts.*
 | Escrow → treasury (protocol fee) | protocol | credited in the vault | vault is now shielded-only |
 | **Vault → a named address** | anyone earning | **six functions, wide open** | **shut by default** |
 | Vault → shielded note → pool | anyone earning | ZK, unlinkable | unchanged, and never gated |
-| Burner → submitter (the funding tip) | a stranger | **in the clear** | **still in the clear — see below** |
+| Burner → submitter (the funding fee) | a stranger | **in the clear** | **shielded: `vault.tip()` credits, never transfers** |
+| Payee → inserter (note-insertion fee) | a stranger | did not exist | credited inside the vault, at a signed cap |
 | Driver host account → session key (gas) | driver | in the clear | unchanged, and it leaks nothing new |
 
 ## What was closed
@@ -61,16 +62,21 @@ leaves less than one bucket behind. That is the price of not offering a leak.
 
 ## What is still in the clear, and why it is listed rather than fixed
 
-**The funding tip.** When a stranger submits a customer's shield withdrawal, the burner pays them
-a tip (`web/src/shield/fund.ts`, 0.3 PAS) as a plain transfer. This does **not** leak the
-customer — the burner is unlinked to them, which is the entire point of it. What it does leak is
-the *submitter's* income: tips accumulate at an address, and if that submitter is a driver running
-the funding helper, the address is their session key, which `PorterDrivers.actsFor` already ties
-publicly to their identity. So a driver's side income from submitting is visible and attributable.
+**The funding tip — CLOSED 2026-09-21.** When a stranger submitted a customer's shield withdrawal,
+the burner paid them a plain transfer. That never leaked the *customer* — the burner is unlinked to
+them, which is the entire point of it — but it leaked the *submitter's* income: fees accumulated at
+an address, and if that submitter was a driver running the funding helper, the address was their
+session key, which `PorterDrivers.actsFor` already ties publicly to their identity.
 
-Fixing it means routing tips through the vault so they can be shielded like any other earnings,
-which is a change to how the proof binds the recipient. It is the next thing on this list and it is
-not done.
+`PorterVault.tip(address)` now takes that payment. It is permissionless, because a burner is nobody
+and still has to be able to pay, and it credits rather than transfers — so a submitter's fee income
+shields through `insertShieldNote` exactly like a fare or a venue's takings. The same is true of the
+fee a payee pays to have their note inserted (`insertShieldNoteFor`), which is credited inside the
+vault and never leaves it in the clear.
+
+It did not need the change to the proof that this file once predicted. The fee was never a public
+signal of the circuit; it was always paid separately, which is why routing it somewhere else cost a
+vault function rather than a new trusted setup.
 
 **The driver's session key gas.** `hostFund` moves PAS from a driver's host account to their
 session key in the clear. This leaks nothing new: `registerWithSessionKey` publishes that mapping
