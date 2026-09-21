@@ -14,6 +14,8 @@ import {
   orderOf,
   statusName,
   type Order,
+  pickupDeadline,
+  reopenTimedOut,
 } from "../order/orders";
 import { orderTopic, watchBids, type Bid } from "../order/bids";
 import { orderBurner, type PlaceStage } from "../order/flow";
@@ -52,6 +54,8 @@ import { rememberOrder } from "../shield/notes";
 import { tell } from "../notify";
 import { errorText, metres, pasWei, short } from "../format";
 import { DROP_SENDING, DROP_SENT, DROP_WAITING } from "../copy/privacy";
+import { faceUrl, profileOf, watchFace, type Profile } from "../order/profile";
+import { countdown } from "../format";
 
 const PAS = 10n ** 18n;
 
@@ -94,6 +98,14 @@ export function Ordering() {
   const [filed, setFiled] = useState<Filed | null>(null);
   /** Reputation, read on demand: venue id or driver address to its text. */
   const [stars, setStars] = useState<Map<string, string>>(new Map());
+  /** The public half of each bidder's profile, by address. */
+  const [faces, setFaces] = useState<Map<string, Profile | null>>(new Map());
+  /** The assigned driver's photo, once they've sent the key to it. */
+  const [theirFace, setTheirFace] = useState<string | null>(null);
+  /** When the assigned driver has to have collected by; 0 when none. */
+  const [dueBy, setDueBy] = useState(0);
+  /** Ticks so the countdown counts down without a re-fetch. */
+  const [now, setNow] = useState(() => Date.now());
   const [here, setHere] = useHere();
   /** Publish a coarse area with the order, so drivers can judge the trip. */
   /** What the customer is looking for, and what each venue says it is. */
@@ -141,6 +153,65 @@ export function Ordering() {
         })
       : null;
 
+  // The pickup deadline, read when an order opens and again on assignment.
+  useEffect(() => {
+    if (!live || live.order.status !== 2) {
+      setDueBy(0);
+      return;
+    }
+    let on = true;
+    pickupDeadline(BigInt(live.record.id))
+      .then((at) => on && setDueBy(at))
+      .catch(() => undefined);
+    return () => {
+      on = false;
+    };
+  }, [live]);
+
+  // One tick a second while something is actually counting down. Without the
+  // guard this would re-render the screen for ever on a finished order.
+  useEffect(() => {
+    if (!dueBy) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [dueBy]);
+
+  const late = dueBy > 0 && now > dueBy * 1000;
+
+  /** Run something that changes the order, with the busy line and the error. */
+  async function run(label: string, fn: () => Promise<unknown>) {
+    setBusy(label);
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // The driver's face arrives as a 32-byte key on the pair thread, not as a
+  // photo: the photo went to Bulletin once, encrypted, and this is what makes
+  // it readable — to this customer and nobody else (order/profile.ts).
+  useEffect(() => {
+    if (!live || !driverKey || live.order.status < 2) return;
+    let on = true;
+    let stop: (() => void) | null = null;
+    watchFace(live.burner, driverKey, async (contentKey) => {
+      const who = await profileOf(live.order.driver).catch(() => null);
+      if (!who?.face || !on) return;
+      const url = await faceUrl(who.face, contentKey);
+      if (on && url) setTheirFace(url);
+    })
+      .then((s) => (stop = s))
+      .catch(() => undefined);
+    return () => {
+      on = false;
+      stop?.();
+    };
+  }, [live, driverKey]);
+
   const openOrder = useCallback(async (record: OrderRecord) => {
     stop.current?.();
     setBids([]);
@@ -160,6 +231,24 @@ export function Ordering() {
       );
     });
   }, []);
+
+  // Who is bidding, not just how well they are rated. The public half of a
+  // profile is a Bulletin document keyed by content hash, so this is cached
+  // after the first look (order/profile.ts).
+  useEffect(() => {
+    let on = true;
+    Promise.all(
+      bids.map(
+        async (b) =>
+          [b.driver.toLowerCase(), await profileOf(b.driver)] as const
+      )
+    )
+      .then((rows) => on && setFaces(new Map(rows)))
+      .catch(() => undefined);
+    return () => {
+      on = false;
+    };
+  }, [bids]);
 
   // And the reputation of whoever is bidding.
   useEffect(() => {
@@ -495,17 +584,26 @@ export function Ordering() {
                 <Waiting what="Waiting for drivers to bid" />
               )}
               <div className="actions">
-                {bids.map((b) => (
-                  <button
-                    key={b.bidHash}
-                    disabled={!!busy || !b.standing}
-                    onClick={() => take(b)}
-                  >
-                    {pasWei(b.amount)} — {short(b.driver)},{" "}
-                    {stars.get(b.driver.toLowerCase()) ?? "…"}
-                    {b.standing ? "" : " (withdrawn)"}
-                  </button>
-                ))}
+                {bids.map((b) => {
+                  const who = faces.get(b.driver.toLowerCase());
+                  return (
+                    <button
+                      key={b.bidHash}
+                      disabled={!!busy || !b.standing}
+                      onClick={() => take(b)}
+                    >
+                      {pasWei(b.amount)}
+                      <br />
+                      {/* A name and a vehicle where an address used to be.
+                          Both are chosen by the driver and neither is
+                          verified — which is what the rating is for. */}
+                      {who?.name ?? short(b.driver)} ·{" "}
+                      {stars.get(b.driver.toLowerCase()) ?? "…"}
+                      {who?.vehicle && ` · ${who.vehicle}`}
+                      {b.standing ? "" : " (withdrawn)"}
+                    </button>
+                  );
+                })}
               </div>
               <button
                 className="link"
@@ -522,10 +620,68 @@ export function Ordering() {
           )}
 
           {live.order.status === 2 && (
-            <p className="muted">
-              Assigned. The driver collects it from the counter next.{" "}
-              {dropSent ? DROP_SENT : driverKey ? DROP_SENDING : DROP_WAITING}
-            </p>
+            <>
+              {/* Who is actually coming. Shown only here, only once they
+                  have the job, and only to this customer. */}
+              {(theirFace || faces.get(live.order.driver.toLowerCase())) && (
+                <div className="who">
+                  {theirFace && (
+                    <img className="who-face" src={theirFace} alt="" />
+                  )}
+                  <span>
+                    <b>
+                      {faces.get(live.order.driver.toLowerCase())?.name ??
+                        short(live.order.driver)}
+                    </b>{" "}
+                    is bringing it
+                    {faces.get(live.order.driver.toLowerCase())?.vehicle && (
+                      <>
+                        <br />
+                        <span className="muted">
+                          {faces.get(live.order.driver.toLowerCase())!.vehicle}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </div>
+              )}
+              <p className="muted">
+                Assigned. The driver collects it from the counter next.{" "}
+                {dropSent ? DROP_SENT : driverKey ? DROP_SENDING : DROP_WAITING}
+              </p>
+              {dueBy > 0 && !late && (
+                <p className="muted">
+                  They have {countdown(dueBy * 1000 - now)} to collect it. After
+                  that you can take the job off them without losing the order.
+                </p>
+              )}
+              {late && (
+                <div className="notice">
+                  <p>
+                    <b>They haven't collected it.</b> You can hand the job to
+                    somebody else: the order stays where it is, the venue keeps
+                    making it, and bids come in again. Your fare comes back —
+                    the next driver's bid sets its own — and this one takes a
+                    strike on their record.
+                  </p>
+                  <button
+                    className="primary"
+                    disabled={!!busy}
+                    onClick={() =>
+                      run("Finding another driver", async () => {
+                        await reopenTimedOut(
+                          live.burner,
+                          BigInt(live.record.id)
+                        );
+                        await openOrder(live.record);
+                      })
+                    }
+                  >
+                    Find another driver
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
           {live.order.status === 3 && (

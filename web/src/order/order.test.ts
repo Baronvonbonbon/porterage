@@ -1,3 +1,4 @@
+import { decodeProfile, encodeProfile, MAX_NAME } from "./profile";
 import { describe, expect, it } from "vitest";
 import { progressOf } from "./progress";
 import { Status } from "./orders";
@@ -891,5 +892,54 @@ describe("two photos under one evidence key", () => {
       0x50, 0x41, 0x31, 2, 0xff, 0xff, 0xff, 0xff,
     ]);
     expect(unpackAlbum(tricky)).toEqual([tricky]);
+  });
+});
+
+describe("driver profiles", () => {
+  // A profile is a public document any registered driver can publish, and it
+  // is drawn next to a price somebody is about to decide on.
+  it("carry a name and a vehicle through a round trip", () => {
+    const back = decodeProfile(
+      encodeProfile({ name: "Sam", vehicle: "blue Honda scooter" })
+    );
+    expect(back).toEqual({ name: "Sam", vehicle: "blue Honda scooter" });
+  });
+
+  it("refuse a profile with no name — there'd be nothing to show", () => {
+    expect(decodeProfile(encodeProfile({ name: "   " }))).toBe(null);
+    expect(decodeProfile(new TextEncoder().encode("{}"))).toBe(null);
+    expect(decodeProfile(new TextEncoder().encode("not json"))).toBe(null);
+  });
+
+  it("cut a name down to what a bid row can hold", () => {
+    const back = decodeProfile(encodeProfile({ name: "x".repeat(200) }));
+    expect(back!.name.length).toBe(MAX_NAME);
+  });
+
+  it("flatten whitespace, so a name can't push a row apart", () => {
+    // Newlines and runs of spaces in a name are a layout attack on every
+    // other bid in the list.
+    const back = decodeProfile(
+      encodeProfile({ name: "  Sam\n\n  the\tDriver " })
+    );
+    expect(back!.name).toBe("Sam the Driver");
+  });
+
+  it("drop a face that isn't a Bulletin key", () => {
+    // It goes into a fetch. Anything that isn't 32 bytes of hex is refused
+    // rather than passed on.
+    const bad = new TextEncoder().encode(
+      JSON.stringify({ v: 1, n: "Sam", f: "https://example.com/me.jpg" })
+    );
+    expect(decodeProfile(bad)!.face).toBeUndefined();
+    const good = new TextEncoder().encode(
+      JSON.stringify({ v: 1, n: "Sam", f: `0x${"ab".repeat(32)}` })
+    );
+    expect(decodeProfile(good)!.face).toBe(`0x${"ab".repeat(32)}`);
+  });
+
+  it("refuse a version it doesn't know", () => {
+    const future = new TextEncoder().encode(JSON.stringify({ v: 9, n: "Sam" }));
+    expect(decodeProfile(future)).toBe(null);
   });
 });

@@ -541,6 +541,66 @@ describe("FARE protocol", () => {
       expect(failed).to.equal(1);
     });
 
+    it("reopen after a no-show: the order lives, the fare comes back, the driver takes the strike", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId, fare } = await createAndAssign(f);
+      await time.increase(46 * 60); // past the 45-min pickup window
+
+      await f.orders.connect(f.customer).reopenTimedOut(orderId);
+
+      // Back out for bids rather than cancelled: the goods escrow never moved,
+      // so the customer does not have to shield and place all over again.
+      expect(await f.orders.statusOf(orderId)).to.equal(1n); // Open
+      // Only the fare returns — it was a price agreed with one driver, and is
+      // collected at assignment. The next bid collects its own.
+      expect(await f.vault.balanceOf(f.customer.address)).to.equal(fare);
+      const [, failed] = await f.drivers.reputationOf(f.driver2.address);
+      expect(failed).to.equal(1);
+      const [, driver] = await f.orders.partiesOf(orderId);
+      expect(driver).to.equal(ethers.ZeroAddress);
+    });
+
+    it("reopen refuses a driver that still has time", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      // Before the deadline the driver is simply doing its job. Dropping it
+      // here is cancelAssigned, which pays the agreed compensation.
+      await expect(
+        f.orders.connect(f.customer).reopenTimedOut(orderId)
+      ).to.be.revertedWith("not-late");
+    });
+
+    it("reopen is the customer's alone", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      await time.increase(46 * 60);
+      await expect(
+        f.orders.connect(f.driver2).reopenTimedOut(orderId)
+      ).to.be.revertedWith("not-customer");
+    });
+
+    it("a reopened order can be assigned again, and settles normally", async () => {
+      const f = await loadFixture(deployAll);
+      const { orderId } = await createAndAssign(f);
+      await time.increase(46 * 60);
+      await f.orders.connect(f.customer).reopenTimedOut(orderId);
+
+      // A first-round bid survives the reopen on purpose: the runner-up can
+      // be taken at once instead of waiting through a second auction. This is
+      // driver1's original losing bid from createAndAssign, accepted now.
+      const runnerUp = ethers.parseEther("0.45");
+      const bid = await commitSealed(f.orders, orderId, f.driver1, runnerUp, "d3");
+      await f.orders
+        .connect(f.customer)
+        .acceptSealedBid(orderId, f.driver1.address, runnerUp, bid.salt, {
+          value: runnerUp,
+        });
+
+      expect(await f.orders.statusOf(orderId)).to.equal(2n); // Assigned
+      const [, driver] = await f.orders.partiesOf(orderId);
+      expect(driver).to.equal(f.driver1.address);
+    });
+
     it("driver abandon: full refund + strike", async () => {
       const f = await loadFixture(deployAll);
       const { orderId, fare } = await createAndAssign(f);

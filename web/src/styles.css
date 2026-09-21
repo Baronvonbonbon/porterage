@@ -625,3 +625,19 @@ code {
 .totals .contents {
   display: contents;
 }
+
+/* The driver on an assigned order (views/Ordering.tsx). Shown only to the
+   customer who picked them, only once they have the job. */
+.who {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin: var(--space-3) 0;
+}
+.who-face {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-pill);
+  object-fit: cover;
+  background: var(--line);
+}

@@ -30,3 +30,17 @@ export function short(a: string): string {
 export function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
+
+/**
+ * A stretch of time as someone would say it: "12 minutes", "1 h 5 m". Never
+ * seconds beyond a minute — a countdown ticking down by the second reads as an
+ * emergency, and this one is measured in tens of minutes.
+ */
+export function countdown(ms: number): string {
+  const minutes = Math.max(0, Math.round(ms / 60_000));
+  if (minutes < 1) return "less than a minute";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} h ${rest} m` : `${hours} h`;
+}

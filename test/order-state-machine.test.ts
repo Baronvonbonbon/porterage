@@ -11,7 +11,7 @@ import { assignSealed, assignSealedERC20 } from "./helpers/bids";
 // hold. The invariant campaign reaches some of these incidentally — it walks
 // random operations and would eventually try a cancel on a delivered order —
 // but "eventually, on some seeds" is not the same claim as "never, on any
-// path". This is the explicit version: 13 actions × 8 statuses = **104 cells**,
+// path". This is the explicit version: 14 actions × 8 statuses = **112 cells**,
 // each one asserted.
 //
 // Two things make it worth more than its size suggests.
@@ -75,6 +75,15 @@ const ACTIONS: {
     name: "cancelAssigned",
     legal: ["Assigned"],
     call: (c) => c.orders.connect(c.customer).cancelAssigned(c.id),
+  },
+  {
+    name: "reopenTimedOut",
+    legal: ["Assigned"],
+    // Only illegal cells are invoked here, so the deadline never comes into
+    // it: what this asserts is that every OTHER status refuses on status.
+    // The deadline guard is porter.test.ts's ("reopen refuses a driver that
+    // still has time").
+    call: (c) => c.orders.connect(c.customer).reopenTimedOut(c.id),
   },
   {
     name: "abandonOrder",
@@ -289,7 +298,7 @@ describe("order state machine: every action, every status", function () {
     // two halves still tile the whole grid.
     const legalCells = ACTIONS.reduce((n, a) => n + a.legal.length, 0);
     expect(illegal).to.equal(ACTIONS.length * STATUS.length - legalCells);
-    expect(illegal, "suspiciously few illegal cells — did an action lose its guard?").to.equal(72);
+    expect(illegal, "suspiciously few illegal cells — did an action lose its guard?").to.equal(79);
     expect(failures, `\n  ${failures.join("\n  ")}\n`).to.have.length(0);
   });
 
@@ -317,7 +326,7 @@ describe("order state machine: every action, every status", function () {
     }
 
     expect(legal).to.equal(ACTIONS.reduce((n, a) => n + a.legal.length, 0));
-    expect(legal).to.equal(16);
+    expect(legal).to.equal(17);
     expect(failures, `\n  ${failures.join("\n  ")}\n`).to.have.length(0);
   });
 

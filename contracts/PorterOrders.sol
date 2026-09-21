@@ -123,6 +123,9 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, IPorte
     /// a separate, customer-escrowed amount (NOT carved from the protocol fee).
     event RelayServiceFeePaid(uint256 indexed orderId, address indexed relayer, uint96 amount);
     event RelayServiceFeeSet(address indexed token, uint96 amount);
+    /// A late driver was dropped and the order went back out for bids.
+    event OrderReopened(uint256 indexed orderId, address indexed lateDriver, uint96 fareRefunded);
+
     event OrderCancelled(uint256 indexed orderId, uint8 reason, uint96 refunded, uint96 driverComp);
     event OrderDisputed(uint256 indexed orderId);
     event OrderResolved(uint256 indexed orderId, uint96 customerAmount, uint96 driverAmount);
@@ -419,6 +422,51 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, IPorte
             _credit(o, o.customer, refund);
             emit OrderCancelled(orderId, REASON_CUSTOMER_ASSIGNED, refund, comp);
         }
+    }
+
+    /// @notice A driver that never turned up, replaced without losing the
+    ///         order. Customer-only, and only once the pickup deadline has
+    ///         passed — before that, `cancelAssigned` is the path, and it pays
+    ///         the driver the agreed compensation for being dropped.
+    ///
+    ///         Why this exists next to `cancelAssigned`, which already refunds
+    ///         a no-show in full: a refund ends the order. The customer then
+    ///         has their money back inside a burner account, and getting it
+    ///         into a fresh order means shielding it again and placing again —
+    ///         several taps, a proof, and a wait, all because somebody else
+    ///         was late. Here the order simply goes back to Open: the goods
+    ///         escrow never moves, the venue keeps making what it was making,
+    ///         and bids come in again.
+    ///
+    ///         The FARE is refunded, because a fare is a price agreed with one
+    ///         driver and is collected at assignment, not at open. The next
+    ///         driver's bid collects its own.
+    ///
+    ///         Bids from the first round survive, which is deliberate: the
+    ///         runner-up can be accepted at once, with no second wait. A driver
+    ///         that no longer wants the job at that price revokes its bid, as
+    ///         it always could.
+    function reopenTimedOut(uint256 orderId) external nonReentrant {
+        Order storage o = orders[orderId];
+        require(msg.sender == o.customer, "not-customer");
+        require(o.status == Status.Assigned, "bad-status");
+        require(block.timestamp > o.pickupDeadline, "not-late");
+
+        address late = o.driver;
+        uint96 fare = o.fare;
+
+        o.escrow -= fare;
+        o.driver = address(0);
+        o.fare = 0;
+        o.pickupDeadline = 0;
+        o.status = Status.Open;
+
+        // The strike lands whether or not the customer waits for a new driver:
+        // not turning up is the failure, and what happens to the order after
+        // it is the customer's business, not the reputation system's.
+        drivers.recordFailed(late);
+        _credit(o, o.customer, fare);
+        emit OrderReopened(orderId, late, fare);
     }
 
     /// @notice Driver walks away from an assigned order before pickup.

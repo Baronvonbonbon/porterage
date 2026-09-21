@@ -19,6 +19,7 @@ import { errorText, pas, pasWei, short } from "../format";
 import { Earnings } from "./Earnings";
 import { Jobs } from "./Jobs";
 import { Helper } from "./Helper";
+import { Profile } from "./driver/Profile";
 
 /** Gas for the session key: plenty for a few hundred bids and handoffs on Paseo. */
 const SESSION_GAS_PLANCK = 5_000_000_000n; // 0.5 PAS
@@ -234,7 +235,12 @@ export function Driver() {
             <Jobs sessionKey={key} driver={me.evm} show="mine" />
           )}
           {step === "earnings" && <Earnings account={me.evm} />}
-          {step === "setup" && <Helper sessionKey={key} />}
+          {step === "setup" && (
+            <>
+              <Profile driver={me.evm} />
+              <Helper sessionKey={key} />
+            </>
+          )}
         </>
       )}
 

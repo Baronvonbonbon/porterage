@@ -128,6 +128,28 @@ export async function cancelOrder(
   await (await orderContract(burner).cancelOpen(orderId)).wait();
 }
 
+/**
+ * Drop a driver that never turned up and put the order back out for bids.
+ * Only after the pickup deadline; before that `cancelAssigned` is the path and
+ * it pays the driver the agreed compensation for being dropped.
+ *
+ * The order survives: the goods escrow never moves, so nothing has to be
+ * shielded and placed again. Only the fare comes back, because a fare is a
+ * price agreed with one driver.
+ */
+export async function reopenTimedOut(
+  burner: Wallet,
+  orderId: bigint
+): Promise<void> {
+  await (await orderContract(burner).reopenTimedOut(orderId)).wait();
+}
+
+/** When the driver has to have collected by. Zero when there is no driver. */
+export async function pickupDeadline(orderId: bigint): Promise<number> {
+  const [pickup] = await read("orders").deadlinesOf(orderId);
+  return Number(pickup);
+}
+
 /** Gas a burner should keep back for the order's own transactions, at Paseo prices. */
 export const ORDER_GAS_RESERVE = 10n ** 18n; // 1 PAS
 

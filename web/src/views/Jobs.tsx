@@ -41,6 +41,8 @@ import { HerePin, useHere } from "./Here";
 import { tell } from "../notify";
 import { errorText, metres, pasWei } from "../format";
 import { photoSealed } from "../copy/privacy";
+import { keyBytes, sendFace } from "../order/profile";
+import { myFaceKey } from "./driver/Profile";
 
 export function Jobs({
   sessionKey,
@@ -91,6 +93,11 @@ export function Jobs({
   const [here, setHere] = useHere();
   /** Coarse drop areas, for the orders whose customers chose to publish one. */
   const [areas, setAreas] = useState<Map<string, Position>>(new Map());
+  /** Orders this driver has bid on and not yet heard about. */
+  const bidOn = useRef<Set<string>>(new Set());
+  /** Recent bids that went to somebody else, so the list can say so. */
+  const [lost, setLost] = useState<string[]>([]);
+
   /** Drops the customers have sent for the jobs this driver holds. */
   const [drops, setDrops] = useState<Map<string, Position>>(new Map());
 
@@ -98,7 +105,21 @@ export function Jobs({
     setError(null);
     try {
       const all = await recentOrders();
-      setOpen(all.filter((o) => o.status === Status.Open));
+      const stillOpen = all.filter((o) => o.status === Status.Open);
+
+      // An order this driver bid on that is no longer open went to somebody
+      // else. Before this, a bid simply stopped existing: the row vanished
+      // from the list and nothing said why, which reads like a bug and makes
+      // a driver wonder whether bidding works at all.
+      for (const id of bidOn.current) {
+        const order = all.find((o) => o.id.toString() === id);
+        if (!order || order.status === Status.Open) continue;
+        const won = order.driver.toLowerCase() === driver.toLowerCase();
+        bidOn.current.delete(id);
+        if (!won) setLost((l) => [...l, id].slice(-3));
+      }
+
+      setOpen(stillOpen);
       setMine(
         all.filter(
           (o) =>
@@ -142,6 +163,15 @@ export function Jobs({
         if (!key) continue;
         await introduce(sessionKey, key, orderTopic(o.id), o.id, "driver");
         setTalking((m) => new Map(m).set(id, key));
+        // The key to this driver's face, to the one customer that picked
+        // them. 32 bytes sealed on the pair thread — so it costs a statement
+        // and no tap, however many jobs a driver takes. The photo itself went
+        // to Bulletin once, encrypted (order/profile.ts).
+        const mine = myFaceKey();
+        if (mine)
+          await sendFace(sessionKey, key, keyBytes(mine)).catch(
+            () => undefined
+          );
       } catch {
         greeted.current.delete(id); // offline, or the store refused: try again next refresh
       }
@@ -440,6 +470,20 @@ export function Jobs({
         <>
           <h3>Work</h3>
           <p className="muted">Your rating: {rating}</p>
+          {/* A bid that loses used to just stop existing — the row vanished
+              and nothing said why, which reads like a bug. */}
+          {lost.length > 0 && (
+            <p className="muted">
+              {lost.length === 1
+                ? `#${lost[0]} went to another driver.`
+                : `${lost
+                    .map((i) => `#${i}`)
+                    .join(", ")} went to other drivers.`}{" "}
+              <button className="link" onClick={() => setLost([])}>
+                dismiss
+              </button>
+            </p>
+          )}
           <HerePin
             here={here}
             onChange={setHere}
