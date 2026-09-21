@@ -18,8 +18,16 @@ import {
   toUtf8Bytes,
   zeroPadValue,
 } from "ethers";
+import { Contract } from "ethers";
 import { SHIELD_POOL } from "../config";
-import { ethProvider } from "../contracts";
+import { addressOf, ethProvider, writable } from "../contracts";
+import {
+  WITHDRAW_GAS,
+  nowSeconds,
+  priceAt,
+  scheduleFor,
+  type Schedule,
+} from "../market/auction";
 import { substrate } from "../hostchain";
 import { burner as burnerKey } from "../keys";
 import { encodeRequest } from "../market/request";
@@ -39,10 +47,31 @@ import {
 } from "./notes";
 import { proveWithdrawal } from "./withdraw";
 
-/** What a submitter is offered: about ten times a withdrawal's gas at Paseo prices. */
-export const DEFAULT_TIP = 3n * 10n ** 17n; // 0.3 PAS
 const POLL_MS = 4_000;
 const WAIT_MS = 15 * 60_000;
+
+/**
+ * What the withdrawal is expected to cost in gas, priced now. The number the
+ * whole auction hangs off: floor is 1.5x it, ceiling 4x.
+ *
+ * WHY THIS IS NOT AN `estimateGas` CALL, which is the obvious thing to reach
+ * for. Estimating needs a valid proof; the proof commits to the withdrawn
+ * amount; the amount is `what you asked for + the ceiling`; and the ceiling is
+ * what we are trying to work out. It is a circle, and the way out of it is to
+ * notice that the gas UNITS here are not variable: `pool.withdraw` verifies a
+ * Groth16 proof over a fixed circuit and walks a fixed-depth tree, so it costs
+ * essentially the same whatever the note holds. The volatile half is the gas
+ * PRICE, and that is read live on every request.
+ *
+ * The submitter still estimates for real (`market/submit.ts`) — it has the
+ * finished proof by then, and its estimate doubles as the validity check. So a
+ * requester that guesses the units slightly high or low is corrected by a
+ * market that prices its own costs honestly.
+ */
+async function gasCostNow(): Promise<bigint> {
+  const price = (await ethProvider().getFeeData()).gasPrice ?? 10n ** 12n;
+  return WITHDRAW_GAS * price;
+}
 
 export type FundStage =
   | "proving"
@@ -58,6 +87,8 @@ export interface Funded {
   received: bigint;
   submitter: string | null;
   tipped: boolean;
+  /** What the auction actually cleared at, once a submitter has been paid. */
+  fee?: bigint | null;
 }
 
 const inserts = () => poolInserts(substrate(), SHIELD_POOL);
@@ -73,10 +104,10 @@ const WITHDRAWAL_TOPIC = keccak256(
  * refused outright ("data did not match any variant of untagged enum
  * FilterTopic", 2026-09-20), so the recipient is matched here instead.
  */
-async function submitterOf(
+async function submissionOf(
   recipient: string,
   fromBlock: number
-): Promise<string | null> {
+): Promise<{ submitter: string; at: number } | null> {
   const provider = ethProvider();
   const want = zeroPadValue(recipient, 32).toLowerCase();
   const logs = await provider.getLogs({
@@ -91,45 +122,76 @@ async function submitterOf(
   if (!hit) return null;
   const from =
     (await provider.getTransaction(hit.transactionHash))?.from ?? null;
-  return from && from !== ZeroAddress ? from : null;
+  if (!from || from === ZeroAddress) return null;
+  // The chain's clock, not this device's: the price is what the schedule said
+  // at the moment the submission actually landed.
+  const block = await provider.getBlock(hit.blockNumber);
+  return { submitter: from, at: block?.timestamp ?? nowSeconds() };
 }
 
 /**
- * Pay the submitter, from the burner. A tip that can't be paid yet — the
+ * Pay the submitter, from the burner. A fee that can't be paid yet — the
  * withdrawal came from a Substrate account, or the burner is short — is left for
  * `resumeFunding` rather than failing a funding that has already worked.
+ *
+ * TWO THINGS WORTH READING SLOWLY.
+ *
+ * The price is read from the CHAIN'S clock, not this device's: `priceAt` is
+ * evaluated at the timestamp of the block that carried the submission. A
+ * submitter is paid for when it actually landed the transaction, and a
+ * requester whose phone clock is slow or fast cannot underpay or overpay by
+ * accident. It is capped at the ceiling either way.
+ *
+ * The fee is paid INTO THE VAULT, not to the submitter's address. A plain
+ * transfer accumulates at an address in amounts that say how much work someone
+ * did — and for a driver running the funding helper, `PorterDrivers.actsFor`
+ * already ties that address to them publicly. Crediting the vault instead lets
+ * a submitter's fee income shield through `insertShieldNote` exactly like a
+ * fare or a venue's takings. This is the last clear-value rail in the design,
+ * and this line is where it closes.
  */
-async function payTip(
+async function payFee(
   burner: Wallet,
-  tip: bigint,
+  sched: Schedule,
   fromBlock: number
-): Promise<string | null> {
-  const submitter = await submitterOf(burner.address, fromBlock);
-  if (!submitter) return null;
-  const tx = await burner.sendTransaction({ to: submitter, value: tip });
+): Promise<{ submitter: string; fee: bigint } | null> {
+  const hit = await submissionOf(burner.address, fromBlock);
+  if (!hit) return null;
+  const fee = priceAt(sched, hit.at);
+  const vault = new Contract(
+    addressOf("vault"),
+    ["function tip(address payee) payable"],
+    writable(burner)
+  );
+  const tx = await vault.tip(hit.submitter, { value: fee });
   await tx.wait().catch(() => undefined);
-  return submitter;
+  return { submitter: hit.submitter, fee };
 }
 
 export async function fundBurner(
   amount: bigint,
-  onStage: (s: FundStage) => void,
-  tip = DEFAULT_TIP
+  onStage: (s: FundStage) => void
 ): Promise<Funded> {
-  const need = amount + tip;
+  const burnerIndex = await nextBurner();
+  const burner = (await burnerKey(burnerIndex)).connect(ethProvider());
+  const provider = ethProvider();
+
+  // The CEILING is what gets reserved out of the note, because at proving time
+  // nobody knows what the job will actually clear at. The difference between
+  // the ceiling and the price paid is not lost: it stays with the burner, where
+  // it pays that burner's own gas.
+  onStage("proving");
+  const sched = scheduleFor(await gasCostNow());
+  const need = amount + sched.ceiling;
+
   const note = (await spendable()).find((r) => BigInt(r.value) >= need);
   if (!note)
     throw new Error(
       `no single note holds ${formatEther(need)} PAS; shield more first`
     );
-
-  const burnerIndex = await nextBurner();
-  const burner = (await burnerKey(burnerIndex)).connect(ethProvider());
   const [change] = await reserveNotes([BigInt(note.value) - need]);
-  const provider = ethProvider();
   const startBlock = await provider.getBlockNumber();
 
-  onStage("proving");
   const proof = await proveWithdrawal({
     provider,
     pool: SHIELD_POOL,
@@ -142,12 +204,21 @@ export async function fundBurner(
   });
 
   onStage("posting");
-  await publishRequest(encodeRequest({ proof, withdrawn: need, fee: tip }));
+  // The clock starts when the request is posted, not when proving began: a
+  // seven-second proof should not have already eaten a quarter of the climb.
+  const schedule = { ...sched, startedAt: nowSeconds() };
+  await publishRequest(encodeRequest({ proof, withdrawn: need, schedule }));
   await markSpending(note.n, {
     burner: burnerIndex,
     change: change.n,
     since: Date.now(),
-    tip: tip.toString(),
+    tip: schedule.ceiling.toString(),
+    schedule: {
+      floor: schedule.floor.toString(),
+      ceiling: schedule.ceiling.toString(),
+      startedAt: schedule.startedAt,
+      climbSecs: schedule.climbSecs,
+    },
   });
 
   onStage("waiting");
@@ -159,7 +230,7 @@ export async function fundBurner(
     burnerIndex,
     received,
     startBlock,
-    tip,
+    schedule,
     onStage
   );
 }
@@ -184,7 +255,7 @@ async function finish(
   burnerIndex: number,
   received: bigint,
   startBlock: number,
-  tip: bigint,
+  sched: Schedule,
   onStage: (s: FundStage) => void
 ): Promise<Funded> {
   const provider = ethProvider();
@@ -211,21 +282,55 @@ async function finish(
 
   // The withdrawal event names the recipient; its transaction names the submitter.
   onStage("tipping");
-  let submitter: string | null = null;
+  let paid: { submitter: string; fee: bigint } | null = null;
   try {
-    submitter = await payTip(burner, tip, startBlock);
+    paid = await payFee(burner, sched, startBlock);
   } catch {
-    submitter = null; // retried by resumeFunding
+    paid = null; // retried by resumeFunding
   }
   await markSpending(note.n, {
     burner: burnerIndex,
     change: change.n,
     since: Date.now(),
-    tip: tip.toString(),
-    tipped: !!submitter,
+    tip: sched.ceiling.toString(),
+    schedule: {
+      floor: sched.floor.toString(),
+      ceiling: sched.ceiling.toString(),
+      startedAt: sched.startedAt,
+      climbSecs: sched.climbSecs,
+    },
+    tipped: !!paid,
   });
   onStage("done");
-  return { burner, burnerIndex, received, submitter, tipped: !!submitter };
+  return {
+    burner,
+    burnerIndex,
+    received,
+    submitter: paid?.submitter ?? null,
+    tipped: !!paid,
+    fee: paid?.fee ?? null,
+  };
+}
+
+/**
+ * The schedule a stored record was published with. Records written before the
+ * market existed carry only a flat `tip`; they are paid exactly that, by
+ * treating it as a schedule that never moves.
+ */
+function scheduleOf(s: NonNullable<NoteRecord["spending"]>): Schedule {
+  if (!s.schedule)
+    return {
+      floor: BigInt(s.tip),
+      ceiling: BigInt(s.tip),
+      startedAt: 0,
+      climbSecs: 0,
+    };
+  return {
+    floor: BigInt(s.schedule.floor),
+    ceiling: BigInt(s.schedule.ceiling),
+    startedAt: s.schedule.startedAt,
+    climbSecs: s.schedule.climbSecs,
+  };
 }
 
 const REQUEST_LIFETIME_MS = 60 * 60_000;
@@ -250,8 +355,8 @@ export async function resumeFunding(): Promise<Funded[]> {
       head - Math.ceil((Date.now() - s.since) / 6000) - 20
     );
     try {
-      const submitter = await payTip(burner, BigInt(s.tip), from);
-      if (submitter) await markSpending(note.n, { ...s, tipped: true });
+      const paid = await payFee(burner, scheduleOf(s), from);
+      if (paid) await markSpending(note.n, { ...s, tipped: true });
     } catch {
       /* try again next time */
     }
@@ -261,7 +366,6 @@ export async function resumeFunding(): Promise<Funded[]> {
     const s = note.spending!;
     const burner = (await burnerKey(s.burner)).connect(provider);
     const change = (await allNotes()).find((r) => r.n === s.change);
-    const tip = BigInt(s.tip);
     const need = BigInt(note.value) - BigInt(change?.value ?? "0");
     const bal = await provider.getBalance(burner.address);
     if (bal >= need && change) {
@@ -272,7 +376,16 @@ export async function resumeFunding(): Promise<Funded[]> {
         head - Math.ceil((Date.now() - s.since) / 6000) - 20
       );
       done.push(
-        await finish(note, change, burner, s.burner, bal, from, tip, () => {})
+        await finish(
+          note,
+          change,
+          burner,
+          s.burner,
+          bal,
+          from,
+          scheduleOf(s),
+          () => {}
+        )
       );
     } else if (Date.now() - s.since > REQUEST_LIFETIME_MS) {
       await markSpending(note.n, undefined);

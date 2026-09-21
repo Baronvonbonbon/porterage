@@ -42,7 +42,22 @@ export interface NoteRecord {
     burner: number;
     change: number;
     since: number;
+    /**
+     * The ceiling reserved out of the note. The fee actually paid is
+     * `priceAt(schedule, t)` for the block that carried the submission, which
+     * is at most this; the remainder stays with the burner.
+     */
     tip: string;
+    /**
+     * The auction schedule the request published (market/auction.ts). Absent on
+     * records written before the market existed, which are paid the flat `tip`.
+     */
+    schedule?: {
+      floor: string;
+      ceiling: string;
+      startedAt: number;
+      climbSecs: number;
+    };
     tipped?: boolean;
   };
   spent?: boolean;

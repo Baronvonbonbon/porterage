@@ -8,9 +8,22 @@ import type { Wallet } from "ethers";
 import { SHIELD_POOL } from "../config";
 import { addressOf, deployed } from "../contracts";
 import { ethProvider } from "../contracts";
-import { subscribeRequests } from "../market/statements";
-import { submitPayout, submitRequest } from "../market/submit";
-import { errorText, short } from "../format";
+import {
+  publishClaim,
+  subscribeClaims,
+  subscribeRequests,
+} from "../market/statements";
+import {
+  submitPayout,
+  submitRequest,
+  type SubmitOutcome,
+} from "../market/submit";
+import { Claims } from "../market/auction";
+import { errorText, pasWei, short } from "../format";
+
+/** How often a waiting request is re-priced, and how long before giving up. */
+const RETRY_MS = 3_000;
+const PENDING_MS = 60 * 60_000;
 
 export function Helper({ sessionKey }: { sessionKey: Wallet }) {
   const [on, setOn] = useState(false);
@@ -24,38 +37,84 @@ export function Helper({ sessionKey }: { sessionKey: Wallet }) {
       setLog((l) =>
         [`${new Date().toLocaleTimeString()} ${line}`, ...l].slice(0, 8)
       );
-    let stop: (() => void) | null = null;
+    const stops: Array<() => void> = [];
+    const claims = new Claims();
+
+    // A request is worth taking only once the price has climbed to cover this
+    // phone's gas, so a "waiting" verdict has to be re-asked rather than
+    // dropped. Judging each request once, on arrival, would mean judging every
+    // one of them at its floor and never taking any.
+    const pending = new Map<string, { at: number; go: () => void }>();
+
     // One at a time, so the session key's nonces don't collide.
     const run = (
+      key: string,
       what: string,
-      job: () => Promise<{ status: string; hash?: string; reason?: string }>
+      job: () => Promise<SubmitOutcome>
     ) => {
       queue.current = queue.current.then(async () => {
+        if (!pending.has(key)) return;
         try {
           const r = await job();
-          if (r.status === "sent") note(`${what} (tx ${short(r.hash!)})`);
-          else if (r.reason !== "already handled")
-            note(`skipped ${what}: ${r.reason}`);
+          if (r.status === "sent") {
+            pending.delete(key);
+            note(`${what} for ${pasWei(r.fee)} (tx ${short(r.hash)})`);
+          } else if (r.status === "skipped") {
+            pending.delete(key);
+            if (r.reason !== "already handled") note(`skipped ${what}: ${r.reason}`);
+          }
+          // "waiting": the ticker asks again as the price climbs.
         } catch (e) {
+          pending.delete(key);
           note(`failed ${what}: ${errorText(e)}`);
         }
       });
     };
+
+    const watch = (key: string, what: string, job: () => Promise<SubmitOutcome>) => {
+      if (pending.has(key)) return;
+      const go = () => run(key, what, job);
+      pending.set(key, { at: Date.now(), go });
+      go();
+    };
+
+    const ticker = setInterval(() => {
+      for (const [key, held] of [...pending]) {
+        if (Date.now() - held.at > PENDING_MS) {
+          pending.delete(key);
+          continue;
+        }
+        held.go();
+      }
+    }, RETRY_MS);
+
     subscribeRequests({
       fund: (req) =>
-        run(`funded ${short(req.proof.recipient)}`, () =>
-          submitRequest(req, SHIELD_POOL, signer)
+        watch(req.proof.pubSignals[1], `funded ${short(req.proof.recipient)}`, () =>
+          submitRequest(req, SHIELD_POOL, signer, {
+            claims,
+            // Unlike the relay, a phone HAS a Statement Store account, so it
+            // says "mine" before spending gas. That is what stops two helpers
+            // paying for the same withdrawal and one of them losing the lot.
+            announce: (k) => publishClaim(k, signer.address),
+          })
         ),
       payout: (req) =>
         deployed() &&
-        run("released a payout", () =>
-          submitPayout(req, addressOf("vault"), signer)
+        watch(req.nullifierHash, "released a payout", () =>
+          submitPayout(req, addressOf("vault"), signer, { claims })
         ),
     })
-      .then((s) => (stop = s))
+      .then((s) => stops.push(s))
       .catch((e) => note(errorText(e)));
+    subscribeClaims(claims)
+      .then((s) => stops.push(s))
+      .catch(() => undefined);
     note("listening for funding requests");
-    return () => stop?.();
+    return () => {
+      clearInterval(ticker);
+      for (const s of stops) s();
+    };
   }, [on, sessionKey]);
 
   return (
@@ -69,8 +128,10 @@ export function Helper({ sessionKey }: { sessionKey: Wallet }) {
         Help fund private orders while the app is open
       </label>
       <p className="muted">
-        Your session key submits other people's withdrawals and is tipped for
-        each one.
+        Your session key submits other people's withdrawals and is paid for each
+        one. The fee starts at what the gas costs and climbs until someone takes
+        it, so you only ever take a job that's worth doing. It's paid into the
+        vault, where it shields like any other earnings.
       </p>
       {on && (
         <ul className="muted">

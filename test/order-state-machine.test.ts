@@ -115,7 +115,7 @@ const ACTIONS: {
   {
     name: "onDropoffConfirmed",
     legal: ["PickedUp"],
-    call: (c) => c.orders.connect(c.asSettlement).onDropoffConfirmed(c.id, c.relay.address),
+    call: (c) => c.orders.connect(c.asSettlement).onDropoffConfirmed(c.id, c.relay.address, 0),
   },
   {
     name: "markDisputed",
@@ -220,7 +220,7 @@ describe("order state machine: every action, every status", function () {
     await f.orders.connect(f.settlementRole).onPickupConfirmed(id);
     if (target === "PickedUp") return id;
 
-    await f.orders.connect(f.settlementRole).onDropoffConfirmed(id, f.relay.address);
+    await f.orders.connect(f.settlementRole).onDropoffConfirmed(id, f.relay.address, 0);
     if (target === "Delivered") return id;
 
     throw new Error(`unreachable status ${target}`);

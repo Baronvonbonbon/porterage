@@ -15,7 +15,6 @@ import {
 import { TOKENS, formatUnits, parseUnits, type Token } from "../money/tokens";
 import { locationOf, quote, spendableToken, PAS_LOCATION } from "../money/swap";
 import {
-  DEFAULT_TIP,
   fundBurner,
   resumeFunding,
   type FundStage,
@@ -275,8 +274,10 @@ export function Wallet() {
       <h3>Try a private account</h3>
       <p className="muted">
         Each order gets a fresh account funded from one note, with nothing
-        on-chain linking it to you. The note must hold the amount plus a{" "}
-        {pasWei(DEFAULT_TIP)} tip for whoever submits the withdrawal.
+        on-chain linking it to you. The note must hold the amount plus a fee for
+        whoever submits the withdrawal: it opens at their cost and climbs for 30
+        seconds until someone takes it, capped at four times the gas. Whatever
+        it doesn't reach stays with the account and pays its own fees.
       </p>
       <div className="actions">
         <Amount

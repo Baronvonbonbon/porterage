@@ -124,18 +124,40 @@ describe("funding request", () => {
     ],
   };
 
-  it("round-trips in 426 bytes, restoring the derived signals", () => {
-    const bytes = encodeRequest({ proof, withdrawn, fee: 3n * 10n ** 17n });
+  const schedule = {
+    floor: 3n * 10n ** 17n,
+    ceiling: 8n * 10n ** 17n,
+    startedAt: 1_758_400_000,
+    climbSecs: 30,
+  };
+
+  it("round-trips, restoring the derived signals and the schedule", () => {
+    const bytes = encodeRequest({ proof, withdrawn, schedule });
     expect(bytes.length).toBe(REQUEST_BYTES);
     const back = decodeRequest(bytes);
     expect(back.proof).toEqual(proof);
     expect(back.withdrawn).toBe(withdrawn);
-    expect(back.fee).toBe(3n * 10n ** 17n);
+    expect(back.schedule).toEqual(schedule);
+  });
+
+  it("stays inside a statement's 512 bytes", () => {
+    // The whole market depends on a request fitting one statement. If this
+    // ever fails, the request has to shed a field, not grow a second statement.
+    expect(REQUEST_BYTES).toBeLessThanOrEqual(512);
   });
 
   it("refuses a proof whose signals disagree with the request", () => {
     expect(() =>
-      encodeRequest({ proof, withdrawn: withdrawn + 1n, fee: 0n })
+      encodeRequest({ proof, withdrawn: withdrawn + 1n, schedule })
+    ).toThrow();
+  });
+
+  it("refuses a ceiling below the floor, in both directions", () => {
+    // A descending price would let a patient submitter wait for it to get
+    // cheaper, which is the opposite of what the climb is for.
+    const upsideDown = { ...schedule, ceiling: schedule.floor - 1n };
+    expect(() =>
+      encodeRequest({ proof, withdrawn, schedule: upsideDown })
     ).toThrow();
   });
 });

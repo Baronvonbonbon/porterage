@@ -15,6 +15,14 @@ import {
 import { getBytes, hexlify } from "ethers";
 import { withTimeout } from "../host";
 import {
+  CLAIM_TOPIC,
+  CLAIM_TTL_S,
+  claimChannel,
+  decodeClaim,
+  encodeClaim,
+  type Claims,
+} from "./auction";
+import {
   FUND_CHANNEL,
   FUND_TOPIC,
   PAYOUT_BYTES,
@@ -88,6 +96,28 @@ export function publishRequest(
     kind === "fund" ? FUND_CHANNEL : PAYOUT_CHANNEL,
     bytes
   );
+}
+
+/**
+ * Say "mine" before sending, so two submitters don't both pay gas for the same
+ * job and one of them lose it all to a revert. Short-lived by design: a
+ * submitter that claims and then quits frees the job in CLAIM_TTL_S.
+ */
+export function publishClaim(key: string, claimant: string): Promise<void> {
+  return publishStatement(
+    CLAIM_TOPIC,
+    claimChannel(key, claimant),
+    encodeClaim({ key, claimant }),
+    CLAIM_TTL_S
+  );
+}
+
+/** Keep a `Claims` fed from the claim topic. */
+export async function subscribeClaims(into: Claims): Promise<() => void> {
+  return subscribeTopics([CLAIM_TOPIC], (bytes) => {
+    const c = decodeClaim(bytes);
+    if (c) into.heard(c);
+  });
 }
 
 /** Every statement on `topics`, as raw bytes, including ones posted before subscribing. */

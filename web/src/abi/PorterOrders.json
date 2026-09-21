@@ -430,6 +430,25 @@
    {
     "indexed": false,
     "internalType": "uint16",
+    "name": "floorBps",
+    "type": "uint16"
+   },
+   {
+    "indexed": false,
+    "internalType": "uint32",
+    "name": "climbSecs",
+    "type": "uint32"
+   }
+  ],
+  "name": "RelayFeeCurveSet",
+  "type": "event"
+ },
+ {
+  "anonymous": false,
+  "inputs": [
+   {
+    "indexed": false,
+    "internalType": "uint16",
     "name": "relayRebateBps",
     "type": "uint16"
    }
@@ -1182,6 +1201,11 @@
     "internalType": "address",
     "name": "relayer",
     "type": "address"
+   },
+   {
+    "internalType": "uint64",
+    "name": "availableAt",
+    "type": "uint64"
    }
   ],
   "name": "onDropoffConfirmed",
@@ -1364,6 +1388,61 @@
     "internalType": "address",
     "name": "",
     "type": "address"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "uint96",
+    "name": "cap",
+    "type": "uint96"
+   },
+   {
+    "internalType": "uint64",
+    "name": "availableAt",
+    "type": "uint64"
+   },
+   {
+    "internalType": "uint64",
+    "name": "at",
+    "type": "uint64"
+   }
+  ],
+  "name": "relayFeeAt",
+  "outputs": [
+   {
+    "internalType": "uint96",
+    "name": "",
+    "type": "uint96"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "relayFeeClimbSecs",
+  "outputs": [
+   {
+    "internalType": "uint32",
+    "name": "",
+    "type": "uint32"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [],
+  "name": "relayFeeFloorBps",
+  "outputs": [
+   {
+    "internalType": "uint16",
+    "name": "",
+    "type": "uint16"
    }
   ],
   "stateMutability": "view",
@@ -1583,6 +1662,24 @@
    }
   ],
   "name": "setParams",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "uint16",
+    "name": "floorBps",
+    "type": "uint16"
+   },
+   {
+    "internalType": "uint32",
+    "name": "climbSecs",
+    "type": "uint32"
+   }
+  ],
+  "name": "setRelayFeeCurve",
   "outputs": [],
   "stateMutability": "nonpayable",
   "type": "function"

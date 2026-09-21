@@ -20,6 +20,9 @@ const ZKEY = join(__dirname, "..", "circuits", "build", "shieldnote.zkey");
 
 const PAS = (n: number) => ethers.parseEther(String(n));
 const BUCKET = PAS(1);
+/** What a payee lets a submitter claim, and what it actually claims. */
+const MAX_FEE = ethers.parseEther("0.05");
+const FEE = ethers.parseEther("0.03");
 const DEPTH = 16;
 
 const zeros = (() => {
@@ -271,26 +274,49 @@ describe("shield notes (privacy phase 3 — ZK authorization)", function () {
     const sig = await f.payee.signTypedData(
       { name: "PorterVault", version: "1", chainId, verifyingContract: f.vault.target as string },
       {
-        ShieldNote: [
+        ShieldNoteV2: [
           { name: "account", type: "address" },
           { name: "bucket", type: "uint96" },
           { name: "commitment", type: "uint256" },
+          { name: "maxFee", type: "uint96" },
           { name: "nonce", type: "uint256" },
           { name: "deadline", type: "uint256" },
         ],
       },
-      { account: f.payee.address, bucket: BUCKET, commitment, nonce: 0n, deadline }
+      { account: f.payee.address, bucket: BUCKET, commitment, maxFee: MAX_FEE, nonce: 0n, deadline }
     );
 
     // The signature covers the commitment, so swapping it fails.
     const attacker = noteCommitment(randField(), randField(), BUCKET);
     await expect(
-      f.vault.connect(f.submitter).insertShieldNoteFor(f.payee.address, BUCKET, attacker, deadline, sig)
+      f.vault
+        .connect(f.submitter)
+        .insertShieldNoteFor(f.payee.address, BUCKET, attacker, MAX_FEE, FEE, deadline, sig)
     ).to.be.revertedWith("bad-sig");
 
-    await f.vault.connect(f.submitter).insertShieldNoteFor(f.payee.address, BUCKET, commitment, deadline, sig);
+    // And it covers maxFee, so a submitter cannot raise its own pay.
+    await expect(
+      f.vault
+        .connect(f.submitter)
+        .insertShieldNoteFor(f.payee.address, BUCKET, commitment, MAX_FEE * 2n, FEE, deadline, sig)
+    ).to.be.revertedWith("bad-sig");
+
+    // Nor claim more than the cap it did sign.
+    await expect(
+      f.vault
+        .connect(f.submitter)
+        .insertShieldNoteFor(f.payee.address, BUCKET, commitment, MAX_FEE, MAX_FEE + 1n, deadline, sig)
+    ).to.be.revertedWith("fee-over-cap");
+
+    await f.vault
+      .connect(f.submitter)
+      .insertShieldNoteFor(f.payee.address, BUCKET, commitment, MAX_FEE, FEE, deadline, sig);
     expect(await f.vault.nextNoteIndex()).to.equal(1);
-    expect(await f.vault.balanceOf(f.payee.address)).to.equal(PAS(10) - BUCKET);
+    // The note is exactly one bucket; the fee came out of what was left over.
+    expect(await f.vault.balanceOf(f.payee.address)).to.equal(PAS(10) - BUCKET - FEE);
+    // And the submitter was CREDITED, not paid out: its fee shields like any
+    // other earnings rather than landing at an address that names it.
+    expect(await f.vault.balanceOf(f.submitter.address)).to.equal(FEE);
   });
 
   it("is dormant until governance wires the verifier and the hasher", async () => {

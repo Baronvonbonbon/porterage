@@ -25,6 +25,9 @@ const PAS = (n: number) => ethers.parseEther(String(n));
 const USDC = (n: number) => BigInt(Math.round(n * 1e6)); // 6dp, like the real asset
 const ASSET_ID = 1337n; // Asset Hub USDC
 const RUNG = USDC(1);
+/** What a payee lets a submitter claim, and what it actually claims. */
+const MAX_FEE = USDC(0.05);
+const FEE = USDC(0.03);
 const DEPTH = 16;
 
 const zeros = (() => {
@@ -311,24 +314,26 @@ describe("shield notes — stablecoin payouts", function () {
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
 
     const TOKEN_TYPES = {
-      ShieldNoteToken: [
+      ShieldNoteTokenV2: [
         { name: "token", type: "address" },
         { name: "account", type: "address" },
         { name: "bucket", type: "uint96" },
         { name: "commitment", type: "uint256" },
+        { name: "maxFee", type: "uint96" },
         { name: "nonce", type: "uint256" },
         { name: "deadline", type: "uint256" },
       ],
     };
     const value = {
-      token: f.usdc.target, account: f.payee.address, bucket: RUNG, commitment, nonce: 0n, deadline,
+      token: f.usdc.target, account: f.payee.address, bucket: RUNG, commitment,
+      maxFee: MAX_FEE, nonce: 0n, deadline,
     };
     const sig = await f.payee.signTypedData(domain, TOKEN_TYPES, value);
 
     const attacker = noteCommitment(randField(), randField(), RUNG);
     await expect(
       f.vault.connect(f.submitter)
-        .insertShieldNoteTokenFor(f.usdc.target, f.payee.address, RUNG, attacker, deadline, sig)
+        .insertShieldNoteTokenFor(f.usdc.target, f.payee.address, RUNG, attacker, MAX_FEE, FEE, deadline, sig)
     ).to.be.revertedWith("bad-sig");
 
     // A signature over the NATIVE ShieldNote struct must not authorize a token
@@ -336,23 +341,25 @@ describe("shield notes — stablecoin payouts", function () {
     const nativeSig = await f.payee.signTypedData(
       domain,
       {
-        ShieldNote: [
+        ShieldNoteV2: [
           { name: "account", type: "address" }, { name: "bucket", type: "uint96" },
-          { name: "commitment", type: "uint256" }, { name: "nonce", type: "uint256" },
-          { name: "deadline", type: "uint256" },
+          { name: "commitment", type: "uint256" }, { name: "maxFee", type: "uint96" },
+          { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" },
         ],
       },
-      { account: f.payee.address, bucket: RUNG, commitment, nonce: 0n, deadline }
+      { account: f.payee.address, bucket: RUNG, commitment, maxFee: MAX_FEE, nonce: 0n, deadline }
     );
     await expect(
       f.vault.connect(f.submitter)
-        .insertShieldNoteTokenFor(f.usdc.target, f.payee.address, RUNG, commitment, deadline, nativeSig)
+        .insertShieldNoteTokenFor(f.usdc.target, f.payee.address, RUNG, commitment, MAX_FEE, FEE, deadline, nativeSig)
     ).to.be.revertedWith("bad-sig");
 
     await f.vault.connect(f.submitter)
-      .insertShieldNoteTokenFor(f.usdc.target, f.payee.address, RUNG, commitment, deadline, sig);
+      .insertShieldNoteTokenFor(f.usdc.target, f.payee.address, RUNG, commitment, MAX_FEE, FEE, deadline, sig);
     expect(await f.vault.noteIndexOf(f.usdc.target)).to.equal(1);
-    expect(await f.vault.tokenBalanceOf(f.usdc.target, f.payee.address)).to.equal(USDC(40) - RUNG);
+    // The note is exactly one rung; the fee came from the remaining balance.
+    expect(await f.vault.tokenBalanceOf(f.usdc.target, f.payee.address)).to.equal(USDC(40) - RUNG - FEE);
+    expect(await f.vault.tokenBalanceOf(f.usdc.target, f.submitter.address)).to.equal(FEE);
   });
 
   it("spends without ever approving, so a vault holding no native can still shield", async () => {

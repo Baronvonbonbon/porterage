@@ -118,10 +118,16 @@ contract PorterVault is Ownable2Step, PaseoSafeSender, PorterUpgradable, EIP712 
     // a change in the precompile address scheme must not silently misroute.
     mapping(address => uint64) public shieldAssetId;
 
-    bytes32 private constant NOTE_TYPEHASH =
-        keccak256("ShieldNote(address account,uint96 bucket,uint256 commitment,uint256 nonce,uint256 deadline)");
+    // These carry `maxFee` because the relay that submits a note insertion for a
+    // payee with no gas is now paid for it out of that payee's balance, at a cap
+    // the payee signs. They are DISTINCT typehashes from the free ones they
+    // replace — not edited versions — so a signature authorizing a free
+    // insertion can never be replayed to authorize a paid one.
+    bytes32 private constant NOTE_TYPEHASH = keccak256(
+        "ShieldNoteV2(address account,uint96 bucket,uint256 commitment,uint96 maxFee,uint256 nonce,uint256 deadline)"
+    );
     bytes32 private constant NOTE_TOKEN_TYPEHASH = keccak256(
-        "ShieldNoteToken(address token,address account,uint96 bucket,uint256 commitment,uint256 nonce,uint256 deadline)"
+        "ShieldNoteTokenV2(address token,address account,uint96 bucket,uint256 commitment,uint96 maxFee,uint256 nonce,uint256 deadline)"
     );
     bytes32 private constant WITHDRAW_TOKEN_TYPEHASH = keccak256(
         "WithdrawToken(address token,address account,address recipient,uint256 nonce,uint256 deadline)"
@@ -146,6 +152,8 @@ contract PorterVault is Ownable2Step, PaseoSafeSender, PorterUpgradable, EIP712 
     event ShieldAssetIdSet(address indexed token, uint64 assetId);
 
     event Credited(address indexed to, address indexed from, uint256 amount, uint256 newBalance);
+    /// @dev What a payee paid a stranger to submit their note insertion.
+    event InserterPaid(address indexed account, address indexed submitter, address asset, uint96 fee);
     event Withdrawn(address indexed account, address indexed to, uint256 amount);
     event AuthorizedSet(address indexed account, bool enabled);
     event RelayWithdrawFee(address indexed relay, address indexed account, uint256 fee);
@@ -406,6 +414,36 @@ contract PorterVault is Ownable2Step, PaseoSafeSender, PorterUpgradable, EIP712 
         emit Credited(to, msg.sender, msg.value, balanceOf[to]);
     }
 
+    /// @notice Pay someone for work they did, from anywhere, with no permission.
+    /// @dev THE POINT OF THIS IS PRIVACY, NOT CONVENIENCE, so it is worth saying
+    ///      why an unpermissioned credit is safe and why the app needs it.
+    ///
+    ///      Porterage pays strangers to front gas: a burner pays whoever submits
+    ///      its shield withdrawal (web/src/shield/fund.ts). Paid as a plain
+    ///      transfer, those fees pile up at an address in amounts that say how
+    ///      much work someone did — and for a driver running the funding helper
+    ///      that address is their session key, which `PorterDrivers.actsFor`
+    ///      already ties to them publicly. So the fee rail leaked earnings even
+    ///      though every other rail had been shielded.
+    ///
+    ///      Credited here instead, a fee shields through `insertShieldNote` like
+    ///      a fare or a venue's takings, and the market stops leaking who earned
+    ///      what.
+    ///
+    ///      It cannot break the accounting invariant `sum(balanceOf) <=
+    ///      address(this).balance`: it credits exactly the value it receives,
+    ///      the same as `credit`. `credit` stays `onlyAuthorized` because it is
+    ///      the protocol's own settlement path and a caller there is asserting
+    ///      an escrow moved; this one asserts nothing but "here is money for
+    ///      that person", which anyone may truthfully say.
+    function tip(address payee) external payable nonReentrant {
+        require(payee != address(0), "zero-addr");
+        require(msg.value > 0, "zero-value");
+        balanceOf[payee] += msg.value;
+        totalCredited += msg.value;
+        emit Credited(payee, msg.sender, msg.value, balanceOf[payee]);
+    }
+
     /// @notice ERC-20 credit (C3): pull `amount` of `token` from the authorized
     ///         caller (which must have approved the vault) and attribute it to
     ///         `to`. The token analogue of `credit` — same one-money-in path.
@@ -543,23 +581,62 @@ contract PorterVault is Ownable2Step, PaseoSafeSender, PorterUpgradable, EIP712 
     }
 
     /// @notice Relay-submitted note insertion, so a payee with no gas can shield
-    ///         earnings.
+    ///         earnings. The submitter is paid `fee` from the payee's balance.
     /// @dev The signature covers the COMMITMENT, so a relay cannot substitute a
-    ///      note of its own — the one thing it could otherwise steal here.
+    ///      note of its own — the one thing it could otherwise steal here. It
+    ///      also covers `maxFee`, so the payee sets the cap and the submitter
+    ///      may claim anything up to it; the market decides where inside that
+    ///      range it lands (web/src/market/auction.ts).
+    ///
+    ///      THE FEE COMES OUT OF THE REMAINING BALANCE, NEVER OUT OF THE BUCKET.
+    ///      The inserted note is still exactly `bucket`, because the fixed
+    ///      denominations ARE the anonymity set: a note of 4.97 would identify
+    ///      its owner across the pool for as long as the pool exists. This is
+    ///      also why the sibling `depositShieldNoteZK` pays nothing at all —
+    ///      there the amount is fixed by the proof and has no slack to take a
+    ///      fee from.
+    ///
+    ///      The fee is credited, not transferred, so the submitter's earnings
+    ///      stay inside the shielded rail like everyone else's.
     function insertShieldNoteFor(
         address account,
         uint96 bucket,
         uint256 commitment,
+        uint96 maxFee,
+        uint96 fee,
         uint256 deadline,
         bytes calldata signature
     ) external nonReentrant {
         require(block.timestamp <= deadline, "expired");
+        require(fee <= maxFee, "fee-over-cap");
         bytes32 digest = _hashTypedDataV4(
-            keccak256(abi.encode(NOTE_TYPEHASH, account, bucket, commitment, shieldNonce[account], deadline))
+            keccak256(
+                abi.encode(
+                    NOTE_TYPEHASH, account, bucket, commitment, maxFee, shieldNonce[account], deadline
+                )
+            )
         );
         require(digest.recover(signature) == account, "bad-sig");
         shieldNonce[account] += 1;
+        _payInserter(address(0), account, bucket, fee);
         _insertShieldNote(address(0), account, bucket, commitment);
+    }
+
+    /// @dev Move the submitter's fee before the note is cut, so a balance that
+    ///      cannot cover both fails here rather than leaving the payee short of
+    ///      a fee they agreed to pay.
+    function _payInserter(address asset, address account, uint96 bucket, uint96 fee) internal {
+        if (fee == 0) return;
+        if (asset == address(0)) {
+            require(balanceOf[account] >= uint256(bucket) + fee, "insufficient-balance");
+            balanceOf[account] -= fee;
+            balanceOf[msg.sender] += fee;
+        } else {
+            require(tokenBalanceOf[asset][account] >= uint256(bucket) + fee, "insufficient-balance");
+            tokenBalanceOf[asset][account] -= fee;
+            tokenBalanceOf[asset][msg.sender] += fee;
+        }
+        emit InserterPaid(account, msg.sender, asset, fee);
     }
 
     /// @notice Relay-submitted token note insertion.
@@ -571,18 +648,25 @@ contract PorterVault is Ownable2Step, PaseoSafeSender, PorterUpgradable, EIP712 
         address account,
         uint96 bucket,
         uint256 commitment,
+        uint96 maxFee,
+        uint96 fee,
         uint256 deadline,
         bytes calldata signature
     ) external nonReentrant {
         require(token != address(0), "zero-addr");
         require(block.timestamp <= deadline, "expired");
+        require(fee <= maxFee, "fee-over-cap");
         bytes32 digest = _hashTypedDataV4(
             keccak256(
-                abi.encode(NOTE_TOKEN_TYPEHASH, token, account, bucket, commitment, shieldNonce[account], deadline)
+                abi.encode(
+                    NOTE_TOKEN_TYPEHASH, token, account, bucket, commitment, maxFee,
+                    shieldNonce[account], deadline
+                )
             )
         );
         require(digest.recover(signature) == account, "bad-sig");
         shieldNonce[account] += 1;
+        _payInserter(token, account, bucket, fee);
         _insertShieldNote(token, account, bucket, commitment);
     }
 

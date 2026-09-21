@@ -6,23 +6,32 @@
 // travel in the header, the tree depth is always 128, `context` is the
 // recipient's hash, and the asset is PAS (version 1 funds in PAS only).
 //
-//   0      version (1)
+// VERSION 2 carries an auction schedule rather than a flat fee. A single number
+// was either too high (the requester overpaid every time) or too low (nobody
+// submitted and the rail quietly stopped working); see market/auction.ts for
+// why the price rises rather than being bid down.
+//
+//   0      version (2)
 //   1      flags (0)
 //   2..22  recipient: the fresh burner the proof pays
 //   22..34 withdrawn value, wei, u96 big-endian
-//   34..42 fee the burner tips the submitter, gwei, u64 big-endian
-//   42..170   public signals 0, 1, 2 and 6 (change commitment, and three the
+//   34..42 floor fee, gwei, u64 big-endian
+//   42..50 ceiling fee, gwei, u64 big-endian
+//   50..56 startedAt, unix seconds, u48
+//   56..58 climbSecs, u16
+//   58..186   public signals 0, 1, 2 and 6 (change commitment, and three the
 //             circuit fixes: nullifier hash and roots; passed through as they are)
-//   170..426  the proof: pA, pB (as the pool takes it), pC
+//   186..442  the proof: pA, pB (as the pool takes it), pC
 //
-// 426 bytes, under the 512 a statement's data may hold.
+// 442 bytes, under the 512 a statement's data may hold.
 
 import { getAddress, getBytes, hexlify, keccak256, toUtf8Bytes } from "ethers";
 import { contextFor } from "../shield/pool";
 import type { WithdrawalProof } from "../shield/withdraw";
+import { priceAt, type Schedule } from "./auction";
 
-export const REQUEST_BYTES = 426;
-const VERSION = 1;
+export const REQUEST_BYTES = 442;
+const VERSION = 2;
 const GWEI = 10n ** 9n;
 
 /** The public topics every submitter listens on. */
@@ -37,9 +46,13 @@ export const PAYOUT_CHANNEL = keccak256(
 export interface FundRequest {
   proof: WithdrawalProof;
   withdrawn: bigint;
-  /** What the burner pays the submitter once funded, in wei (rounded down to gwei). */
-  fee: bigint;
+  /** What the burner will pay, as a price that rises with the clock. */
+  schedule: Schedule;
 }
+
+/** What this request is offering right now. Wei, never above the ceiling. */
+export const feeNow = (r: FundRequest, at?: number): bigint =>
+  priceAt(r.schedule, at);
 
 function put(out: Uint8Array, at: number, v: bigint, bytes: number) {
   for (let i = bytes - 1; i >= 0; i--) {
@@ -76,32 +89,48 @@ export function encodeRequest(r: FundRequest): Uint8Array {
   ) {
     throw new Error("the proof's public signals don't match the request");
   }
+  const { floor, ceiling, startedAt, climbSecs } = r.schedule;
+  if (ceiling < floor) throw new Error("a ceiling below the floor");
   const out = new Uint8Array(REQUEST_BYTES);
   out[0] = VERSION;
   out[1] = 0;
   out.set(getBytes(getAddress(proof.recipient)), 2);
   put(out, 22, r.withdrawn, 12);
-  put(out, 34, r.fee / GWEI, 8);
+  put(out, 34, floor / GWEI, 8);
+  put(out, 42, ceiling / GWEI, 8);
+  put(out, 50, BigInt(startedAt), 6);
+  put(out, 56, BigInt(climbSecs), 2);
   [s[0], s[1], s[2], s[6]].forEach((v, i) =>
-    put(out, 42 + 32 * i, BigInt(v), 32)
+    put(out, 58 + 32 * i, BigInt(v), 32)
   );
-  proofWords(proof).forEach((v, i) => put(out, 170 + 32 * i, BigInt(v), 32));
+  proofWords(proof).forEach((v, i) => put(out, 186 + 32 * i, BigInt(v), 32));
   return out;
 }
 
 export function decodeRequest(b: Uint8Array): FundRequest {
   if (b.length !== REQUEST_BYTES || b[0] !== VERSION)
-    throw new Error("not a version 1 funding request");
+    throw new Error("not a version 2 funding request");
   const recipient = getAddress(hexlify(b.slice(2, 22)));
   const withdrawn = get(b, 22, 12);
-  const fee = get(b, 34, 8) * GWEI;
-  const pub = [0, 1, 2, 3].map((i) => get(b, 42 + 32 * i, 32).toString());
+  const floor = get(b, 34, 8) * GWEI;
+  const ceiling = get(b, 42, 8) * GWEI;
+  // A ceiling under the floor would make `priceAt` fall with the clock. It can
+  // only come from a malformed or hostile request, and a submitter reading one
+  // should see a flat offer, not a descending one.
+  if (ceiling < floor) throw new Error("a ceiling below the floor");
+  const schedule = {
+    floor,
+    ceiling,
+    startedAt: Number(get(b, 50, 6)),
+    climbSecs: Number(get(b, 56, 2)),
+  };
+  const pub = [0, 1, 2, 3].map((i) => get(b, 58 + 32 * i, 32).toString());
   const w = [0, 1, 2, 3, 4, 5, 6, 7].map((i) =>
-    get(b, 170 + 32 * i, 32).toString()
+    get(b, 186 + 32 * i, 32).toString()
   );
   return {
     withdrawn,
-    fee,
+    schedule,
     proof: {
       recipient,
       pA: [w[0], w[1]],

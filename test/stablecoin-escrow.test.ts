@@ -144,6 +144,10 @@ describe("FARE — stablecoin escrow (C3)", () => {
     it("escrows the flat fee on top and pays it in full to the settling relayer", async () => {
       const f = await loadFixture(deployAll);
       await f.orders.setRelayServiceFee(f.usdc.target, SVC);
+      // With no climb the auction is over the moment it opens, so the relay is
+      // paid the ceiling — this rail's original flat-fee behaviour, which
+      // governance can still choose. The curve itself is tested below.
+      await f.orders.setRelayFeeCurve(3_750, 0);
       const relayer = f.stranger;
       const before = await f.usdc.balanceOf(f.customer.address);
 

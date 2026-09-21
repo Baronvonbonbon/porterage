@@ -91,6 +91,56 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, IPorte
     // creation so a later change never breaks an in-flight order's escrow. Default
     // 0 (dormant) — set via setRelayServiceFee. Complements relayRebateBps.
     mapping(address => uint96) public relayServiceFee;
+
+    // ── the relay fee is an auction, not a price ────────────────────────────
+    //
+    // `relayServiceFee` above is the CEILING the customer escrows, not what a
+    // relay is paid. A single governance-set number is either too high (every
+    // customer overpays on every order) or too low (no relay settles and the
+    // gasless path quietly stops working), and nobody finds out which for
+    // months. So the fee climbs from a floor to that ceiling, and the first
+    // relay willing to take it does — the cheapest operator settles first, and
+    // the customer gets back whatever the climb did not reach.
+    //
+    // The clock starts when the DRIVER SIGNED AT THE DOOR, which is the moment
+    // the settlement job actually became available. That timestamp is signed by
+    // the driver and freshness-checked in PorterSettlement, so it is not a
+    // number a relay can choose to inflate its own fee — and the ceiling bounds
+    // it regardless.
+    //
+    // Mirrors web/src/market/auction.ts, where the same shape prices the
+    // withdrawal submitters. 3750 bps of the ceiling is a floor 1.5x gas when
+    // the ceiling is 4x, which is how the off-chain market is tuned.
+    uint16 public relayFeeFloorBps = 3_750;
+    uint32 public relayFeeClimbSecs = 30;
+
+    event RelayFeeCurveSet(uint16 floorBps, uint32 climbSecs);
+
+    /// @notice Governance tunes the curve; the ceiling stays `setRelayServiceFee`.
+    function setRelayFeeCurve(uint16 floorBps, uint32 climbSecs) external onlyOwner {
+        require(floorBps <= 10_000, "bad-bps");
+        relayFeeFloorBps = floorBps;
+        relayFeeClimbSecs = climbSecs;
+        emit RelayFeeCurveSet(floorBps, climbSecs);
+    }
+
+    /// @notice What a relay settling at `at` earns against a `cap` ceiling.
+    /// @dev Clamped at both ends. A relay that settles before the driver's own
+    ///      timestamp (clock skew between the phone and the chain) gets the
+    ///      floor rather than something below it, and one that settles an hour
+    ///      later gets the ceiling and never more.
+    function relayFeeAt(uint96 cap, uint64 availableAt, uint64 at) public view returns (uint96) {
+        // A zero climb means the auction is over the instant it opens, so the
+        // price is the ceiling — the same reading as web/src/market/auction.ts,
+        // and it makes `setRelayFeeCurve(_, 0)` restore the flat fee this rail
+        // used to pay, exactly, for anyone who wants it back.
+        if (relayFeeClimbSecs == 0) return cap;
+        uint96 floor = uint96((uint256(cap) * relayFeeFloorBps) / 10_000);
+        if (at <= availableAt) return floor;
+        uint256 elapsed = uint256(at - availableAt);
+        if (elapsed >= relayFeeClimbSecs) return cap;
+        return uint96(floor + ((uint256(cap - floor) * elapsed) / relayFeeClimbSecs));
+    }
     uint64 public constant MIN_WINDOW = 10 minutes;
     uint64 public constant MAX_WINDOW = 24 hours;
     uint64 public defaultPickupWindow = 45 minutes;
@@ -666,7 +716,11 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, IPorte
     ///         driver (fare − protocol fee + tip), rebate a slice of the fee to
     ///         the settling relay (F6), send the rest to treasury, and close.
     /// @param relayer the account that submitted the dropoff tx (the gas-payer).
-    function onDropoffConfirmed(uint256 orderId, address relayer) external onlySettlement nonReentrant {
+    function onDropoffConfirmed(uint256 orderId, address relayer, uint64 availableAt)
+        external
+        onlySettlement
+        nonReentrant
+    {
         Order storage o = orders[orderId];
         require(o.status == Status.PickedUp, "bad-status");
         o.status = Status.Delivered;
@@ -677,21 +731,25 @@ contract PorterOrders is Ownable2Step, ReentrancyGuard, PorterUpgradable, IPorte
         // don't emit or double-credit needlessly.
         bool hasRelay = relayer != address(0) && relayer != treasury;
         uint96 rebate = hasRelay ? uint96((uint256(fee) * relayRebateBps) / 10_000) : 0;
-        uint96 svcFee = o.serviceFee; // flat relay service fee (F6-flat)
+        // The customer escrowed the CEILING; what a relay actually earns is the
+        // auction price at the moment it settled, and the rest goes back.
+        uint96 cap = o.serviceFee;
+        uint96 svcFee = hasRelay ? relayFeeAt(cap, availableAt, uint64(block.timestamp)) : 0;
+        uint96 refund = cap - svcFee;
         uint96 toTreasury = fee - rebate;
         uint96 toDriver = o.fare - fee + o.tip;
-        o.escrow -= (o.fare + o.tip + svcFee); // == toDriver + toTreasury + rebate + svcFee
+        o.escrow -= (o.fare + o.tip + cap); // == toDriver + toTreasury + rebate + svcFee + refund
 
         _credit(o, o.driver, toDriver);
         _credit(o, treasury, toTreasury);
         if (hasRelay) {
             if (rebate > 0) _credit(o, relayer, rebate);
             if (svcFee > 0) { _credit(o, relayer, svcFee); emit RelayServiceFeePaid(orderId, relayer, svcFee); }
-        } else if (svcFee > 0) {
-            // No relay settled this order → refund the service fee to the customer
-            // (they escrowed it to pay a relay that never materialised).
-            _credit(o, o.customer, svcFee);
         }
+        // Whatever the auction did not reach goes back to the customer — all of
+        // it when no relay settled, the unclimbed remainder when one did. They
+        // escrowed a ceiling to be sure a relay COULD be paid, not to pay it.
+        if (refund > 0) _credit(o, o.customer, refund);
         drivers.recordDelivered(o.driver);
 
         emit OrderDelivered(orderId, toDriver, fee);

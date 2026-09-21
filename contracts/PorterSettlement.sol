@@ -276,7 +276,11 @@ contract PorterSettlement is Ownable2Step, EIP712, PorterUpgradable {
         // msg.sender is whoever submitted this settlement tx — a venue relay in
         // the gasless path, or the customer/driver self-submitting. PorterOrders
         // rebates the configured share of the protocol fee to them (F6).
-        orders.onDropoffConfirmed(orderId, msg.sender);
+        // driverAtt.timestamp is when the driver signed at the door: the moment
+        // this settlement job became available to relays. PorterOrders prices
+        // the relay's fee from it, and `_requireFresh` above already bounds how
+        // stale it can be.
+        orders.onDropoffConfirmed(orderId, msg.sender, driverAtt.timestamp);
         emit DropoffConfirmed(orderId, driver, customer);
     }
 

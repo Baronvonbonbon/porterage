@@ -66,9 +66,10 @@ const MATRIX: Entry[] = [
   { c: "orders", fn: "setParams", args: [250, 2500, 3600, 3600], allow: ["owner"] },
   { c: "orders", fn: "setRelayRebateBps", args: [2000], allow: ["owner"] },
   { c: "orders", fn: "setRelayServiceFee", args: [ethers.ZeroAddress, 0], allow: ["owner"] },
+  { c: "orders", fn: "setRelayFeeCurve", args: [3750, 30], allow: ["owner"] },
   { c: "orders", fn: "setAcceptedToken", args: [A1, true], allow: ["owner"] },
   { c: "orders", fn: "onPickupConfirmed", args: [1], allow: ["settlement"] },
-  { c: "orders", fn: "onDropoffConfirmed", args: [1, A1], allow: ["settlement"] },
+  { c: "orders", fn: "onDropoffConfirmed", args: [1, A1, 0], allow: ["settlement"] },
   { c: "orders", fn: "markDisputed", args: [1], allow: ["disputes"] },
   { c: "orders", fn: "resolveDisputed", args: [1, 5000], allow: ["disputes"] },
 

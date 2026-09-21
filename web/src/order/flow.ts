@@ -10,7 +10,7 @@
 import type { Wallet } from "ethers";
 import { burner as burnerKey } from "../keys";
 import { ethProvider } from "../contracts";
-import { DEFAULT_TIP, fundBurner, type FundStage } from "../shield/fund";
+import { fundBurner, type FundStage } from "../shield/fund";
 import { allOrders, rememberOrder, type OrderRecord } from "../shield/notes";
 import { announceOrder } from "./bids";
 import { sendBasket, venueTopic } from "./kitchen";
@@ -40,7 +40,7 @@ export async function placeOrder(
   plan: OrderPlan,
   onStage: (s: PlaceStage) => void
 ): Promise<{ orderId: bigint; burner: Wallet; record: OrderRecord }> {
-  const funded = await fundBurner(fundingFor(plan), onStage, DEFAULT_TIP);
+  const funded = await fundBurner(fundingFor(plan), onStage);
   const burner = funded.burner.connect(ethProvider());
 
   onStage("creating");
