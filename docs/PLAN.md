@@ -341,6 +341,19 @@ Each phase ends with something that runs on a phone.
 - [ ] From PAS into the escrow token at the burner. A burner signs Ethereum transactions only, so this
       needs the XCM precompile's `ExchangeAsset` (FARE's `venue-node/swap.mjs`). It's only needed once
       escrow is in a token, which is Phase 4.
+      **Read FARE's module before building this — it carries a correction that applies here**
+      (2026-09-20). A burner making a distinctive-amount DEX swap is a timing-and-amount
+      correlation with its own funding deposit: the exact link the burner exists to break. So the
+      swap belongs on the funder's side of the anonymity boundary, not the burner's. Kusama Shield
+      is a MULTI-asset pool (`depositAsset(assetId, value, commitment)` — already in
+      `shield/pool.ts`, and notes commit to the asset), so the right shape is to shield the escrow
+      token itself and have the burner withdraw token notes, never touching a DEX. Also measured
+      by FARE: there is **no asset-conversion precompile** (code at only two precompile addresses,
+      the XCM one at `0x…0a0000`), so an EVM key reaches the pallet either through the XCM
+      precompile's `ExchangeAsset` or `revive.ethSubstrateCall`.
+      Nothing needs it today: every order the app opens escrows native PAS (`openOrderERC20`
+      exists on the contract and is never called), so this stays open and unbuilt rather than
+      built on the wrong side.
 - [x] Withdrawal to a fresh burner: the proof (Kusama Shield withdraw_v7, 32.8 MiB key shipped with the
       app and checked by SHA-256), a derived change note, and recovery of requests left over from an
       earlier session. Verified live from node on 2026-09-19: deposit, an 11.4 s proof, a submission
