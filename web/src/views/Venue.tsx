@@ -15,7 +15,7 @@ import {
 import { formatDegrees, parseDegrees } from "../order/geo";
 import { recentOrders, Status, statusName, type Order } from "../order/orders";
 import { encodePickup, nowSeconds, signPickup } from "../order/handoff";
-import { QrShow } from "./Qr";
+import { QrShow } from "./QrLazy";
 import { menuOf, publishMenu, type Menu, type MenuItem } from "../order/menu";
 import { LABELS, MAX_LABELS, labelWord } from "../order/labels";
 import { MAX_TAX_LINES } from "../order/menu";

@@ -27,7 +27,7 @@ import {
   makeDropRequest,
   type DropRequest,
 } from "../order/handoff";
-import { QrScan, QrShow } from "./Qr";
+import { QrScan, QrShow } from "./QrLazy";
 
 import { settleDebts } from "../order/flow";
 import { progressOf } from "../order/progress";

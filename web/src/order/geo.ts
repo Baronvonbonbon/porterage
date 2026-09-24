@@ -5,7 +5,11 @@
 // on-chain in the clear — only Poseidon(latEnc, lonEnc, salt), opened later by
 // the proximity proof.
 
-import { poseidon2, poseidon3 } from "poseidon-lite";
+// Per-arity entry points, not the package barrel. `poseidon-lite`'s index
+// re-exports all sixteen arities and each one drags in its own table of round
+// constants — 609 kB for the three this app actually uses.
+import { poseidon2 } from "poseidon-lite/poseidon2";
+import { poseidon3 } from "poseidon-lite/poseidon3";
 import { toBigInt } from "ethers";
 import { BN254_R } from "../shield/pool";
 

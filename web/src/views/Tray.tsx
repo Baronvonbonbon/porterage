@@ -23,6 +23,8 @@
 
 import {
   createContext,
+  lazy,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -31,8 +33,18 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Thread } from "./Thread";
 import type { Reader } from "../order/seal";
+
+// Fetched when there is actually a conversation to hold.
+//
+// The tray is mounted by App on every screen, so importing this directly put
+// the whole thread stack in the startup chunk — and through it `order/chat` →
+// `shield/notes` → `shield/pool`, which is 609 kB of Poseidon that the role
+// chooser has no use for. A conversation can only be offered from inside a
+// role screen, and those are downloads of their own already.
+const Thread = lazy(() =>
+  import("./Thread").then((m) => ({ default: m.Thread }))
+);
 
 export interface Conversation {
   /** Stable and unique across the app: one per (order, counterpart). */
@@ -190,17 +202,19 @@ export function TrayProvider({ children }: { children: ReactNode }) {
               )}
               {convs.map((c) => (
                 <div key={c.id} hidden={c.id !== active}>
-                  <Thread
-                    mine={c.mine}
-                    theirs={c.theirs}
-                    orderId={c.orderId}
-                    title={c.title}
-                    onCount={(n) =>
-                      setCounts((all) =>
-                        all[c.id] === n ? all : { ...all, [c.id]: n }
-                      )
-                    }
-                  />
+                  <Suspense fallback={<p className="muted">Opening…</p>}>
+                    <Thread
+                      mine={c.mine}
+                      theirs={c.theirs}
+                      orderId={c.orderId}
+                      title={c.title}
+                      onCount={(n) =>
+                        setCounts((all) =>
+                          all[c.id] === n ? all : { ...all, [c.id]: n }
+                        )
+                      }
+                    />
+                  </Suspense>
                 </div>
               ))}
             </div>

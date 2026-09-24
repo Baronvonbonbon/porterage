@@ -1,36 +1,12 @@
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { inHost } from "./host";
 import { followHostTheme } from "./theme";
 import { deployed } from "./contracts";
-import { Driver } from "./views/Driver";
-import { Customer } from "./views/customer/Customer";
-import { Venue } from "./views/Venue";
-import { Ops } from "./views/Ops";
-import { Probe } from "./views/Probe";
+import { rememberRole, savedRole, type Role } from "./role";
+import { preload, Screen } from "./views/roles";
 import { SHAPE } from "./copy/privacy";
 import { TrayProvider } from "./views/Tray";
 import { Mark } from "./Mark";
-
-type Role = "customer" | "driver" | "venue" | "ops" | "probe";
-const ROLE_KEY = "porterage.role";
-
-function savedRole(): Role | null {
-  try {
-    const r = localStorage.getItem(ROLE_KEY);
-    // "probe" belongs here for a reason: if a probe navigates the WebView
-    // away, the app restarts, and it has to come back to the screen that
-    // knows a probe was in flight (probe.ts).
-    return r === "customer" ||
-      r === "driver" ||
-      r === "venue" ||
-      r === "ops" ||
-      r === "probe"
-      ? r
-      : null;
-  } catch {
-    return null;
-  }
-}
 
 export function App() {
   const [host, setHost] = useState<boolean | null>(null);
@@ -48,12 +24,13 @@ export function App() {
 
   const choose = (r: Role | null) => {
     setRole(r);
-    try {
-      if (r) localStorage.setItem(ROLE_KEY, r);
-      else localStorage.removeItem(ROLE_KEY);
-    } catch {
-      /* private mode: the choice just isn't remembered */
-    }
+    rememberRole(r);
+  };
+
+  /* Fetch a role's code on the press rather than on the release, so the
+     download overlaps the time it takes to let go of the button. */
+  const warm = (r: Role) => () => {
+    preload(r).catch(() => undefined);
   };
 
   return (
@@ -86,26 +63,34 @@ export function App() {
         {!role && (
           <section className="roles">
             <p>How are you using Porterage?</p>
-            <button onClick={() => choose("customer")}>
+            <button onClick={() => choose("customer")} onPointerDown={warm("customer")}>
               <b>Order</b>
               <span>Get something delivered</span>
             </button>
-            <button onClick={() => choose("driver")}>
+            <button onClick={() => choose("driver")} onPointerDown={warm("driver")}>
               <b>Drive</b>
               <span>Deliver orders for a fare</span>
             </button>
-            <button onClick={() => choose("venue")}>
+            <button onClick={() => choose("venue")} onPointerDown={warm("venue")}>
               <b>Sell</b>
               <span>Take orders at your venue</span>
             </button>
             {/* Not a fourth role: it's the arbiter's queue, and it's read-only
                 unless this device holds the arbiter's key. Meant for Desktop. */}
-            <button className="link" onClick={() => choose("ops")}>
+            <button
+              className="link"
+              onClick={() => choose("ops")}
+              onPointerDown={warm("ops")}
+            >
               Operations console
             </button>
             {/* Not a role either: four measurements that need a real phone,
                 which is why they have sat in the backlog (probe.ts). */}
-            <button className="link" onClick={() => choose("probe")}>
+            <button
+              className="link"
+              onClick={() => choose("probe")}
+              onPointerDown={warm("probe")}
+            >
               Check this phone
             </button>
             {/* Said once, on the only screen nobody is mid-task on. Every
@@ -114,11 +99,18 @@ export function App() {
           </section>
         )}
 
-        {role === "driver" && <Driver />}
-        {role === "customer" && <Customer />}
-        {role === "venue" && <Venue />}
-        {role === "ops" && <Ops />}
-        {role === "probe" && <Probe />}
+        {role && (
+          /* The screen arrives as its own download (views/roles.ts). For a
+             device that already knows its role the splash has usually
+             finished fetching it before React gets here, so this fallback is
+             mostly for a role chosen by hand, a few hundred milliseconds. */
+          <Suspense fallback={<p className="muted">Opening…</p>}>
+            {(() => {
+              const Role = Screen[role];
+              return <Role />;
+            })()}
+          </Suspense>
+        )}
       </main>
     </TrayProvider>
   );

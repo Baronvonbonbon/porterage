@@ -23,7 +23,9 @@ import {
   toUtf8Bytes,
   type Provider,
 } from "ethers";
-import { poseidon1, poseidon2 } from "poseidon-lite";
+// Per-arity entry points: the barrel costs all sixteen arities' constants.
+import { poseidon1 } from "poseidon-lite/poseidon1";
+import { poseidon2 } from "poseidon-lite/poseidon2";
 import { entropy, LABEL } from "../keys";
 import { BN254_R } from "./pool";
 import { noteSecrets } from "./notes";

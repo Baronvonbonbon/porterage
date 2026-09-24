@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { resolveFromRouter } from "./contracts";
 import { inHost } from "./host";
+import { savedRole } from "./role";
+import { preload } from "./views/roles";
 import "./styles.css";
 
 /**
@@ -20,6 +22,15 @@ declare global {
 const splash = {
   step: (label: string, pct: number) => window.__porterage?.step(label, pct),
   done: () => window.__porterage?.done(),
+};
+
+/** What to call each role while its screen is being fetched. */
+const WHAT: Record<string, string> = {
+  customer: "your orders",
+  driver: "your work",
+  venue: "your counter",
+  ops: "the operations console",
+  probe: "the phone checks",
 };
 
 async function start() {
@@ -41,10 +52,19 @@ async function start() {
   // the whole session agrees on the answer. An address that changed under a
   // running app would be worse than a stale one: two screens would be talking
   // to two different deployments.
-  splash.step("Checking the contracts", 80);
+  splash.step("Checking the contracts", 75);
   const moved = await addresses;
   const names = Object.keys(moved);
   if (names.length) console.info(`following the router for: ${names.join(", ")}`);
+
+  // Each role's screen is its own download (views/roles.ts). A device that has
+  // been here before already knows which one it needs, so it is fetched now,
+  // behind the splash, rather than after React mounts and shows a fallback.
+  const role = savedRole();
+  if (role) {
+    splash.step(`Opening ${WHAT[role]}`, 92);
+    await preload(role).catch(() => undefined);
+  }
 
   createRoot(document.getElementById("root")!).render(
     <StrictMode>

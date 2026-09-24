@@ -21,7 +21,9 @@
 // the pool's treeSize at that block, and any block where the tree grew without
 // logs is read from the Substrate side instead (`BlockInserts`).
 
-import { poseidon1, poseidon2 } from "poseidon-lite";
+// Per-arity entry points: the barrel costs all sixteen arities' constants.
+import { poseidon1 } from "poseidon-lite/poseidon1";
+import { poseidon2 } from "poseidon-lite/poseidon2";
 import {
   Contract,
   Interface,

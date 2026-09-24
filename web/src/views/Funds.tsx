@@ -21,7 +21,7 @@ import { ethProvider } from "../contracts";
 import { MAX_MARGIN_BPS, WITHDRAW_GAS } from "../market/auction";
 import { describePlan, maxWithdrawable, planWithdrawal } from "../shield/plan";
 import { allNotes, type NoteRecord } from "../shield/notes";
-import { NoteBackup } from "./Backup";
+
 import { planTopUp, topUp } from "../shield/deposit";
 import {
   cashOut,
@@ -39,6 +39,16 @@ import {
 import { errorText, pas, pasWei, short } from "../format";
 import { pasOrNull } from "../money/amount";
 import { Amount } from "./pickers/Amount";
+
+import { lazy, Suspense } from "react";
+
+// The note-book backup panel is 177 kB of statement and Bulletin machinery for
+// a control that sits at the bottom of a screen nobody scrolls to until they
+// need it. Fetched when it renders.
+const NoteBackup = lazy(() =>
+  import("./Backup").then((m) => ({ default: m.NoteBackup }))
+);
+
 
 const PLANCK_PER_WEI = 10n ** 8n;
 
@@ -234,7 +244,9 @@ export function Funds() {
         </>
       )}
 
-      <NoteBackup />
+      <Suspense fallback={null}>
+        <NoteBackup />
+      </Suspense>
 
       {busy && <p className="muted">{busy}…</p>}
       {done && <p className="ok">{done}</p>}

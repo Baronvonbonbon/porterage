@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseCount, parsePas, pasPlain } from "../money/amount";
-import { poseidon2 } from "poseidon-lite";
+import { poseidon2 } from "poseidon-lite/poseidon2";
 import { LADDER_PAS, cover, decompose, sum } from "./ladder";
 import { authPath, batchNotePaths, commitmentOf, rootFrom } from "./pool";
 import { noteSecrets } from "./notes";

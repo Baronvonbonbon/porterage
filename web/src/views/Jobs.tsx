@@ -18,7 +18,7 @@ import {
   nowSeconds,
   signDropCommit,
 } from "../order/handoff";
-import { QrScan, QrShow } from "./Qr";
+import { QrScan, QrShow } from "./QrLazy";
 import { Offer } from "./Tray";
 import { Amount } from "./pickers";
 import { pasOrNull } from "../money/amount";

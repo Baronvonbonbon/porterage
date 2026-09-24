@@ -25,9 +25,19 @@ import {
 } from "../shield/fund";
 import { errorText, pas, pasWei, short } from "../format";
 import { Choose } from "./pickers/Choose";
-import { NoteBackup } from "./Backup";
+
 import { Amount } from "./pickers/Amount";
 import { pasOrNull } from "../money/amount";
+
+import { lazy, Suspense } from "react";
+
+// The note-book backup panel is 177 kB of statement and Bulletin machinery for
+// a control that sits at the bottom of a screen nobody scrolls to until they
+// need it. Fetched when it renders.
+const NoteBackup = lazy(() =>
+  import("./Backup").then((m) => ({ default: m.NoteBackup }))
+);
+
 
 const PLANCK_PER_WEI = 10n ** 8n;
 
@@ -309,7 +319,9 @@ export function Wallet() {
           Fund a private account
         </button>
       </div>
-      <NoteBackup />
+      <Suspense fallback={null}>
+        <NoteBackup />
+      </Suspense>
 
       {stage && <p className="muted">{STAGE_TEXT[stage.stage]}…</p>}
       {proveMs !== null && (
