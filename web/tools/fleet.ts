@@ -373,7 +373,7 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
   const orderId = orderIdOf(created);
 
   if (kind === "cancelled-open") {
-    await send(kind, `#${index} cancelOpen`, ords.cancelOpen(orderId));
+    await send("customer", "cancelOpen", ords.cancelOpen(orderId));
     return { order: index, kind, orderId, ok: true, ms: Date.now() - t0 };
   }
 

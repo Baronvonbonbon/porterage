@@ -228,14 +228,23 @@ function report(p) {
   );
 
   console.log("\nTHE EXPENSIVE ONE");
+  // The comparison is only printed when both numbers come from the same VM.
+  // `vault.withdraw` is the named-address exit, which ships shut
+  // (clearExitsOpen is false), so a live run cannot measure it — and dividing
+  // a measured number by a Hardhat one produced a ratio that was nonsense in
+  // both directions.
+  const sameSource =
+    gas["vault.insertShieldNote"] !== undefined &&
+    gas["vault.withdraw"] !== undefined;
+  const ratio = sameSource
+    ? `, ${(gas["vault.insertShieldNote"] / gas["vault.withdraw"]) | 0}x a plain withdrawal`
+    : "";
   console.log(
     `  vault.insertShieldNote is ${gas["vault.insertShieldNote"]} gas ` +
-      `(${pas(perShield)} PAS), ${
-        (gas["vault.insertShieldNote"] / gas["vault.withdraw"]) | 0
-      }x a plain`
+      `(${pas(perShield)} PAS)${ratio}.`
   );
   console.log(
-    `  withdrawal. That is what a private exit costs: it walks a 16-level`
+    `  That is what a private exit costs: it walks a 16-level`
   );
   console.log(
     `  Poseidon tree on-chain. Paid once per bucket, so the per-delivery share`

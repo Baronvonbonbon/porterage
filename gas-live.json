@@ -1,0 +1,22 @@
+{
+  "//": "Measured on chain by tools/fleet.ts. Preferred over gas-snapshot.json, which is Hardhat's EVM.",
+  "measuredAt": "2026-09-24T17:14:02.277Z",
+  "network": "Passet Hub (Paseo Asset Hub)",
+  "orders": 100,
+  "gas": {
+    "orders.createOrder": 21008,
+    "settlement.confirmDropoffZK": 17005,
+    "ratings.rate": 6227,
+    "orders.acceptSealedBid": 4043,
+    "disputes.openDispute": 17027,
+    "orders.cancelAssigned": 7243,
+    "orders.reopenTimedOut": 7181,
+    "settlement.confirmPickup": 13062,
+    "orders.commitBid": 10368,
+    "vault.insertShieldNote": 27058,
+    "drivers.register": 19461,
+    "orders.abandonOrder": 6488,
+    "disputes.resolve": 7179,
+    "venues.registerVenue": 25940
+  }
+}

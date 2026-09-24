@@ -1,83 +1,937 @@
 {
-  "at": "2026-09-24T16:44:49.718Z",
-  "orders": 4,
-  "lanes": 2,
-  "seed": "rehearsal-7",
+  "at": "2026-09-24T17:14:02.277Z",
+  "orders": 100,
+  "lanes": 5,
+  "seed": "fleet-100-b",
   "contracts": {
     "orders": "0x48222a180DFd2D41505bD20a93a2C6B06334BBBA",
     "settlement": "0x9344B26D4204EA0f52E1A6b133cF06e1709cFB9F",
     "vault": "0x013fd0C18f8EaC04Cb700330fDDC1A14ca833Bf3"
   },
-  "elapsedSeconds": 86.487,
+  "elapsedSeconds": 951.099,
   "results": [
     {
-      "order": 1,
-      "kind": "delivered",
-      "orderId": "19",
+      "order": 3,
+      "kind": "cancelled-assigned",
+      "orderId": "38",
       "ok": true,
-      "ms": 34618,
-      "note": "status 4"
+      "ms": 22068
     },
     {
-      "order": 0,
+      "order": 4,
       "kind": "delivered",
-      "orderId": "18",
+      "orderId": "39",
       "ok": true,
-      "ms": 34665,
+      "ms": 33810,
       "note": "status 4"
     },
     {
       "order": 2,
       "kind": "delivered",
-      "orderId": "20",
+      "orderId": "37",
       "ok": true,
-      "ms": 33425,
+      "ms": 33826,
       "note": "status 4"
     },
     {
-      "order": 3,
+      "order": 5,
       "kind": "delivered",
-      "orderId": "21",
+      "orderId": "40",
       "ok": true,
-      "ms": 33397,
+      "ms": 33221,
+      "note": "status 4"
+    },
+    {
+      "order": 8,
+      "kind": "cancelled-open",
+      "orderId": "43",
+      "ok": true,
+      "ms": 11076
+    },
+    {
+      "order": 7,
+      "kind": "disputed-customer",
+      "orderId": "42",
+      "ok": true,
+      "ms": 32737,
+      "note": "customer won, status 7"
+    },
+    {
+      "order": 6,
+      "kind": "delivered",
+      "orderId": "41",
+      "ok": true,
+      "ms": 32757,
+      "note": "status 4"
+    },
+    {
+      "order": 11,
+      "kind": "delivered",
+      "orderId": "46",
+      "ok": true,
+      "ms": 33926,
+      "note": "status 4"
+    },
+    {
+      "order": 9,
+      "kind": "delivered",
+      "orderId": "44",
+      "ok": true,
+      "ms": 34107,
+      "note": "status 4"
+    },
+    {
+      "order": 10,
+      "kind": "delivered",
+      "orderId": "45",
+      "ok": true,
+      "ms": 33945,
+      "note": "status 4"
+    },
+    {
+      "order": 14,
+      "kind": "delivered",
+      "orderId": "49",
+      "ok": true,
+      "ms": 35299,
+      "note": "status 4"
+    },
+    {
+      "order": 13,
+      "kind": "delivered",
+      "orderId": "48",
+      "ok": true,
+      "ms": 35324,
+      "note": "status 4"
+    },
+    {
+      "order": 12,
+      "kind": "delivered",
+      "orderId": "47",
+      "ok": true,
+      "ms": 35342,
+      "note": "status 4"
+    },
+    {
+      "order": 16,
+      "kind": "abandoned",
+      "orderId": "51",
+      "ok": true,
+      "ms": 22245
+    },
+    {
+      "order": 17,
+      "kind": "delivered",
+      "orderId": "52",
+      "ok": true,
+      "ms": 33362,
+      "note": "status 4"
+    },
+    {
+      "order": 15,
+      "kind": "delivered",
+      "orderId": "50",
+      "ok": true,
+      "ms": 33395,
+      "note": "status 4"
+    },
+    {
+      "order": 18,
+      "kind": "delivered",
+      "orderId": "53",
+      "ok": true,
+      "ms": 32946,
+      "note": "status 4"
+    },
+    {
+      "order": 19,
+      "kind": "delivered",
+      "orderId": "54",
+      "ok": true,
+      "ms": 32818,
+      "note": "status 4"
+    },
+    {
+      "order": 20,
+      "kind": "delivered",
+      "orderId": "55",
+      "ok": true,
+      "ms": 32798,
+      "note": "status 4"
+    },
+    {
+      "order": 21,
+      "kind": "cancelled-assigned",
+      "orderId": "56",
+      "ok": true,
+      "ms": 21696
+    },
+    {
+      "order": 22,
+      "kind": "delivered",
+      "orderId": "57",
+      "ok": true,
+      "ms": 32566,
+      "note": "status 4"
+    },
+    {
+      "order": 23,
+      "kind": "delivered",
+      "orderId": "58",
+      "ok": true,
+      "ms": 32542,
+      "note": "status 4"
+    },
+    {
+      "order": 26,
+      "kind": "cancelled-open",
+      "orderId": "61",
+      "ok": true,
+      "ms": 10720
+    },
+    {
+      "order": 24,
+      "kind": "delivered",
+      "orderId": "59",
+      "ok": true,
+      "ms": 32776,
+      "note": "status 4"
+    },
+    {
+      "order": 25,
+      "kind": "disputed-driver",
+      "orderId": "60",
+      "ok": true,
+      "ms": 32594,
+      "note": "driver won, status 7"
+    },
+    {
+      "order": 27,
+      "kind": "delivered",
+      "orderId": "62",
+      "ok": true,
+      "ms": 32827,
+      "note": "status 4"
+    },
+    {
+      "order": 28,
+      "kind": "delivered",
+      "orderId": "63",
+      "ok": true,
+      "ms": 32664,
+      "note": "status 4"
+    },
+    {
+      "order": 30,
+      "kind": "cancelled-open",
+      "orderId": "65",
+      "ok": true,
+      "ms": 10704
+    },
+    {
+      "order": 29,
+      "kind": "delivered",
+      "orderId": "64",
+      "ok": true,
+      "ms": 32750,
+      "note": "status 4"
+    },
+    {
+      "order": 31,
+      "kind": "delivered",
+      "orderId": "66",
+      "ok": true,
+      "ms": 32695,
+      "note": "status 4"
+    },
+    {
+      "order": 32,
+      "kind": "delivered",
+      "orderId": "67",
+      "ok": true,
+      "ms": 32835,
+      "note": "status 4"
+    },
+    {
+      "order": 34,
+      "kind": "abandoned",
+      "orderId": "69",
+      "ok": true,
+      "ms": 21395
+    },
+    {
+      "order": 33,
+      "kind": "delivered",
+      "orderId": "68",
+      "ok": true,
+      "ms": 32535,
+      "note": "status 4"
+    },
+    {
+      "order": 36,
+      "kind": "delivered",
+      "ok": false,
+      "ms": 0,
+      "note": "transaction execution reverted (action=\"sendTransaction\", data=null, reason=null, invocation=null, revert=null, transaction={ \"data\": \"\", \"from\": \"0xC9978AfcE7b0D31f57106bE4ABcF112866Cfb53a\", \"to\": \"0x48222a180DFd2D41505bD20a93a2C6B06334BBBA\" }, receipt={ \"_type\": \"TransactionReceipt\", \"blobGasPrice\": null, \"blobGasUsed\": null, \"blockHash\": \"0x2c875bb4f4ab0d889ab1777420485e57fd63ae22c163b87083fe77ba946f6758\", \"blockNumber\": 13650751, \"contractAddress\": null, \"cumulativeGasUsed\": \"0\", \"from\": \"0xC9978AfcE7b0D31f57106bE4ABcF112866Cfb53a\", \"gasPrice\": \"1000000000000\", \"gasUsed\": \"1905\", \"hash\": \"0x20d95e84659502cc6b8e3ce80ecad09dc351d4402c7510eff56e5aba7b3f91a2\", \"index\": 4, \"logs\": [  ], \"logsBloom\": \"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\", \"root\": null, \"status\": 0, \"to\": \"0x48222a180DFd2D41505bD20a93a2C6B06334BBBA\" }, code=CALL_EXCEPTION, version=6.13.4)"
+    },
+    {
+      "order": 37,
+      "kind": "delivered",
+      "ok": false,
+      "ms": 0,
+      "note": "transaction execution reverted (action=\"sendTransaction\", data=null, reason=null, invocation=null, revert=null, transaction={ \"data\": \"\", \"from\": \"0x060ed3672C093737886DB297e35bECae5056fEEe\", \"to\": \"0x48222a180DFd2D41505bD20a93a2C6B06334BBBA\" }, receipt={ \"_type\": \"TransactionReceipt\", \"blobGasPrice\": null, \"blobGasUsed\": null, \"blockHash\": \"0x2c875bb4f4ab0d889ab1777420485e57fd63ae22c163b87083fe77ba946f6758\", \"blockNumber\": 13650751, \"contractAddress\": null, \"cumulativeGasUsed\": \"0\", \"from\": \"0x060ed3672C093737886DB297e35bECae5056fEEe\", \"gasPrice\": \"1000000000000\", \"gasUsed\": \"1905\", \"hash\": \"0xd015aee2038c34623fafd7eda074ebda31a5a92bc3196446137a5bf5a3ca5844\", \"index\": 5, \"logs\": [  ], \"logsBloom\": \"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\", \"root\": null, \"status\": 0, \"to\": \"0x48222a180DFd2D41505bD20a93a2C6B06334BBBA\" }, code=CALL_EXCEPTION, version=6.13.4)"
+    },
+    {
+      "order": 35,
+      "kind": "delivered",
+      "orderId": "70",
+      "ok": true,
+      "ms": 40579,
+      "note": "status 4"
+    },
+    {
+      "order": 39,
+      "kind": "cancelled-assigned",
+      "orderId": "74",
+      "ok": true,
+      "ms": 45265
+    },
+    {
+      "order": 38,
+      "kind": "delivered",
+      "orderId": "73",
+      "ok": true,
+      "ms": 56277,
+      "note": "status 4"
+    },
+    {
+      "order": 40,
+      "kind": "delivered",
+      "orderId": "75",
+      "ok": true,
+      "ms": 57576,
+      "note": "status 4"
+    },
+    {
+      "order": 41,
+      "kind": "delivered",
+      "orderId": "76",
+      "ok": true,
+      "ms": 32741,
+      "note": "status 4"
+    },
+    {
+      "order": 44,
+      "kind": "cancelled-open",
+      "orderId": "79",
+      "ok": true,
+      "ms": 10781
+    },
+    {
+      "order": 42,
+      "kind": "delivered",
+      "orderId": "77",
+      "ok": true,
+      "ms": 32790,
+      "note": "status 4"
+    },
+    {
+      "order": 43,
+      "kind": "disputed-driver",
+      "orderId": "78",
+      "ok": true,
+      "ms": 32867,
+      "note": "driver won, status 7"
+    },
+    {
+      "order": 45,
+      "kind": "delivered",
+      "orderId": "80",
+      "ok": true,
+      "ms": 35571,
+      "note": "status 4"
+    },
+    {
+      "order": 46,
+      "kind": "delivered",
+      "orderId": "81",
+      "ok": true,
+      "ms": 35386,
+      "note": "status 4"
+    },
+    {
+      "order": 49,
+      "kind": "cancelled-open",
+      "orderId": "84",
+      "ok": true,
+      "ms": 12285
+    },
+    {
+      "order": 47,
+      "kind": "delivered",
+      "orderId": "82",
+      "ok": true,
+      "ms": 37512,
+      "note": "status 4"
+    },
+    {
+      "order": 48,
+      "kind": "disputed-customer",
+      "orderId": "83",
+      "ok": true,
+      "ms": 35908,
+      "note": "customer won, status 7"
+    },
+    {
+      "order": 50,
+      "kind": "delivered",
+      "orderId": "85",
+      "ok": true,
+      "ms": 34515,
+      "note": "status 4"
+    },
+    {
+      "order": 51,
+      "kind": "delivered",
+      "orderId": "86",
+      "ok": true,
+      "ms": 33907,
+      "note": "status 4"
+    },
+    {
+      "order": 53,
+      "kind": "abandoned",
+      "orderId": "88",
+      "ok": true,
+      "ms": 22378
+    },
+    {
+      "order": 52,
+      "kind": "delivered",
+      "orderId": "87",
+      "ok": true,
+      "ms": 33490,
+      "note": "status 4"
+    },
+    {
+      "order": 54,
+      "kind": "delivered",
+      "orderId": "89",
+      "ok": true,
+      "ms": 42128,
+      "note": "status 4"
+    },
+    {
+      "order": 55,
+      "kind": "delivered",
+      "orderId": "90",
+      "ok": true,
+      "ms": 67174,
+      "note": "status 4"
+    },
+    {
+      "order": 56,
+      "kind": "delivered",
+      "orderId": "91",
+      "ok": true,
+      "ms": 67001,
+      "note": "status 4"
+    },
+    {
+      "order": 57,
+      "kind": "delivered",
+      "orderId": "92",
+      "ok": true,
+      "ms": 64899,
+      "note": "status 4"
+    },
+    {
+      "order": 58,
+      "kind": "cancelled-assigned",
+      "orderId": "93",
+      "ok": true,
+      "ms": 28362
+    },
+    {
+      "order": 0,
+      "kind": "timed-out",
+      "orderId": "35",
+      "ok": true,
+      "ms": 638498,
+      "note": "back to status 1"
+    },
+    {
+      "order": 1,
+      "kind": "timed-out",
+      "orderId": "36",
+      "ok": true,
+      "ms": 638461,
+      "note": "back to status 1"
+    },
+    {
+      "order": 63,
+      "kind": "cancelled-open",
+      "orderId": "98",
+      "ok": true,
+      "ms": 9331
+    },
+    {
+      "order": 59,
+      "kind": "delivered",
+      "orderId": "94",
+      "ok": true,
+      "ms": 39802,
+      "note": "status 4"
+    },
+    {
+      "order": 60,
+      "kind": "delivered",
+      "orderId": "95",
+      "ok": true,
+      "ms": 34008,
+      "note": "status 4"
+    },
+    {
+      "order": 62,
+      "kind": "disputed-driver",
+      "orderId": "97",
+      "ok": true,
+      "ms": 28144,
+      "note": "driver won, status 7"
+    },
+    {
+      "order": 61,
+      "kind": "delivered",
+      "orderId": "96",
+      "ok": true,
+      "ms": 30013,
+      "note": "status 4"
+    },
+    {
+      "order": 68,
+      "kind": "cancelled-open",
+      "orderId": "103",
+      "ok": true,
+      "ms": 10530
+    },
+    {
+      "order": 64,
+      "kind": "delivered",
+      "orderId": "99",
+      "ok": true,
+      "ms": 30818,
+      "note": "status 4"
+    },
+    {
+      "order": 65,
+      "kind": "delivered",
+      "orderId": "100",
+      "ok": true,
+      "ms": 30599,
+      "note": "status 4"
+    },
+    {
+      "order": 66,
+      "kind": "delivered",
+      "orderId": "101",
+      "ok": true,
+      "ms": 47427,
+      "note": "status 4"
+    },
+    {
+      "order": 67,
+      "kind": "disputed-customer",
+      "orderId": "102",
+      "ok": true,
+      "ms": 46127,
+      "note": "customer won, status 7"
+    },
+    {
+      "order": 71,
+      "kind": "delivered",
+      "orderId": "106",
+      "ok": true,
+      "ms": 45436,
+      "note": "status 4"
+    },
+    {
+      "order": 69,
+      "kind": "delivered",
+      "orderId": "104",
+      "ok": true,
+      "ms": 46918,
+      "note": "status 4"
+    },
+    {
+      "order": 70,
+      "kind": "delivered",
+      "orderId": "105",
+      "ok": true,
+      "ms": 45458,
+      "note": "status 4"
+    },
+    {
+      "order": 72,
+      "kind": "abandoned",
+      "orderId": "107",
+      "ok": true,
+      "ms": 22343
+    },
+    {
+      "order": 73,
+      "kind": "delivered",
+      "orderId": "108",
+      "ok": true,
+      "ms": 33984,
+      "note": "status 4"
+    },
+    {
+      "order": 77,
+      "kind": "cancelled-assigned",
+      "orderId": "112",
+      "ok": true,
+      "ms": 22768
+    },
+    {
+      "order": 74,
+      "kind": "delivered",
+      "orderId": "109",
+      "ok": true,
+      "ms": 33992,
+      "note": "status 4"
+    },
+    {
+      "order": 76,
+      "kind": "delivered",
+      "orderId": "111",
+      "ok": true,
+      "ms": 33953,
+      "note": "status 4"
+    },
+    {
+      "order": 75,
+      "kind": "delivered",
+      "orderId": "110",
+      "ok": true,
+      "ms": 33975,
+      "note": "status 4"
+    },
+    {
+      "order": 82,
+      "kind": "cancelled-assigned",
+      "orderId": "117",
+      "ok": true,
+      "ms": 22573
+    },
+    {
+      "order": 78,
+      "kind": "delivered",
+      "orderId": "113",
+      "ok": true,
+      "ms": 34151,
+      "note": "status 4"
+    },
+    {
+      "order": 81,
+      "kind": "disputed-driver",
+      "orderId": "116",
+      "ok": true,
+      "ms": 33908,
+      "note": "driver won, status 7"
+    },
+    {
+      "order": 79,
+      "kind": "delivered",
+      "orderId": "114",
+      "ok": true,
+      "ms": 34099,
+      "note": "status 4"
+    },
+    {
+      "order": 80,
+      "kind": "delivered",
+      "orderId": "115",
+      "ok": true,
+      "ms": 33917,
+      "note": "status 4"
+    },
+    {
+      "order": 87,
+      "kind": "cancelled-open",
+      "orderId": "122",
+      "ok": true,
+      "ms": 10855
+    },
+    {
+      "order": 83,
+      "kind": "delivered",
+      "orderId": "118",
+      "ok": true,
+      "ms": 33610,
+      "note": "status 4"
+    },
+    {
+      "order": 84,
+      "kind": "delivered",
+      "orderId": "119",
+      "ok": true,
+      "ms": 33423,
+      "note": "status 4"
+    },
+    {
+      "order": 86,
+      "kind": "disputed-customer",
+      "orderId": "121",
+      "ok": true,
+      "ms": 33604,
+      "note": "customer won, status 7"
+    },
+    {
+      "order": 85,
+      "kind": "delivered",
+      "orderId": "120",
+      "ok": true,
+      "ms": 33621,
+      "note": "status 4"
+    },
+    {
+      "order": 88,
+      "kind": "delivered",
+      "orderId": "123",
+      "ok": true,
+      "ms": 29658,
+      "note": "status 4"
+    },
+    {
+      "order": 91,
+      "kind": "abandoned",
+      "orderId": "126",
+      "ok": true,
+      "ms": 17898
+    },
+    {
+      "order": 89,
+      "kind": "delivered",
+      "orderId": "124",
+      "ok": true,
+      "ms": 29413,
+      "note": "status 4"
+    },
+    {
+      "order": 90,
+      "kind": "delivered",
+      "orderId": "125",
+      "ok": true,
+      "ms": 29390,
+      "note": "status 4"
+    },
+    {
+      "order": 92,
+      "kind": "delivered",
+      "orderId": "127",
+      "ok": true,
+      "ms": 29371,
+      "note": "status 4"
+    },
+    {
+      "order": 96,
+      "kind": "abandoned",
+      "orderId": "131",
+      "ok": true,
+      "ms": 22189
+    },
+    {
+      "order": 93,
+      "kind": "delivered",
+      "orderId": "128",
+      "ok": true,
+      "ms": 33597,
+      "note": "status 4"
+    },
+    {
+      "order": 94,
+      "kind": "delivered",
+      "orderId": "129",
+      "ok": true,
+      "ms": 33848,
+      "note": "status 4"
+    },
+    {
+      "order": 95,
+      "kind": "delivered",
+      "orderId": "130",
+      "ok": true,
+      "ms": 33669,
+      "note": "status 4"
+    },
+    {
+      "order": 97,
+      "kind": "delivered",
+      "orderId": "132",
+      "ok": true,
+      "ms": 33282,
+      "note": "status 4"
+    },
+    {
+      "order": 98,
+      "kind": "delivered",
+      "orderId": "133",
+      "ok": true,
+      "ms": 34134,
+      "note": "status 4"
+    },
+    {
+      "order": 99,
+      "kind": "delivered",
+      "orderId": "134",
+      "ok": true,
+      "ms": 33932,
       "note": "status 4"
     }
   ],
   "costs": [
     {
+      "role": "cancelled-open",
+      "action": "#8 cancelOpen",
+      "txs": 1,
+      "gas": "5393",
+      "gasPas": "0.005393",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "cancelled-open",
+      "action": "#26 cancelOpen",
+      "txs": 1,
+      "gas": "5393",
+      "gasPas": "0.005393",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "cancelled-open",
+      "action": "#30 cancelOpen",
+      "txs": 1,
+      "gas": "5393",
+      "gasPas": "0.005393",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "cancelled-open",
+      "action": "#44 cancelOpen",
+      "txs": 1,
+      "gas": "5393",
+      "gasPas": "0.005393",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "cancelled-open",
+      "action": "#49 cancelOpen",
+      "txs": 1,
+      "gas": "5393",
+      "gasPas": "0.005393",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "cancelled-open",
+      "action": "#63 cancelOpen",
+      "txs": 1,
+      "gas": "5393",
+      "gasPas": "0.005393",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "cancelled-open",
+      "action": "#68 cancelOpen",
+      "txs": 1,
+      "gas": "5393",
+      "gasPas": "0.005393",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "cancelled-open",
+      "action": "#87 cancelOpen",
+      "txs": 1,
+      "gas": "5393",
+      "gasPas": "0.005393",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
       "role": "customer",
       "action": "createOrder",
-      "txs": 4,
-      "gas": "84040",
-      "gasPas": "0.08404",
+      "txs": 100,
+      "gas": "2100808",
+      "gasPas": "2.100808",
       "chargePas": "0.0",
       "paidPas": "0.0"
     },
     {
       "role": "customer",
       "action": "confirmDropoffZK",
-      "txs": 4,
-      "gas": "72836",
-      "gasPas": "0.072836",
+      "txs": 68,
+      "gas": "1156372",
+      "gasPas": "1.156372",
       "chargePas": "0.0",
       "paidPas": "0.0"
     },
     {
       "role": "customer",
       "action": "rate",
-      "txs": 4,
-      "gas": "33916",
-      "gasPas": "0.033916",
+      "txs": 68,
+      "gas": "423447",
+      "gasPas": "0.423447",
       "chargePas": "0.0",
       "paidPas": "0.0"
     },
     {
       "role": "customer",
       "action": "acceptSealedBid",
-      "txs": 4,
-      "gas": "16172",
-      "gasPas": "0.016172",
+      "txs": 90,
+      "gas": "363865",
+      "gasPas": "0.363865",
       "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "customer",
+      "action": "openDispute",
+      "txs": 8,
+      "gas": "136216",
+      "gasPas": "0.136216",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "customer",
+      "action": "cancelAssigned",
+      "txs": 6,
+      "gas": "43458",
+      "gasPas": "0.043458",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "customer",
+      "action": "reopenTimedOut",
+      "txs": 2,
+      "gas": "14362",
+      "gasPas": "0.014362",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "customer",
+      "action": "compensation to a dropped driver",
+      "txs": 0,
+      "gas": "0",
+      "gasPas": "0.0",
+      "chargePas": "0.3",
       "paidPas": "0.0"
     },
     {
@@ -87,7 +941,7 @@
       "gas": "0",
       "gasPas": "0.0",
       "chargePas": "0.0",
-      "paidPas": "1.2"
+      "paidPas": "20.4"
     },
     {
       "role": "customer",
@@ -96,7 +950,7 @@
       "gas": "0",
       "gasPas": "0.0",
       "chargePas": "0.0",
-      "paidPas": "1.0"
+      "paidPas": "17.0"
     },
     {
       "role": "customer",
@@ -105,32 +959,50 @@
       "gas": "0",
       "gasPas": "0.0",
       "chargePas": "0.0",
-      "paidPas": "0.2"
+      "paidPas": "3.4"
     },
     {
       "role": "driver",
       "action": "confirmPickup",
-      "txs": 4,
-      "gas": "61420",
-      "gasPas": "0.06142",
+      "txs": 76,
+      "gas": "992740",
+      "gasPas": "0.99274",
       "chargePas": "0.0",
       "paidPas": "0.0"
     },
     {
       "role": "driver",
       "action": "commitBid",
-      "txs": 4,
-      "gas": "41472",
-      "gasPas": "0.041472",
+      "txs": 90,
+      "gas": "933115",
+      "gasPas": "0.933115",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "driver",
+      "action": "insertShieldNote",
+      "txs": 5,
+      "gas": "135289",
+      "gasPas": "0.135289",
       "chargePas": "0.0",
       "paidPas": "0.0"
     },
     {
       "role": "driver",
       "action": "registerDriver",
-      "txs": 2,
-      "gas": "38922",
-      "gasPas": "0.038922",
+      "txs": 5,
+      "gas": "97305",
+      "gasPas": "0.097305",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "driver",
+      "action": "abandonOrder",
+      "txs": 6,
+      "gas": "38928",
+      "gasPas": "0.038928",
       "chargePas": "0.0",
       "paidPas": "0.0"
     },
@@ -140,15 +1012,33 @@
       "txs": 0,
       "gas": "0",
       "gasPas": "0.0",
-      "chargePas": "0.025",
+      "chargePas": "0.425",
       "paidPas": "0.0"
     },
     {
       "role": "operator",
       "action": "fundAccount",
-      "txs": 10,
-      "gas": "108835",
-      "gasPas": "0.108835",
+      "txs": 115,
+      "gas": "1252110",
+      "gasPas": "1.25211",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "operator",
+      "action": "sweepBack",
+      "txs": 100,
+      "gas": "87800",
+      "gasPas": "0.0878",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "operator",
+      "action": "resolveDispute",
+      "txs": 8,
+      "gas": "57432",
+      "gasPas": "0.057432",
       "chargePas": "0.0",
       "paidPas": "0.0"
     },
@@ -158,15 +1048,6 @@
       "txs": 1,
       "gas": "3953",
       "gasPas": "0.003953",
-      "chargePas": "0.0",
-      "paidPas": "0.0"
-    },
-    {
-      "role": "operator",
-      "action": "sweepBack",
-      "txs": 4,
-      "gas": "3512",
-      "gasPas": "0.003512",
       "chargePas": "0.0",
       "paidPas": "0.0"
     },
@@ -182,16 +1063,16 @@
     {
       "role": "venue",
       "action": "registerVenue",
-      "txs": 2,
-      "gas": "51880",
-      "gasPas": "0.05188",
+      "txs": 5,
+      "gas": "129700",
+      "gasPas": "0.1297",
       "chargePas": "0.0",
       "paidPas": "0.0"
     }
   ],
   "levers": [
     "fee curve: 3750 bps floor over 30 s — 0.0075 → 0.01375 → 0.02 PAS, rises to the cap and stops",
-    "shielding skipped: no driver reached the 1.0 PAS bucket",
+    "shielded 5.0 PAS of driver earnings into 5 note(s) of 1.0 PAS",
     "books: 5 menus billed, tax frozen with its rate on every sale; orders.csv 10 rows, items.csv 10 rows, CRLF and decimal PAS",
     "books totals: 10 rows, 25.6 goods + 2.03575 tax = 27.63575 PAS billed, 1.46875 PAS net to drivers",
     "pause registry: orders refused new orders while paused, running again"
