@@ -1,7 +1,14 @@
 // The deployed contracts, for reads (over the Ethereum RPC) and for encoding
 // the calls that hostchain.ts and the session key send.
 
-import { Contract, Interface, JsonRpcProvider, type Wallet } from "ethers";
+import {
+  Contract,
+  Interface,
+  JsonRpcProvider,
+  ZeroAddress,
+  encodeBytes32String,
+  type Wallet,
+} from "ethers";
 import { CHAIN, DEPLOYED } from "./config";
 import Drivers from "./abi/PorterDrivers.json";
 import Venues from "./abi/PorterVenues.json";
@@ -24,7 +31,10 @@ export const ABI = {
 };
 export type ContractName = keyof typeof ABI;
 
-const addresses = DEPLOYED as Partial<Record<ContractName, string>>;
+// A copy, not the import: `resolveFromRouter` writes into this, and mutating
+// the module's own JSON object would quietly change what every other importer
+// of `deployed.json` sees.
+const addresses = { ...DEPLOYED } as Partial<Record<ContractName, string>>;
 
 /** True once the deploy script has written every address the app needs. */
 export function deployed(): boolean {
@@ -48,6 +58,32 @@ export function ethProvider(): JsonRpcProvider {
 /** A read-only handle on a deployed contract. */
 export function read(name: ContractName): Contract {
   return new Contract(addressOf(name), ABI[name], ethProvider());
+}
+
+/**
+ * A read-only handle on a *particular* deployment, rather than the current one.
+ *
+ * Order ids are per-contract and sequential, and under the freeze-and-drain
+ * upgrade model two deployments are live at once while the old one drains. So
+ * order #7 exists on both, as two different orders. Anything that holds a
+ * stored order must read it from the contract it was created on — see
+ * `OrderRecord.at` — or a customer opens their order and is shown somebody
+ * else's.
+ *
+ * `at` being undefined means "before this was recorded", which can only be an
+ * order from the current deployment, so it falls back to that.
+ */
+export function readAt(name: ContractName, at?: string): Contract {
+  return new Contract(at || addressOf(name), ABI[name], ethProvider());
+}
+
+/** As `readAt`, for a handle that can send. */
+export function writeAt(
+  name: ContractName,
+  signer: Wallet,
+  at?: string
+): Contract {
+  return new Contract(at || addressOf(name), ABI[name], writable(signer));
 }
 
 /**
@@ -84,4 +120,62 @@ export function encode(
   args: unknown[] = []
 ): string {
   return ABI[name].encodeFunctionData(fn, args);
+}
+
+/**
+ * Ask the governance router where each contract currently lives.
+ *
+ * Until this existed the registry was decorative: every address came from
+ * `deployed.json`, baked in at build time, so an on-chain upgrade reached
+ * nobody until the app was rebuilt and republished. On a phone that can mean
+ * days, and in the meantime the app is talking to a contract that has been
+ * frozen against exactly the calls it is about to make.
+ *
+ * This does not widen who is trusted. The router's owner is already the
+ * upgrade authority — it can freeze these contracts and re-point every other
+ * client at will — so reading its answer grants it nothing it did not have.
+ * What it does change is the failure mode: an address that moves is now
+ * followed rather than missed.
+ *
+ * Deliberately best-effort. A zero address, an unreachable RPC or a slow one
+ * all leave the baked addresses in place, because a stale address the app can
+ * still read beats no address at all.
+ */
+export async function resolveFromRouter(
+  timeoutMs = 4000
+): Promise<Partial<Record<ContractName, string>>> {
+  const routerAt = (DEPLOYED as { router?: string }).router;
+  if (!routerAt) return {};
+
+  const router = new Contract(
+    routerAt,
+    ["function currentAddrOf(bytes32) view returns (address)"],
+    ethProvider()
+  );
+
+  const names = Object.keys(ABI) as ContractName[];
+  const moved: Partial<Record<ContractName, string>> = {};
+
+  const lookups = Promise.all(
+    names.map(async (n) => {
+      const found = (await router.currentAddrOf(
+        encodeBytes32String(n)
+      )) as string;
+      if (!found || found === ZeroAddress) return;
+      if (found.toLowerCase() === addresses[n]?.toLowerCase()) return;
+      moved[n] = found;
+    })
+  );
+
+  // One slow name must not hold up the whole app, and a half-applied map is
+  // worse than none: nothing is written until every lookup is back.
+  const timedOut = Symbol("timeout");
+  const raced = await Promise.race([
+    lookups.then(() => "ok" as const).catch(() => "failed" as const),
+    new Promise<typeof timedOut>((r) => setTimeout(() => r(timedOut), timeoutMs)),
+  ]);
+  if (raced !== "ok") return {};
+
+  Object.assign(addresses, moved);
+  return moved;
 }

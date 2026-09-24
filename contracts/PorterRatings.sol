@@ -5,6 +5,12 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "./interfaces/IPorter.sol";
 import "./lib/PorterUpgradable.sol";
 
+/// View surface of a previous PorterRatings used by `importAggregates`.
+interface IPorterRatingsLegacy {
+    function driverAgg(address) external view returns (uint128 sum, uint128 count);
+    function venueAgg(uint64) external view returns (uint128 sum, uint128 count);
+}
+
 /// @title PorterRatings
 /// @notice Verified-delivery ratings. A customer may rate the driver and the
 ///         venue for an order ONLY after that order is `Delivered`, and only for
@@ -36,6 +42,7 @@ contract PorterRatings is Ownable2Step, PorterUpgradable {
     mapping(uint256 => bool) public rated; // orderId => already rated
 
     event Configured(address orders);
+    event AggregateImported(address indexed driver, uint64 indexed venueId, uint128 sum, uint128 count);
     event Rated(
         uint256 indexed orderId,
         address indexed driver,
@@ -46,6 +53,48 @@ contract PorterRatings is Ownable2Step, PorterUpgradable {
     );
 
     constructor() Ownable(msg.sender) {}
+
+    /// @notice Copy star aggregates from the PorterRatings this one replaces.
+    /// @dev A driver's STARS live here, while their delivery counts live in
+    ///      PorterDrivers. Without this, upgrading Ratings left every driver
+    ///      with their deliveries intact and their reputation reset to
+    ///      nothing -- a half-erased record, which is worse than either
+    ///      extreme because it looks plausible.
+    ///
+    ///      Paginated for the same reason as PorterDrivers.importRecords: the
+    ///      list is unbounded and a single-call copy would eventually run out
+    ///      of gas and brick the migration with no way to resume.
+    ///
+    ///      `rated` is deliberately NOT copied. It is per-order replay
+    ///      protection, and the orders it refers to live on an orders contract
+    ///      that is itself draining; a rating can only be cast through
+    ///      `orders`, so a successor bound to a new orders contract cannot see
+    ///      those order ids at all.
+    function importAggregates(
+        address oldContract,
+        address[] calldata driverList,
+        uint64[] calldata venueList
+    ) external onlyOwner {
+        IPorterRatingsLegacy old = IPorterRatingsLegacy(oldContract);
+        for (uint256 i = 0; i < driverList.length; i++) {
+            address who = driverList[i];
+            // Never clobber live local state: a driver already rated here has
+            // a record this import must not overwrite with an older one.
+            if (driverAgg[who].count != 0) continue;
+            (uint128 sum, uint128 count) = old.driverAgg(who);
+            if (count == 0) continue;
+            driverAgg[who] = Agg(sum, count);
+            emit AggregateImported(who, 0, sum, count);
+        }
+        for (uint256 i = 0; i < venueList.length; i++) {
+            uint64 id = venueList[i];
+            if (venueAgg[id].count != 0) continue;
+            (uint128 sum, uint128 count) = old.venueAgg(id);
+            if (count == 0) continue;
+            venueAgg[id] = Agg(sum, count);
+            emit AggregateImported(address(0), id, sum, count);
+        }
+    }
 
     /// @notice One-time binding to the PorterGovernanceRouter (upgrade authority).
     function setRouter(address _router) external onlyOwner {

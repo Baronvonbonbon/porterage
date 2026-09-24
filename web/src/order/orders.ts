@@ -6,7 +6,14 @@
 // session key, which needs no taps. Neither path asks the host to sign.
 
 import { Contract, type Wallet } from "ethers";
-import { ABI, addressOf, ethProvider, read, writable } from "../contracts";
+import {
+  ABI,
+  addressOf,
+  ethProvider,
+  read,
+  readAt,
+  writable,
+} from "../contracts";
 
 export const Status = {
   Open: 1,
@@ -36,9 +43,15 @@ export interface Order {
   token: string;
 }
 
-/** Read one order. */
-export async function orderOf(id: bigint): Promise<Order> {
-  const o = await read("orders").orders(id);
+/**
+ * Read one order.
+ *
+ * `at` names the deployment it belongs to. Pass `record.at` for a stored
+ * order: ids are per-contract, so the same id on the current contract is a
+ * different order (see `readAt`).
+ */
+export async function orderOf(id: bigint, at?: string): Promise<Order> {
+  const o = await readAt("orders", at).orders(id);
   return {
     id,
     customer: o.customer,
@@ -62,7 +75,7 @@ export async function recentOrders(limit = 20): Promise<Order[]> {
   const ids: bigint[] = [];
   for (let id = next - 1; id >= 1 && ids.length < limit; id--)
     ids.push(BigInt(id));
-  return Promise.all(ids.map(orderOf));
+  return Promise.all(ids.map((id) => orderOf(id)));
 }
 
 export interface NewOrder {
@@ -75,8 +88,8 @@ export interface NewOrder {
   deliveryWindowSecs?: bigint;
 }
 
-const orderContract = (signer: Wallet) =>
-  new Contract(addressOf("orders"), ABI.orders.fragments as never, writable(signer));
+const orderContract = (signer: Wallet, at?: string) =>
+  new Contract(at || addressOf("orders"), ABI.orders.fragments as never, writable(signer));
 
 /** What a burner must hold to place this order: the escrow plus room for gas. */
 export const escrowFor = (o: NewOrder): bigint => o.orderValue + o.tip;
@@ -108,9 +121,10 @@ export async function acceptBid(
   orderId: bigint,
   driver: string,
   amount: bigint,
-  salt: string
+  salt: string,
+  at?: string
 ): Promise<void> {
-  const tx = await orderContract(burner).acceptSealedBid(
+  const tx = await orderContract(burner, at).acceptSealedBid(
     orderId,
     driver,
     amount,
@@ -123,9 +137,10 @@ export async function acceptBid(
 /** Cancel an order nobody has taken, refunding the escrow to the burner. */
 export async function cancelOrder(
   burner: Wallet,
-  orderId: bigint
+  orderId: bigint,
+  at?: string
 ): Promise<void> {
-  await (await orderContract(burner).cancelOpen(orderId)).wait();
+  await (await orderContract(burner, at).cancelOpen(orderId)).wait();
 }
 
 /**
@@ -139,14 +154,18 @@ export async function cancelOrder(
  */
 export async function reopenTimedOut(
   burner: Wallet,
-  orderId: bigint
+  orderId: bigint,
+  at?: string
 ): Promise<void> {
-  await (await orderContract(burner).reopenTimedOut(orderId)).wait();
+  await (await orderContract(burner, at).reopenTimedOut(orderId)).wait();
 }
 
 /** When the driver has to have collected by. Zero when there is no driver. */
-export async function pickupDeadline(orderId: bigint): Promise<number> {
-  const [pickup] = await read("orders").deadlinesOf(orderId);
+export async function pickupDeadline(
+  orderId: bigint,
+  at?: string
+): Promise<number> {
+  const [pickup] = await readAt("orders", at).deadlinesOf(orderId);
   return Number(pickup);
 }
 

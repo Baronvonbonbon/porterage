@@ -129,6 +129,7 @@ const MATRIX: Entry[] = [
   // ── PorterRatings ─────────────────────────────────────────────────────────
   { c: "ratings", fn: "setRouter", args: [A1], allow: ["owner"] },
   { c: "ratings", fn: "configure", args: [A1], allow: ["owner"] },
+  { c: "ratings", fn: "importAggregates", args: [A1, [A1], [1]], allow: ["owner"] },
 
   // ── PorterGovernanceRouter ────────────────────────────────────────────────
   { c: "router", fn: "register", args: [B32, A1], allow: ["owner"] },

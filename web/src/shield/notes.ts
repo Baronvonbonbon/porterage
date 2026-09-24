@@ -76,6 +76,17 @@ export interface PayoutRecord {
 /** An order this device placed, and the secrets only it holds (order/flow.ts). */
 export interface OrderRecord {
   id: string;
+  /**
+   * The orders contract this order lives on.
+   *
+   * Order ids are per-contract and sequential. Under the freeze-and-drain
+   * upgrade model two deployments are live at once while the old one drains,
+   * so #7 exists on both as two unrelated orders — and without this, opening a
+   * stored order would resolve it against whichever contract the app currently
+   * points at and show a stranger's delivery. Absent on records written before
+   * this existed, which can only be orders on the deployment of the day.
+   */
+  at?: string;
   /** Which burner placed it: its key is deriveEntropy("porterage:burner:<n>"). */
   burner: number;
   /** The drop position and the salt its commitment was made with. */

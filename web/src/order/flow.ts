@@ -9,7 +9,7 @@
 
 import type { Wallet } from "ethers";
 import { burner as burnerKey } from "../keys";
-import { ethProvider } from "../contracts";
+import { addressOf, ethProvider } from "../contracts";
 import { fundBurner, type FundStage } from "../shield/fund";
 import { allOrders, rememberOrder, type OrderRecord } from "../shield/notes";
 import { announceOrder } from "./bids";
@@ -55,6 +55,10 @@ export async function placeOrder(
 
   const record: OrderRecord = {
     id: orderId.toString(),
+    // Stamped now, and used for the life of this order. The contract can be
+    // upgraded out from under a delivery that is already in flight; this order
+    // finishes where it started.
+    at: addressOf("orders"),
     burner: funded.burnerIndex,
     lat: plan.drop.lat,
     lon: plan.drop.lon,

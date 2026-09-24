@@ -125,7 +125,7 @@ export function Ordering() {
       const states = await Promise.all(
         records.map(
           async (r) =>
-            [r.id, await orderOf(BigInt(r.id)).catch(() => null)] as const
+            [r.id, await orderOf(BigInt(r.id), r.at).catch(() => null)] as const
         )
       );
       setPast(
@@ -160,7 +160,7 @@ export function Ordering() {
       return;
     }
     let on = true;
-    pickupDeadline(BigInt(live.record.id))
+    pickupDeadline(BigInt(live.record.id), live.record.at)
       .then((at) => on && setDueBy(at))
       .catch(() => undefined);
     return () => {
@@ -216,20 +216,25 @@ export function Ordering() {
     stop.current?.();
     setBids([]);
     const [order, burner] = await Promise.all([
-      orderOf(BigInt(record.id)),
+      orderOf(BigInt(record.id), record.at),
       orderBurner(record),
     ]);
     // Anything the order still owes gets another go now that someone is here.
     const settled = await settleDebts(record, burner).catch(() => record);
     setLive({ record: settled, order, burner });
-    stop.current = await watchBids(burner, BigInt(record.id), (bid) => {
-      tell("bid", bid.bidHash);
-      setBids((all) =>
-        [...all.filter((b) => b.bidHash !== bid.bidHash), bid].sort((a, b) =>
-          a.amount < b.amount ? -1 : 1
-        )
-      );
-    });
+    stop.current = await watchBids(
+      burner,
+      BigInt(record.id),
+      (bid) => {
+        tell("bid", bid.bidHash);
+        setBids((all) =>
+          [...all.filter((b) => b.bidHash !== bid.bidHash), bid].sort((a, b) =>
+            a.amount < b.amount ? -1 : 1
+          )
+        );
+      },
+      record.at
+    );
   }, []);
 
   // Who is bidding, not just how well they are rated. The public half of a
@@ -368,7 +373,8 @@ export function Ordering() {
         BigInt(live.record.id),
         bid.driver,
         bid.amount,
-        bid.salt
+        bid.salt,
+        live.record.at
       );
       await openOrder(live.record);
     } catch (e) {
@@ -609,7 +615,7 @@ export function Ordering() {
                 className="link"
                 disabled={!!busy}
                 onClick={() =>
-                  cancelOrder(live.burner, BigInt(live.record.id))
+                  cancelOrder(live.burner, BigInt(live.record.id), live.record.at)
                     .then(() => openOrder(live.record))
                     .catch((e) => setError(errorText(e)))
                 }
@@ -671,7 +677,8 @@ export function Ordering() {
                       run("Finding another driver", async () => {
                         await reopenTimedOut(
                           live.burner,
-                          BigInt(live.record.id)
+                          BigInt(live.record.id),
+                          live.record.at
                         );
                         await openOrder(live.record);
                       })

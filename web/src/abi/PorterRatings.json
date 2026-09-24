@@ -30,6 +30,37 @@
   "anonymous": false,
   "inputs": [
    {
+    "indexed": true,
+    "internalType": "address",
+    "name": "driver",
+    "type": "address"
+   },
+   {
+    "indexed": true,
+    "internalType": "uint64",
+    "name": "venueId",
+    "type": "uint64"
+   },
+   {
+    "indexed": false,
+    "internalType": "uint128",
+    "name": "sum",
+    "type": "uint128"
+   },
+   {
+    "indexed": false,
+    "internalType": "uint128",
+    "name": "count",
+    "type": "uint128"
+   }
+  ],
+  "name": "AggregateImported",
+  "type": "event"
+ },
+ {
+  "anonymous": false,
+  "inputs": [
+   {
     "indexed": false,
     "internalType": "address",
     "name": "orders",
@@ -238,6 +269,29 @@
    }
   ],
   "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "oldContract",
+    "type": "address"
+   },
+   {
+    "internalType": "address[]",
+    "name": "driverList",
+    "type": "address[]"
+   },
+   {
+    "internalType": "uint64[]",
+    "name": "venueList",
+    "type": "uint64[]"
+   }
+  ],
+  "name": "importAggregates",
+  "outputs": [],
+  "stateMutability": "nonpayable",
   "type": "function"
  },
  {

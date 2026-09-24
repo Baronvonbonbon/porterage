@@ -22,7 +22,7 @@ import {
   toUtf8Bytes,
 } from "ethers";
 
-import { ABI, addressOf, read, writable } from "../contracts";
+import { ABI, addressOf, read, readAt, writable } from "../contracts";
 import { publishStatement, subscribeTopics } from "../market/statements";
 import { VERSION, open, seal, type Reader } from "./seal";
 
@@ -156,9 +156,12 @@ export async function placeBid(
 export async function watchBids(
   burner: Reader,
   orderId: bigint,
-  heard: (bid: Bid) => void
+  heard: (bid: Bid) => void,
+  at?: string
 ): Promise<() => void> {
-  const orders = read("orders");
+  // `at` is the order's own deployment: `sealedBid` is per-contract state, and
+  // an id means something different on a successor (see `OrderRecord.at`).
+  const orders = readAt("orders", at);
   return subscribeTopics([orderTopic(orderId)], async (bytes) => {
     const opening = await openSealed(burner, bytes);
     if (!opening) return;
