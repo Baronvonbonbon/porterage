@@ -11,6 +11,7 @@
 
 import { Contract, type Wallet } from "ethers";
 import { ABI, addressOf, read, writable } from "../contracts";
+import { send } from "../send";
 
 export interface Rating {
   /** Average in hundredths of a star: 437 is 4.37★. */
@@ -45,7 +46,7 @@ export async function rate(
     ABI.ratings.fragments as never,
     writable(burner)
   );
-  await (await ratings.rate(orderId, driverStars, venueStars)).wait();
+  await send(() => ratings.rate(orderId, driverStars, venueStars));
 }
 
 /** "4.4★ from 7" — or an honest blank for someone nobody has rated yet. */

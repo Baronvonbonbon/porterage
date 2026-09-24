@@ -18,7 +18,13 @@ import { introduce } from "./chat";
 import { b32, positionCommit, randomSalt, type Position } from "./geo";
 import { ORDER_GAS_RESERVE, createOrder, escrowFor } from "./orders";
 
-export type PlaceStage = FundStage | "creating" | "announcing" | "placed";
+export type PlaceStage =
+  | FundStage
+  | "creating"
+  /** The chain had no room this block and the order is being placed again. */
+  | "crowded"
+  | "announcing"
+  | "placed";
 
 export interface OrderPlan {
   venueId: bigint;
@@ -45,13 +51,19 @@ export async function placeOrder(
 
   onStage("creating");
   const salt = randomSalt();
-  const orderId = await createOrder(burner, {
-    venueId: plan.venueId,
-    dropCommit: b32(positionCommit(plan.drop, salt)),
-    orderValue: plan.orderValue,
-    tip: plan.tip,
-    maxFare: plan.maxFare,
-  });
+  const orderId = await createOrder(
+    burner,
+    {
+      venueId: plan.venueId,
+      dropCommit: b32(positionCommit(plan.drop, salt)),
+      orderValue: plan.orderValue,
+      tip: plan.tip,
+      maxFare: plan.maxFare,
+    },
+    // Say so rather than sit silent: a refused block costs a few seconds and
+    // the person is watching a spinner that would otherwise not move.
+    { onRetry: () => onStage("crowded") }
+  );
 
   const record: OrderRecord = {
     id: orderId.toString(),

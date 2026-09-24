@@ -23,6 +23,7 @@ import {
   type Wallet,
 } from "ethers";
 import { ABI, addressOf, ethProvider, read, writable } from "../contracts";
+import { send } from "../send";
 import { hostGet, hostPut } from "../host";
 import { PHASE_DROPOFF } from "./handoff";
 
@@ -228,12 +229,9 @@ export async function commitPhoto(
     ABI.disputes.fragments as never,
     writable(sessionKey)
   );
-  await (
-    await disputes.commitEvidence(
-      orderId,
-      key.startsWith("0x") ? key : `0x${key}`
-    )
-  ).wait();
+  await send(() =>
+    disputes.commitEvidence(orderId, key.startsWith("0x") ? key : `0x${key}`)
+  );
   return { key, bytes: sealed.length };
 }
 

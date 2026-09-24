@@ -18,6 +18,7 @@
 
 import { AbiCoder, Contract, getBytes, hexlify, type Wallet } from "ethers";
 import { ABI, addressOf, ethProvider, read, writable } from "../contracts";
+import { send, type SendOptions } from "../send";
 import {
   b32,
   dropNullifier,
@@ -248,7 +249,8 @@ export async function confirmPickup(
   sessionKey: Wallet,
   driver: string,
   code: PickupPayload,
-  venueSigner: string
+  venueSigner: string,
+  opts?: SendOptions
 ) {
   const timestamp = nowSeconds();
   const driverSig = await signPickup(
@@ -274,13 +276,16 @@ export async function confirmPickup(
     lon: code.at.lon,
     timestamp: code.timestamp,
   };
-  const tx = await settlementWith(sessionKey).confirmPickup(
-    driverAtt,
-    driverSig,
-    venueAtt,
-    code.signature
+  await send(
+    () =>
+      settlementWith(sessionKey).confirmPickup(
+        driverAtt,
+        driverSig,
+        venueAtt,
+        code.signature
+      ),
+    opts
   );
-  await tx.wait();
 }
 
 export interface DropRequest {
@@ -321,6 +326,7 @@ export async function confirmDropoff(args: {
   request: DropRequest;
   signature: string;
   signedAt: bigint;
+  opts?: SendOptions;
 }): Promise<{ proveMs: number }> {
   const radius = Number(await read("settlement").dropoffRadiusMeters());
   const dropCommit = positionCommit(args.drop, args.dropSalt);
@@ -365,12 +371,17 @@ export async function confirmDropoff(args: {
     posCommit: args.request.payload.posCommit,
     timestamp: args.signedAt,
   };
-  const tx = await settlementWith(args.burner).confirmDropoffZK(
-    driverAtt,
-    args.signature,
-    packed,
-    publicSignals
+  // The retry re-sends; it does not re-prove. The proof above is already in
+  // hand and a refused transaction never reached the verifier.
+  await send(
+    () =>
+      settlementWith(args.burner).confirmDropoffZK(
+        driverAtt,
+        args.signature,
+        packed,
+        publicSignals
+      ),
+    args.opts
   );
-  await tx.wait();
   return { proveMs };
 }

@@ -50,6 +50,7 @@ const STAGE_TEXT: Record<PlaceStage, string> = {
   tipping: "Tipping whoever funded it",
   done: "Funded",
   creating: "Creating the order",
+  crowded: "The chain is busy \u2014 placing it again",
   announcing: "Telling drivers where to send bids",
   placed: "Placed",
 };

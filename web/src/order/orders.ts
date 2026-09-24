@@ -14,6 +14,7 @@ import {
   readAt,
   writable,
 } from "../contracts";
+import { send, type SendOptions } from "../send";
 
 export const Status = {
   Open: 1,
@@ -94,25 +95,43 @@ const orderContract = (signer: Wallet, at?: string) =>
 /** What a burner must hold to place this order: the escrow plus room for gas. */
 export const escrowFor = (o: NewOrder): bigint => o.orderValue + o.tip;
 
-/** Create an order from the burner. Returns the new order's id. */
+/**
+ * Create an order from the burner. Returns the new order's id.
+ *
+ * The id comes out of the receipt, not from reading `nextOrderId` beforehand.
+ * Two customers ordering at the same moment both read the same next id and one
+ * of them would carry the other's order around for the rest of the flow; a
+ * hundred-order fleet run hit exactly that and failed later with
+ * "not-customer". The log says which order this transaction actually made.
+ */
 export async function createOrder(
   burner: Wallet,
-  o: NewOrder
+  o: NewOrder,
+  opts?: SendOptions
 ): Promise<bigint> {
   const orders = orderContract(burner);
-  const id = (await read("orders").nextOrderId()) as bigint;
-  const tx = await orders.createOrder(
-    o.venueId,
-    o.dropCommit,
-    o.orderValue,
-    o.tip,
-    o.maxFare,
-    o.pickupWindowSecs ?? 0n,
-    o.deliveryWindowSecs ?? 0n,
-    { value: escrowFor(o) }
+  const receipt = await send(
+    () =>
+      orders.createOrder(
+        o.venueId,
+        o.dropCommit,
+        o.orderValue,
+        o.tip,
+        o.maxFare,
+        o.pickupWindowSecs ?? 0n,
+        o.deliveryWindowSecs ?? 0n,
+        { value: escrowFor(o) }
+      ),
+    opts
   );
-  await tx.wait();
-  return id;
+  for (const log of receipt.logs) {
+    const parsed = orders.interface.parseLog({
+      topics: [...log.topics],
+      data: log.data,
+    });
+    if (parsed?.name === "OrderCreated") return parsed.args[0] as bigint;
+  }
+  throw new Error("the order was placed but the chain named no id for it");
 }
 
 /** Accept a bid, paying the fare into escrow. From the burner: no taps. */
@@ -122,25 +141,26 @@ export async function acceptBid(
   driver: string,
   amount: bigint,
   salt: string,
-  at?: string
+  at?: string,
+  opts?: SendOptions
 ): Promise<void> {
-  const tx = await orderContract(burner, at).acceptSealedBid(
-    orderId,
-    driver,
-    amount,
-    salt,
-    { value: amount }
+  await send(
+    () =>
+      orderContract(burner, at).acceptSealedBid(orderId, driver, amount, salt, {
+        value: amount,
+      }),
+    opts
   );
-  await tx.wait();
 }
 
 /** Cancel an order nobody has taken, refunding the escrow to the burner. */
 export async function cancelOrder(
   burner: Wallet,
   orderId: bigint,
-  at?: string
+  at?: string,
+  opts?: SendOptions
 ): Promise<void> {
-  await (await orderContract(burner, at).cancelOpen(orderId)).wait();
+  await send(() => orderContract(burner, at).cancelOpen(orderId), opts);
 }
 
 /**
@@ -155,9 +175,10 @@ export async function cancelOrder(
 export async function reopenTimedOut(
   burner: Wallet,
   orderId: bigint,
-  at?: string
+  at?: string,
+  opts?: SendOptions
 ): Promise<void> {
-  await (await orderContract(burner, at).reopenTimedOut(orderId)).wait();
+  await send(() => orderContract(burner, at).reopenTimedOut(orderId), opts);
 }
 
 /** When the driver has to have collected by. Zero when there is no driver. */

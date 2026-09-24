@@ -23,6 +23,7 @@ import {
 } from "ethers";
 
 import { ABI, addressOf, read, readAt, writable } from "../contracts";
+import { send } from "../send";
 import { publishStatement, subscribeTopics } from "../market/statements";
 import { VERSION, open, seal, type Reader } from "./seal";
 
@@ -143,7 +144,7 @@ export async function placeBid(
     ABI.orders.fragments as never,
     writable(sessionKey)
   );
-  await (await write.commitBid(orderId, bidHash, revokeHash)).wait();
+  await send(() => write.commitBid(orderId, bidHash, revokeHash));
   await publishStatement(
     orderTopic(orderId),
     bidChannel(orderId),

@@ -4,6 +4,10 @@
 //   npx vite-node tools/fleet.ts -- --orders 6 --lanes 2      (a rehearsal)
 //   npx vite-node tools/fleet.ts -- --orders 100 --estimate   (costs only)
 //
+// A run smaller than the one in fixtures/fleet-run.json writes beside it
+// rather than over it, because that file is the cost model's evidence.
+// --keep replaces it anyway.
+//
 // `live-order.ts` walks one order through its whole life and prints what it
 // sees. This does that a hundred times, on the paths that are not the happy
 // one, and adds up what it cost. The point is not that one delivery works —
@@ -65,6 +69,7 @@ import { billFor } from "../src/order/bag";
 import { linesOf, totalsOf, type LedgerEntry } from "../src/books/ledger";
 import { itemsCsv, ordersCsv } from "../src/books/csv";
 import type { Menu } from "../src/order/menu";
+import { isResourceRefusal } from "../src/send";
 
 const PAS = 10n ** 18n;
 const book = DEPLOYED as Record<string, string>;
@@ -202,18 +207,44 @@ function paid(role: Role | string, action: string, amount: bigint) {
   line(role, action).paid += amount;
 }
 
-/** Send, wait, and remember who paid what for it. */
+/**
+ * Send, wait, and remember who paid what for it.
+ *
+ * Retries a proof-size refusal, which is the chain saying "not this block"
+ * rather than the contract saying no. Two of the first hundred orders were
+ * lost to it, both in the same block: five lanes create orders at once, two
+ * landed together, and one was included, reverted, and charged 1,905 gas with
+ * no reason attached. `src/send.ts` does this for the app, and the test beside
+ * it is where the distinction is argued; this is the same rule for the
+ * harness, which sees the condition far more often than any person will.
+ *
+ * Takes a function, not a promise: a refused transaction cannot be re-awaited,
+ * it has to be built and signed again.
+ *
+ * The retries are counted, not hidden. A run that needed twenty of them is
+ * telling us something about the chain that a clean summary would bury.
+ */
+let refusals = 0;
 async function send(
   role: Role | string,
   action: string,
-  tx: Promise<TransactionResponse>
+  make: () => Promise<TransactionResponse>
 ) {
-  const sent = await tx;
-  const rec = await sent.wait();
-  if (!rec) throw new Error(`${action}: no receipt`);
-  if (rec.status === 0) throw new Error(`${action}: reverted (${sent.hash})`);
-  record(role, action, rec.gasUsed, rec.gasUsed * (rec.gasPrice ?? 0n));
-  return rec;
+  for (let attempt = 0; ; attempt++) {
+    const sent = await make();
+    const rec = await sent.wait();
+    if (!rec) throw new Error(`${action}: no receipt`);
+    if (rec.status !== 0) {
+      record(role, action, rec.gasUsed, rec.gasUsed * (rec.gasPrice ?? 0n));
+      return rec;
+    }
+    // The refused transaction still cost its sender the gas it burned.
+    record(role, `${action} (refused)`, rec.gasUsed, rec.gasUsed * (rec.gasPrice ?? 0n));
+    if (!isResourceRefusal({ receipt: rec }) || attempt >= 2)
+      throw new Error(`${action}: reverted (${sent.hash})`);
+    refusals++;
+    await sleep(2_000 * (attempt + 1));
+  }
 }
 
 const c = {
@@ -359,7 +390,7 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
   const created = await send(
     "customer",
     "createOrder",
-    ords.createOrder(
+    () => ords.createOrder(
       lane.venueId,
       b32(positionCommit(DROP, salt)),
       goods,
@@ -373,7 +404,7 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
   const orderId = orderIdOf(created);
 
   if (kind === "cancelled-open") {
-    await send("customer", "cancelOpen", ords.cancelOpen(orderId));
+    await send("customer", "cancelOpen", () => ords.cancelOpen(orderId));
     return { order: index, kind, orderId, ok: true, ms: Date.now() - t0 };
   }
 
@@ -389,7 +420,7 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
   await send(
     "driver",
     "commitBid",
-    c.orders(lane.session).commitBid(
+    () => c.orders(lane.session).commitBid(
       orderId,
       bidHash,
       keccak256(abi.encode(["bytes32"], [revoke]))
@@ -398,13 +429,13 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
   await send(
     "customer",
     "acceptSealedBid",
-    ords.acceptSealedBid(orderId, lane.driver.address, fare, bidSalt, {
+    () => ords.acceptSealedBid(orderId, lane.driver.address, fare, bidSalt, {
       value: fare,
     })
   );
 
   if (kind === "cancelled-assigned") {
-    await send("customer", "cancelAssigned", ords.cancelAssigned(orderId));
+    await send("customer", "cancelAssigned", () => ords.cancelAssigned(orderId));
     // The driver is compensated for having been dropped after agreeing a
     // price. It comes out of the fare the customer had already escrowed.
     charge(
@@ -418,7 +449,7 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
     await send(
       "driver",
       "abandonOrder",
-      c.orders(lane.driver).abandonOrder(orderId)
+      () => c.orders(lane.driver).abandonOrder(orderId)
     );
     return { order: index, kind, orderId, ok: true, ms: Date.now() - t0 };
   }
@@ -429,7 +460,7 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
     await send(
       "customer",
       "reopenTimedOut",
-      ords.reopenTimedOut(orderId)
+      () => ords.reopenTimedOut(orderId)
     );
     const status = Number(await c.orders(eth).statusOf(orderId));
     return {
@@ -454,7 +485,7 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
   await send(
     "driver",
     "confirmPickup",
-    c.settlement(lane.session).confirmPickup(dAtt, dSig, vAtt, vSig)
+    () => c.settlement(lane.session).confirmPickup(dAtt, dSig, vAtt, vSig)
   );
 
   // ── disputes happen after pickup, with the goods in hand ──
@@ -465,12 +496,12 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
     await send(
       "customer",
       "openDispute",
-      c.disputes(customer).openDispute(orderId, `fleet:${index}`, { value: bond })
+      () => c.disputes(customer).openDispute(orderId, `fleet:${index}`, { value: bond })
     );
     await send(
       "operator",
       "resolveDispute",
-      c.disputes(deployer).resolve(
+      () => c.disputes(deployer).resolve(
         disputeId,
         forCustomer ? 10_000 : 0, // the whole escrow one way or the other
         true, // the opener is the customer and is acting in good faith
@@ -531,14 +562,14 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
   await send(
     "customer",
     "confirmDropoffZK",
-    c.settlement(customer).confirmDropoffZK(drvAtt, drvSig, packed, publicSignals)
+    () => c.settlement(customer).confirmDropoffZK(drvAtt, drvSig, packed, publicSignals)
   );
 
   // ── the rating, which only a delivered order may cast ──
   await send(
     "customer",
     "rate",
-    c.ratings(customer).rate(orderId, 4 + (index % 2), 3 + (index % 3))
+    () => c.ratings(customer).rate(orderId, 4 + (index % 2), 3 + (index % 3))
   );
 
   // What the delivery moved. The protocol's own cut is the fee on the fare
@@ -579,7 +610,7 @@ async function ensureLanes(): Promise<Lane[]> {
       await send(
         "driver",
         "registerDriver",
-        c.drivers(driver).registerWithSessionKey(
+        () => c.drivers(driver).registerWithSessionKey(
           `fixtures/profiles/driver-${slug(DRIVER_NAMES[n % DRIVER_NAMES.length])}.svg`,
           session.address
         )
@@ -598,7 +629,7 @@ async function ensureLanes(): Promise<Lane[]> {
       await send(
         "venue",
         "registerVenue",
-        c.venues(venueOp).registerVenue(
+        () => c.venues(venueOp).registerVenue(
           at.lat, at.lon, venueOp.address, venueOp.address,
           `fixtures/profiles/venue-${slug(name)}.svg`
         )
@@ -689,7 +720,7 @@ async function pullGlobalLevers(lanes: Lane[]) {
     await send(
       "driver",
       "insertShieldNote",
-      c.vault(lane.driver).insertShieldNote(
+      () => c.vault(lane.driver).insertShieldNote(
         bucket,
         BigInt(keccak256(toUtf8Bytes(`${SEED}:note:${lane.n}`))) % BN254_R
       )
@@ -720,7 +751,7 @@ async function pullGlobalLevers(lanes: Lane[]) {
     ],
     deployer
   );
-  await send("operator", "pause", pause.pause(0));
+  await send("operator", "pause", () => pause.pause(0));
   let refused = false;
   try {
     await c.orders(derive("customer", 0)).createOrder.staticCall(
@@ -729,7 +760,7 @@ async function pullGlobalLevers(lanes: Lane[]) {
   } catch {
     refused = true;
   }
-  await send("operator", "unpause", pause.unpause(0));
+  await send("operator", "unpause", () => pause.unpause(0));
   const running = !(await pause.paused(0));
   out.push(
     `pause registry: orders ${refused ? "refused new orders while paused" : "DID NOT REFUSE"}, ` +
@@ -936,6 +967,10 @@ async function main() {
 
   console.log(`\n${"─".repeat(64)}`);
   console.log(`${ok}/${ORDERS} orders ended as planned, in ${(elapsed / 60).toFixed(1)} min`);
+  if (refusals)
+    console.log(
+      `${refusals} transaction${refusals === 1 ? "" : "s"} refused for proof size and sent again`
+    );
   console.log(`${"─".repeat(64)}`);
   const byKind: Record<string, { n: number; ok: number }> = {};
   for (const r of results) {
@@ -1045,8 +1080,30 @@ async function main() {
     for (const f of failed.slice(0, 20)) console.log(`   #${f.order} ${f.kind}: ${f.note}`);
   }
 
+  // `fixtures/fleet-run.json` is what `tools/gas-live.mjs` reads, and through
+  // it what the cost model quotes. A two-order rehearsal overwrote the
+  // hundred-order run once; the numbers it left behind were not wrong, but
+  // they were an average over two orders being passed off as an average over a
+  // hundred. A smaller run goes to its own file unless it is asked for.
   mkdirSync(join(import.meta.dirname, "..", "..", "fixtures"), { recursive: true });
-  const out = join(import.meta.dirname, "..", "..", "fixtures", "fleet-run.json");
+  const fixtures = join(import.meta.dirname, "..", "..", "fixtures");
+  const canonical = join(fixtures, "fleet-run.json");
+  let out = canonical;
+  if (!has("keep")) {
+    let existing = 0;
+    try {
+      existing = JSON.parse(readFileSync(canonical, "utf8")).orders ?? 0;
+    } catch {
+      // No run on disk yet; this one is the reference by default.
+    }
+    if (ORDERS < existing) {
+      out = join(fixtures, `fleet-run-${SEED}.json`);
+      console.log(
+        `\n${ORDERS} orders is fewer than the ${existing} already in ` +
+          `fleet-run.json, so that one stands. Pass --keep to replace it.`
+      );
+    }
+  }
   writeFileSync(
     out,
     JSON.stringify(
