@@ -11,7 +11,17 @@ import react from "@vitejs/plugin-react";
  * file is smaller than the request that fetched it) and is the difference
  * between the splash appearing immediately and appearing after a network hop.
  *
- * The asset is dropped from the bundle afterwards so no orphan is published.
+ * THE FILE STAYS IN THE BUNDLE. An earlier version deleted it, reasoning that
+ * an inlined stylesheet leaves an orphan — and it does not. Vite records a CSS
+ * dependency on every chunk that needs one, and `__vitePreload` fetches it
+ * before running the chunk. With the file gone, that fetch 404s and the
+ * dynamic import REJECTS: "Unable to preload CSS for …". Every lazily loaded
+ * screen that declared the stylesheet — Customer, Books, Funds — failed to
+ * open, which is what took down the driver's Earnings and the venue's Takings.
+ *
+ * So it is published as well as inlined. The cost is one 8 KB request, made
+ * only when a lazy chunk loads and cached from then on; the alternative is a
+ * screen that cannot open at all.
  */
 function inlineCss(): Plugin {
   return {
@@ -30,7 +40,6 @@ function inlineCss(): Plugin {
           );
           if (!link.test(out)) continue;
           out = out.replace(link, `<style>${String(asset.source)}</style>`);
-          delete ctx.bundle[name];
         }
         return out;
       },

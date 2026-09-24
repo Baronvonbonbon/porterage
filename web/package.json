@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "abi": "node tools/abi.mjs",
-    "build": "node tools/abi.mjs && tsc -b && vite build",
+    "build": "node tools/abi.mjs && tsc -b && vite build && node tools/check-dist.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "relay": "vite-node tools/relay.ts",
