@@ -121,7 +121,10 @@ function Tile({
   return (
     <button className="tile" onClick={onOpen}>
       <Picture menu={menu} name={menu?.name ?? `#${venue.id}`} />
-      <b className="tile-name">{menu?.name || `Venue #${venue.id}`}</b>
+      <b className="tile-name">
+        {menu?.name || `Venue #${venue.id}`}
+        {menu?.demo && <span className="demo-tag">demo</span>}
+      </b>
       <span className="tile-facts">
         {stars}
         {tier && ` · ${tierGlyphs(tier, symbol)}`}

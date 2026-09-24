@@ -71,9 +71,34 @@ export interface Menu {
   photo?: string;
   /** Named charges on top of the goods. Empty or absent means no extras. */
   tax?: TaxLine[];
+  /**
+   * A venue shipped with the app rather than a real shop. Set from the URI
+   * scheme, never from the document, and shown to the customer: somebody has
+   * to be stopped from ordering dinner from a fixture.
+   */
+  demo?: boolean;
 }
 
 const PREFIX = "bulletin:";
+
+/**
+ * Demo venues carry their menu in the app instead of on Bulletin.
+ *
+ * Nothing outside the Polkadot app can write to Bulletin — `hostPut` needs an
+ * allowance and a permission that land on a slot account only the host can
+ * sign with — and what is written there lasts about two weeks. A demo set
+ * published that way would need a prompt per venue and would silently lose its
+ * menus every fortnight, which is the exact failure it exists to prevent.
+ *
+ * So the bytes come from the bundle. They are ordinary menu documents in the
+ * same wire format, read by the same `decodeMenu` below, and the slug is
+ * looked up in a fixed table rather than used as a path — a venue can point at
+ * a demo menu, which is harmless, but not at anything else.
+ *
+ * To remove the demo set entirely: `web/tools/demo-venues.mjs --retire`, then
+ * delete `demo.json`, `tools/demo-set.mjs` and this branch.
+ */
+const DEMO = "demo:";
 
 /** Nobody sensible charges more than this; a typo might. */
 export const MAX_TAX_BPS = 5_000;
@@ -199,6 +224,7 @@ export async function publishMenu(
  * a Bulletin round trip each, every time the screen opened.
  */
 export async function menuOf(metadataURI: string): Promise<Menu | null> {
+  if (metadataURI.startsWith(DEMO)) return demoMenu(metadataURI.slice(DEMO.length));
   if (!metadataURI.startsWith(PREFIX)) return null;
   const kept = await cachedMenu(metadataURI).catch(() => null);
   if (kept) {
@@ -216,6 +242,27 @@ export async function menuOf(metadataURI: string): Promise<Menu | null> {
       () => undefined
     );
     return menu;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A demo venue's menu, out of the bundle.
+ *
+ * `demo` is set here rather than read from the document, so it says where the
+ * menu CAME FROM and not what it claims about itself: a published menu cannot
+ * award itself the badge, and one of these cannot shed it.
+ */
+async function demoMenu(slug: string): Promise<Menu | null> {
+  // Loaded on demand: it is 16 kB of pictures, and a device that never opens
+  // Browse should not carry it.
+  const { default: table } = await import("./demo.json");
+  const doc = (table as Record<string, unknown>)[slug];
+  if (!doc) return null;
+  try {
+    const menu = decodeMenu(new TextEncoder().encode(JSON.stringify(doc)));
+    return { ...menu, demo: true };
   } catch {
     return null;
   }

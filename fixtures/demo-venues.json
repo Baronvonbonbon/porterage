@@ -1,0 +1,38 @@
+{
+  "//": "Registered by web/tools/demo-venues.mjs. --retire closes them all.",
+  "seed": "porterage-demo-venues-1",
+  "registry": "0x0Fce9d4Ae1758EBEc87E061759FB60a530AbEcF1",
+  "at": "2026-09-24T19:43:54.023Z",
+  "venues": [
+    {
+      "slug": "thistle-and-ash",
+      "name": "Thistle & Ash",
+      "id": 37,
+      "operator": "0x52eb6D2Fc3408E18EB549F9f7b49c408d304ceB9"
+    },
+    {
+      "slug": "the-copper-ladle",
+      "name": "The Copper Ladle",
+      "id": 38,
+      "operator": "0x566f8D2425BDC33EE1c86F165B8E94e9a277E9Be"
+    },
+    {
+      "slug": "noon-bakehouse",
+      "name": "Noon Bakehouse",
+      "id": 39,
+      "operator": "0xAF2B36e048b0a8E92A261673B9683f9f6C29f382"
+    },
+    {
+      "slug": "saltfeather",
+      "name": "Saltfeather",
+      "id": 40,
+      "operator": "0x369CB04738425a29e582579A18232ee4877505B7"
+    },
+    {
+      "slug": "greenmarket-deli",
+      "name": "Greenmarket Deli",
+      "id": 41,
+      "operator": "0xb9Ec074017f51132FDBD8d5baAbcAd443695846C"
+    }
+  ]
+}

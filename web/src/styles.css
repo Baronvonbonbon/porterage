@@ -338,6 +338,20 @@ code {
 .error-panel h3 {
   margin-top: 0;
 }
+/* Says a shop ships with the app and nobody is cooking. Quiet, because it is
+   a fact about the listing rather than a warning about the order. */
+.demo-tag {
+  margin-left: var(--space-2);
+  padding: 0.05em 0.45em;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+  font-size: var(--step--1);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.65;
+  vertical-align: middle;
+}
 .ok {
   color: var(--ok);
 }

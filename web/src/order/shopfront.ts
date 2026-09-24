@@ -75,6 +75,9 @@ export async function publishPhoto(bytes: Uint8Array): Promise<string> {
 const seen = new Map<string, Promise<string | null>>();
 
 export function photoUrl(key: string): Promise<string | null> {
+  // A demo venue carries its picture inline (order/menu.ts), so there is
+  // nothing to fetch and nothing that can fail to arrive.
+  if (key.startsWith("data:")) return Promise.resolve(key);
   const found = seen.get(key);
   if (found) return found;
   const fetching = (async () => {

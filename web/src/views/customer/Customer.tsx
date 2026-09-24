@@ -81,7 +81,12 @@ export function Customer() {
     setError(null);
     try {
       if (!deployed()) return;
-      const venues = await allVenues(48);
+      // A venue that has never published anything has nothing to sell, and
+      // some of them can never be closed: ids 1-15 were registered by old test
+      // runs with throwaway operator keys that no longer exist, so `setActive`
+      // is out of reach for everybody. Hiding them is not a cosmetic choice —
+      // it is the only way they can leave the list.
+      const venues = (await allVenues(48)).filter((v) => v.metadataURI);
       // Menus, ratings and pictures all come from one place each, and the
       // caches behind them are keyed by content hash, so a second visit to
       // this screen costs nothing.

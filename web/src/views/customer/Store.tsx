@@ -65,7 +65,16 @@ export function Store({
       </button>
 
       <Banner menu={menu} />
-      <h2>{menu.name || `Venue #${venue.id}`}</h2>
+      <h2>
+        {menu.name || `Venue #${venue.id}`}
+        {menu.demo && <span className="demo-tag">demo</span>}
+      </h2>
+      {menu.demo && (
+        <p className="notice">
+          A demo shop that ships with the app, not a real one. Ordering from it
+          works and spends real testnet PAS, but nobody is cooking.
+        </p>
+      )}
       <p className="muted">
         {stars}
         {menu.labels?.length
