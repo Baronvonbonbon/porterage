@@ -1,93 +1,199 @@
 {
-  "at": "2026-09-24T16:05:16.522Z",
-  "orders": 6,
+  "at": "2026-09-24T16:44:49.718Z",
+  "orders": 4,
   "lanes": 2,
-  "seed": "rehearsal-2",
+  "seed": "rehearsal-7",
   "contracts": {
     "orders": "0x48222a180DFd2D41505bD20a93a2C6B06334BBBA",
     "settlement": "0x9344B26D4204EA0f52E1A6b133cF06e1709cFB9F",
     "vault": "0x013fd0C18f8EaC04Cb700330fDDC1A14ca833Bf3"
   },
-  "elapsedSeconds": 145.056,
+  "elapsedSeconds": 86.487,
   "results": [
     {
       "order": 1,
       "kind": "delivered",
-      "ok": false,
-      "ms": 0,
-      "note": "execution reverted: \"not-customer\" (action=\"estimateGas\", data=\"0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000c6e6f742d637573746f6d65720000000000000000000000000000000000000000\", reason=\"not-customer\", transaction={ \"data\": \"0xa65e66960000000000000000000000000000000000000000000000000000000000000002000000000000000000000000715895d3e663dbfaddf1a878cb2a244b27c3c2ae00000000000000000000000000000000000000000000000003782dace9d90000c80ff8d2e6383f83282ae27cbd54a345bbc19eba1600f3bc8e6225534b55a82a\", \"from\": \"0xab34dc324FE3f02C3c18Ca5b7b732e7aaEF4f56A\", \"to\": \"0x48222a180DFd2D41505bD20a93a2C6B06334BBBA\" }, invocation=null, revert={ \"args\": [ \"not-customer\" ], \"name\": \"Error\", \"signature\": \"Error(string)\" }, code=CALL_EXCEPTION, version=6.13.4)"
+      "orderId": "19",
+      "ok": true,
+      "ms": 34618,
+      "note": "status 4"
     },
     {
       "order": 0,
       "kind": "delivered",
-      "orderId": "2",
+      "orderId": "18",
       "ok": true,
-      "ms": 33183,
+      "ms": 34665,
       "note": "status 4"
     },
     {
       "order": 2,
       "kind": "delivered",
-      "orderId": "4",
+      "orderId": "20",
       "ok": true,
-      "ms": 32642,
+      "ms": 33425,
       "note": "status 4"
     },
     {
       "order": 3,
       "kind": "delivered",
-      "orderId": "5",
+      "orderId": "21",
       "ok": true,
-      "ms": 32809,
-      "note": "status 4"
-    },
-    {
-      "order": 4,
-      "kind": "delivered",
-      "orderId": "6",
-      "ok": true,
-      "ms": 32830,
-      "note": "status 4"
-    },
-    {
-      "order": 5,
-      "kind": "delivered",
-      "orderId": "7",
-      "ok": true,
-      "ms": 32558,
+      "ms": 33397,
       "note": "status 4"
     }
   ],
-  "spend": {
-    "funding": {
-      "txs": 12,
-      "gas": "130596",
-      "fees": "0.130596"
-    },
-    "setup": {
+  "costs": [
+    {
+      "role": "customer",
+      "action": "createOrder",
       "txs": 4,
-      "gas": "90802",
-      "fees": "0.090802"
+      "gas": "84040",
+      "gasPas": "0.08404",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
     },
-    "delivered": {
-      "txs": 32,
-      "gas": "409458",
-      "fees": "0.409458"
+    {
+      "role": "customer",
+      "action": "confirmDropoffZK",
+      "txs": 4,
+      "gas": "72836",
+      "gasPas": "0.072836",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
     },
-    "pause": {
+    {
+      "role": "customer",
+      "action": "rate",
+      "txs": 4,
+      "gas": "33916",
+      "gasPas": "0.033916",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "customer",
+      "action": "acceptSealedBid",
+      "txs": 4,
+      "gas": "16172",
+      "gasPas": "0.016172",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "customer",
+      "action": "goods to the venue",
+      "txs": 0,
+      "gas": "0",
+      "gasPas": "0.0",
+      "chargePas": "0.0",
+      "paidPas": "1.2"
+    },
+    {
+      "role": "customer",
+      "action": "fare to the driver",
+      "txs": 0,
+      "gas": "0",
+      "gasPas": "0.0",
+      "chargePas": "0.0",
+      "paidPas": "1.0"
+    },
+    {
+      "role": "customer",
+      "action": "tip to the driver",
+      "txs": 0,
+      "gas": "0",
+      "gasPas": "0.0",
+      "chargePas": "0.0",
+      "paidPas": "0.2"
+    },
+    {
+      "role": "driver",
+      "action": "confirmPickup",
+      "txs": 4,
+      "gas": "61420",
+      "gasPas": "0.06142",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "driver",
+      "action": "commitBid",
+      "txs": 4,
+      "gas": "41472",
+      "gasPas": "0.041472",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "driver",
+      "action": "registerDriver",
       "txs": 2,
-      "gas": "3948",
-      "fees": "0.003948"
+      "gas": "38922",
+      "gasPas": "0.038922",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
     },
-    "sweep": {
-      "txs": 6,
-      "gas": "5268",
-      "fees": "0.005268"
+    {
+      "role": "driver",
+      "action": "protocol fee on the fare",
+      "txs": 0,
+      "gas": "0",
+      "gasPas": "0.0",
+      "chargePas": "0.025",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "operator",
+      "action": "fundAccount",
+      "txs": 10,
+      "gas": "108835",
+      "gasPas": "0.108835",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "operator",
+      "action": "pause",
+      "txs": 1,
+      "gas": "3953",
+      "gasPas": "0.003953",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "operator",
+      "action": "sweepBack",
+      "txs": 4,
+      "gas": "3512",
+      "gasPas": "0.003512",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "operator",
+      "action": "unpause",
+      "txs": 1,
+      "gas": "0",
+      "gasPas": "0.0",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
+    },
+    {
+      "role": "venue",
+      "action": "registerVenue",
+      "txs": 2,
+      "gas": "51880",
+      "gasPas": "0.05188",
+      "chargePas": "0.0",
+      "paidPas": "0.0"
     }
-  },
+  ],
   "levers": [
     "fee curve: 3750 bps floor over 30 s — 0.0075 → 0.01375 → 0.02 PAS, rises to the cap and stops",
     "shielding skipped: no driver reached the 1.0 PAS bucket",
+    "books: 5 menus billed, tax frozen with its rate on every sale; orders.csv 10 rows, items.csv 10 rows, CRLF and decimal PAS",
+    "books totals: 10 rows, 25.6 goods + 2.03575 tax = 27.63575 PAS billed, 1.46875 PAS net to drivers",
     "pause registry: orders refused new orders while paused, running again"
   ]
 }

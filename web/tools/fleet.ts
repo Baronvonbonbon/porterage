@@ -122,30 +122,69 @@ const MENUS = [
 ] as const;
 
 // ── bookkeeping ─────────────────────────────────────────────────────────────
-interface Spend {
+//
+// Two kinds of money leave an account here and they must never be added up
+// together. GAS is paid to the chain for including a transaction: it is a
+// function of how busy the chain is and of nothing Porterage decides. A CHARGE
+// is a transfer the protocol arranges — the fee on a fare, a driver's
+// compensation for being dropped, a dispute bond — and every one of those is a
+// number in a contract that governance can change.
+//
+// Quoting a single "cost per delivery" hides which is which, and the two move
+// for completely different reasons. So they are tracked apart, by who paid and
+// for what.
+
+type Role = "customer" | "driver" | "venue" | "operator" | "relay";
+
+interface Line {
   txs: number;
   gas: bigint;
-  fees: bigint;
+  /** Gas in PAS: gasUsed × the price at the time. Paid to the chain. */
+  gasCost: bigint;
+  /** A protocol charge: a number in a contract, which governance can change. */
+  charge: bigint;
+  /** Paid to another participant — the goods, the fare, the tip. Not a cost
+   *  of using Porterage at all; it is the thing being bought. */
+  paid: bigint;
 }
-const spend: Record<string, Spend> = {};
-function record(bucket: string, gas: bigint, fee: bigint) {
-  const s = (spend[bucket] ??= { txs: 0, gas: 0n, fees: 0n });
-  s.txs++;
-  s.gas += gas;
-  s.fees += fee;
+const ledger = new Map<string, Line>();
+const key = (role: Role | string, action: string) => `${role}\u0000${action}`;
+
+function line(role: Role | string, action: string): Line {
+  const k = key(role, action);
+  let l = ledger.get(k);
+  if (!l) ledger.set(k, (l = { txs: 0, gas: 0n, gasCost: 0n, charge: 0n, paid: 0n }));
+  return l;
 }
 
-/** Send, wait, and remember what it cost. Throws with a useful label. */
+function record(role: Role | string, action: string, gas: bigint, cost: bigint) {
+  const l = line(role, action);
+  l.txs++;
+  l.gas += gas;
+  l.gasCost += cost;
+}
+
+/** A protocol charge: paid BY someone, to the protocol, not to the chain. */
+function charge(role: Role | string, action: string, amount: bigint) {
+  line(role, action).charge += amount;
+}
+
+/** A payment to another participant: the goods, the fare, the tip. */
+function paid(role: Role | string, action: string, amount: bigint) {
+  line(role, action).paid += amount;
+}
+
+/** Send, wait, and remember who paid what for it. */
 async function send(
-  bucket: string,
-  what: string,
+  role: Role | string,
+  action: string,
   tx: Promise<TransactionResponse>
 ) {
   const sent = await tx;
   const rec = await sent.wait();
-  if (!rec) throw new Error(`${what}: no receipt`);
-  if (rec.status === 0) throw new Error(`${what}: reverted (${sent.hash})`);
-  record(bucket, rec.gasUsed, rec.gasUsed * (rec.gasPrice ?? 0n));
+  if (!rec) throw new Error(`${action}: no receipt`);
+  if (rec.status === 0) throw new Error(`${action}: reverted (${sent.hash})`);
+  record(role, action, rec.gasUsed, rec.gasUsed * (rec.gasPrice ?? 0n));
   return rec;
 }
 
@@ -239,6 +278,19 @@ interface Outcome {
 }
 
 const DROP = { lat: 37_784_900, lon: -122_419_400 };
+
+/** The contract's own fee parameters, read once at the start of the run. */
+let params = { feeBps: 0n, assignedCancelBps: 0n, disputeBond: 0n };
+
+/** The order id, from the OrderCreated log of the transaction that made it. */
+function orderIdOf(rec: { logs: readonly { topics: readonly string[]; data: string }[] }): bigint {
+  const iface = new Contract(book.orders, ORDERS_ABI as never, eth).interface;
+  for (const log of rec.logs) {
+    const parsed = iface.parseLog({ topics: [...log.topics], data: log.data });
+    if (parsed?.name === "OrderCreated") return parsed.args[0] as bigint;
+  }
+  throw new Error("createOrder emitted no OrderCreated");
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** One order, start to whichever finish its scenario calls for. */
@@ -259,10 +311,14 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
   // this testable at all.
   const pickupWindow = kind === "timed-out" ? 60n : 0n;
 
-  const orderId = (await c.orders(eth).nextOrderId()) as bigint;
-  await send(
-    kind,
-    `#${index} createOrder`,
+  // The id comes out of the receipt, NOT from reading `nextOrderId` first.
+  // Five lanes create orders at once; a counter read a moment before the send
+  // is another lane's order by the time this one lands, and every later call
+  // then fails with "not-customer" — which reads like an authorization bug
+  // and is really a race in this harness.
+  const created = await send(
+    "customer",
+    "createOrder",
     ords.createOrder(
       lane.venueId,
       b32(positionCommit(DROP, salt)),
@@ -274,6 +330,7 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
       { value: goods + tip }
     )
   );
+  const orderId = orderIdOf(created);
 
   if (kind === "cancelled-open") {
     await send(kind, `#${index} cancelOpen`, ords.cancelOpen(orderId));
@@ -290,8 +347,8 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
   )) as string;
   const revoke = keccak256(crypto.getRandomValues(new Uint8Array(32)));
   await send(
-    kind,
-    `#${index} commitBid`,
+    "driver",
+    "commitBid",
     c.orders(lane.session).commitBid(
       orderId,
       bidHash,
@@ -299,21 +356,28 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
     )
   );
   await send(
-    kind,
-    `#${index} acceptSealedBid`,
+    "customer",
+    "acceptSealedBid",
     ords.acceptSealedBid(orderId, lane.driver.address, fare, bidSalt, {
       value: fare,
     })
   );
 
   if (kind === "cancelled-assigned") {
-    await send(kind, `#${index} cancelAssigned`, ords.cancelAssigned(orderId));
+    await send("customer", "cancelAssigned", ords.cancelAssigned(orderId));
+    // The driver is compensated for having been dropped after agreeing a
+    // price. It comes out of the fare the customer had already escrowed.
+    charge(
+      "customer",
+      "compensation to a dropped driver",
+      (fare * params.assignedCancelBps) / 10_000n
+    );
     return { order: index, kind, orderId, ok: true, ms: Date.now() - t0 };
   }
   if (kind === "abandoned") {
     await send(
-      kind,
-      `#${index} abandonOrder`,
+      "driver",
+      "abandonOrder",
       c.orders(lane.driver).abandonOrder(orderId)
     );
     return { order: index, kind, orderId, ok: true, ms: Date.now() - t0 };
@@ -323,8 +387,8 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
     // set to 60 s above precisely so this wait is a minute and not an hour.
     await sleep(66_000);
     await send(
-      kind,
-      `#${index} reopenTimedOut`,
+      "customer",
+      "reopenTimedOut",
       ords.reopenTimedOut(orderId)
     );
     const status = Number(await c.orders(eth).statusOf(orderId));
@@ -348,8 +412,8 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
   const vSig = await lane.venueOp.signTypedData(domain, LOCATION_TYPES, vAtt);
   const dSig = await lane.session.signTypedData(domain, LOCATION_TYPES, dAtt);
   await send(
-    kind,
-    `#${index} confirmPickup`,
+    "driver",
+    "confirmPickup",
     c.settlement(lane.session).confirmPickup(dAtt, dSig, vAtt, vSig)
   );
 
@@ -359,13 +423,13 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
     const bond = (await c.disputes(eth).disputeBond()) as bigint;
     const disputeId = (await c.disputes(eth).nextDisputeId()) as bigint;
     await send(
-      kind,
-      `#${index} openDispute`,
+      "customer",
+      "openDispute",
       c.disputes(customer).openDispute(orderId, `fleet:${index}`, { value: bond })
     );
     await send(
-      kind,
-      `#${index} resolve`,
+      "operator",
+      "resolveDispute",
       c.disputes(deployer).resolve(
         disputeId,
         forCustomer ? 10_000 : 0, // the whole escrow one way or the other
@@ -374,6 +438,10 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
         0n // no stake slashed: these drivers post none
       )
     );
+    if (params.disputeBond > 0n) {
+      // Refunded to an opener who wins, forfeited to the treasury otherwise.
+      charge("customer", "dispute bond", forCustomer ? 0n : params.disputeBond);
+    }
     const status = Number(await c.orders(eth).statusOf(orderId));
     return {
       order: index, kind, orderId, ok: true, ms: Date.now() - t0,
@@ -421,17 +489,25 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
     proof.pi_c[0], proof.pi_c[1],
   ]);
   await send(
-    kind,
-    `#${index} confirmDropoffZK`,
+    "customer",
+    "confirmDropoffZK",
     c.settlement(customer).confirmDropoffZK(drvAtt, drvSig, packed, publicSignals)
   );
 
   // ── the rating, which only a delivered order may cast ──
   await send(
-    kind,
-    `#${index} rate`,
+    "customer",
+    "rate",
     c.ratings(customer).rate(orderId, 4 + (index % 2), 3 + (index % 3))
   );
+
+  // What the delivery moved. The protocol's own cut is the fee on the fare
+  // and nothing else: not the goods, not the tip, not the tax.
+  const fee = (fare * params.feeBps) / 10_000n;
+  charge("driver", "protocol fee on the fare", fee);
+  paid("customer", "goods to the venue", goods);
+  paid("customer", "fare to the driver", fare);
+  paid("customer", "tip to the driver", tip);
 
   const status = Number(await c.orders(eth).statusOf(orderId));
   return {
@@ -461,8 +537,8 @@ async function ensureLanes(): Promise<Lane[]> {
 
     if (!(await c.drivers(eth).drivers(driver.address)).registered) {
       await send(
-        "setup",
-        `driver ${n}`,
+        "driver",
+        "registerDriver",
         c.drivers(driver).registerWithSessionKey(
           `fixtures/profiles/driver-${slug(DRIVER_NAMES[n % DRIVER_NAMES.length])}.svg`,
           session.address
@@ -480,8 +556,8 @@ async function ensureLanes(): Promise<Lane[]> {
     } else {
       const next = (await c.venues(eth).nextVenueId()) as bigint;
       await send(
-        "setup",
-        `venue ${n}`,
+        "venue",
+        "registerVenue",
         c.venues(venueOp).registerVenue(
           at.lat, at.lon, venueOp.address, venueOp.address,
           `fixtures/profiles/venue-${slug(name)}.svg`
@@ -532,7 +608,7 @@ async function fundAll(
   let total = 0n;
   recs.forEach((r, i) => {
     if (!r || r.status === 0) throw new Error(`funding ${need[i].label} failed`);
-    record("funding", r.gasUsed, r.gasUsed * (r.gasPrice ?? 0n));
+    record("operator", "fundAccount", r.gasUsed, r.gasUsed * (r.gasPrice ?? 0n));
     total += need[i].amount;
   });
   console.log(`   topped up ${need.length} accounts with ${formatEther(total)} PAS`);
@@ -571,8 +647,8 @@ async function pullGlobalLevers(lanes: Lane[]) {
     const bal = (await c.vault(eth).balanceOf(lane.driver.address)) as bigint;
     if (bal < bucket) continue;
     await send(
-      "shield",
-      `insertShieldNote lane ${lane.n}`,
+      "driver",
+      "insertShieldNote",
       c.vault(lane.driver).insertShieldNote(
         bucket,
         BigInt(keccak256(toUtf8Bytes(`${SEED}:note:${lane.n}`))) % BN254_R
@@ -604,7 +680,7 @@ async function pullGlobalLevers(lanes: Lane[]) {
     ],
     deployer
   );
-  await send("pause", "pause(orders)", pause.pause(0));
+  await send("operator", "pause", pause.pause(0));
   let refused = false;
   try {
     await c.orders(derive("customer", 0)).createOrder.staticCall(
@@ -613,7 +689,7 @@ async function pullGlobalLevers(lanes: Lane[]) {
   } catch {
     refused = true;
   }
-  await send("pause", "unpause(orders)", pause.unpause(0));
+  await send("operator", "unpause", pause.unpause(0));
   const running = !(await pause.paused(0));
   out.push(
     `pause registry: orders ${refused ? "refused new orders while paused" : "DID NOT REFUSE"}, ` +
@@ -683,7 +759,12 @@ function booksLever(): string[] {
       `orders.csv ${bodyRows} rows, items.csv ${items.trim().split("\r\n").length - 1} rows, ` +
       `CRLF and decimal PAS`
   );
-  out.push(`books totals: ${JSON.stringify(totals)}`);
+  out.push(
+    `books totals: ${totals.orders} rows, ` +
+      `${formatEther(totals.goods)} goods + ${formatEther(totals.tax)} tax ` +
+      `= ${formatEther(totals.total)} PAS billed, ` +
+      `${formatEther(totals.net)} PAS net to drivers`
+  );
   return out;
 }
 
@@ -733,6 +814,17 @@ async function main() {
     wants.push({ w: derive("customer", i), target: parseEther("1.5"), label: `customer ${i}` });
   }
   await fundAll(wants);
+
+  params = {
+    feeBps: BigInt(await c.orders(eth).feeBps()),
+    assignedCancelBps: BigInt(await c.orders(eth).assignedCancelBps()),
+    disputeBond: BigInt(await c.disputes(eth).disputeBond()),
+  };
+  console.log(
+    `\nFee parameters on chain: ${params.feeBps} bps on the fare, ` +
+      `${params.assignedCancelBps} bps compensation, ` +
+      `${formatEther(params.disputeBond)} PAS dispute bond`
+  );
 
   console.log("\nRegistering venues and drivers…");
   const lanes = await ensureLanes();
@@ -792,7 +884,7 @@ async function main() {
   swept.forEach((r, i) => {
     if (r.status === "fulfilled" && r.value?.status === 1) {
       returned += worth[i].value;
-      record("sweep", r.value.gasUsed, r.value.gasUsed * (r.value.gasPrice ?? 0n));
+      record("operator", "sweepBack", r.value.gasUsed, r.value.gasUsed * (r.value.gasPrice ?? 0n));
     }
   });
   console.log(`   ${formatEther(returned)} PAS returned`);
@@ -814,15 +906,94 @@ async function main() {
   for (const [k, v] of Object.entries(byKind))
     console.log(`   ${String(v.ok).padStart(3)}/${String(v.n).padEnd(3)}  ${k}`);
 
-  console.log("\nWhat it cost:");
-  let txs = 0, gas = 0n, fees = 0n;
-  for (const [k, s] of Object.entries(spend).sort((a, b) => Number(b[1].fees - a[1].fees))) {
-    console.log(
-      `   ${String(s.txs).padStart(5)} tx  ${formatEther(s.fees).padStart(12)} PAS  ${k}`
+  // ── what it cost, and to whom ──
+  //
+  // Gas and charges are printed apart on purpose. Gas is the chain's price
+  // for including a transaction and has nothing to do with Porterage's
+  // design; a charge is a number in a contract. Adding them together would
+  // produce a "cost per delivery" that moves when the chain is busy and
+  // hides the only part anyone here controls.
+  const rows = [...ledger.entries()]
+    .map(([k, l]) => {
+      const [role, action] = k.split("\u0000");
+      return { role, action, ...l };
+    })
+    .sort((a, b) =>
+      a.role === b.role
+        ? Number(b.gasCost - a.gasCost)
+        : a.role.localeCompare(b.role)
     );
-    txs += s.txs; gas += s.gas; fees += s.fees;
+
+  const pas = (v: bigint) => formatEther(v).padStart(13);
+  console.log(`\n${"─".repeat(78)}`);
+  console.log("GAS — paid to the chain, per role and action");
+  console.log(`${"─".repeat(78)}`);
+  console.log(
+    `${"role".padEnd(10)}${"action".padEnd(22)}${"txs".padStart(6)}` +
+      `${"gas".padStart(13)}${"PAS".padStart(14)}${"PAS each".padStart(13)}`
+  );
+  let totalGasCost = 0n, totalTx = 0;
+  for (const r of rows) {
+    if (!r.txs) continue;
+    console.log(
+      `${r.role.padEnd(10)}${r.action.padEnd(22)}${String(r.txs).padStart(6)}` +
+        `${String(r.gas).padStart(13)}${pas(r.gasCost)}` +
+        `${formatEther(r.gasCost / BigInt(r.txs)).slice(0, 12).padStart(13)}`
+    );
+    totalGasCost += r.gasCost;
+    totalTx += r.txs;
   }
-  console.log(`   ${String(txs).padStart(5)} tx  ${formatEther(fees).padStart(12)} PAS  TOTAL (${gas} gas)`);
+  console.log(
+    `${"".padEnd(32)}${String(totalTx).padStart(6)}${"".padStart(13)}${pas(totalGasCost)}`
+  );
+
+  const charged = rows.filter((r) => r.charge > 0n);
+  console.log(`\n${"─".repeat(78)}`);
+  console.log("CHARGES — the protocol's own numbers, which governance sets");
+  console.log(`${"─".repeat(78)}`);
+  if (!charged.length) console.log("   none: every protocol charge is currently zero");
+  let totalCharge = 0n;
+  for (const r of charged) {
+    console.log(`${r.role.padEnd(10)}${r.action.padEnd(36)}${pas(r.charge)}`);
+    totalCharge += r.charge;
+  }
+  if (charged.length) console.log(`${"".padEnd(46)}${pas(totalCharge)}`);
+
+  const payments = rows.filter((r) => r.paid > 0n);
+  console.log(`\n${"─".repeat(78)}`);
+  console.log("PAYMENTS — between participants. Not a cost of using Porterage.");
+  console.log(`${"─".repeat(78)}`);
+  let totalPaid = 0n;
+  for (const r of payments) {
+    console.log(`${r.role.padEnd(10)}${r.action.padEnd(36)}${pas(r.paid)}`);
+    totalPaid += r.paid;
+  }
+  if (payments.length) console.log(`${"".padEnd(46)}${pas(totalPaid)}`);
+
+  // Per delivery, which is the number anybody actually asks for.
+  const delivered = results.filter((r) => r.ok && r.kind === "delivered").length;
+  if (delivered) {
+    const perRole: Record<string, bigint> = {};
+    for (const r of rows) perRole[r.role] = (perRole[r.role] ?? 0n) + r.gasCost;
+    console.log(`\n${"─".repeat(78)}`);
+    console.log(`ONE DELIVERY, averaged over ${delivered} of them`);
+    console.log(`${"─".repeat(78)}`);
+    for (const [role, v] of Object.entries(perRole)) {
+      if (role === "operator") continue; // funding and sweeping are this harness, not the product
+      console.log(`   ${role.padEnd(10)} ${formatEther(v / BigInt(delivered)).slice(0, 12).padStart(12)} PAS of gas`);
+    }
+    const feePer = totalCharge / BigInt(delivered);
+    const valuePer = totalPaid / BigInt(delivered);
+    console.log(`   ${"protocol".padEnd(10)} ${formatEther(feePer).slice(0, 12).padStart(12)} PAS charged`);
+    if (valuePer > 0n) {
+      const bps = (totalCharge * 1_000_000n) / totalPaid;
+      console.log(
+        `   on ${formatEther(valuePer).slice(0, 10)} PAS of delivery value — ` +
+          `${(Number(bps) / 10_000).toFixed(3)}% effective`
+      );
+    }
+  }
+
   console.log(
     `\nDeployer: ${formatEther(opening)} → ${formatEther(closing)} PAS ` +
       `(${formatEther(opening - closing)} spent net of the sweep)`
@@ -843,12 +1014,18 @@ async function main() {
         at: new Date().toISOString(), orders: ORDERS, lanes: LANES, seed: SEED,
         contracts: { orders: book.orders, settlement: book.settlement, vault: book.vault },
         elapsedSeconds: elapsed, results: results.map((r) => ({ ...r, orderId: r.orderId?.toString() })),
-        spend: Object.fromEntries(
-          Object.entries(spend).map(([k, s]) => [k, { txs: s.txs, gas: s.gas.toString(), fees: formatEther(s.fees) }])
-        ),
+        costs: rows.map((r) => ({
+          role: r.role, action: r.action, txs: r.txs,
+          gas: r.gas.toString(),
+          gasPas: formatEther(r.gasCost),
+          chargePas: formatEther(r.charge),
+          paidPas: formatEther(r.paid),
+        })),
         levers,
       },
-      null, 2
+      // BigInt has no JSON representation and throws rather than guessing.
+      (_k, v) => (typeof v === "bigint" ? v.toString() : v),
+      2
     )
   );
   console.log(`\nWritten to ${out}`);
