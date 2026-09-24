@@ -81,7 +81,7 @@ export function Customer() {
     setError(null);
     try {
       if (!deployed()) return;
-      const venues = await allVenues(24);
+      const venues = await allVenues(48);
       // Menus, ratings and pictures all come from one place each, and the
       // caches behind them are keyed by content hash, so a second visit to
       // this screen costs nothing.

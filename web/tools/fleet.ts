@@ -960,6 +960,28 @@ async function main() {
   });
   console.log(`   ${formatEther(returned)} PAS returned`);
 
+  // Close the venues this run opened.
+  //
+  // They are registered on the LIVE registry, which is the one customers
+  // browse, and they carry a metadataURI pointing at a file in this repo — so
+  // they show up in the app as "Venue #33" with no picture and no menu. Five
+  // seeds' worth of runs left twenty of them and buried the only real venue on
+  // the chain, which had been registered long before and had an id below all
+  // of them. A harness that shares a registry with people has to put it back.
+  //
+  // The venue record survives; it stops saying it is open. A re-run with the
+  // same seed finds it by operator and reopens it.
+  const closed = await Promise.allSettled(
+    lanes.map((l) => send("venue", "closeVenue", () =>
+      c.venues(l.venueOp).setActive(l.venueId, false)
+    ))
+  );
+  const shut = closed.filter((r) => r.status === "fulfilled").length;
+  console.log(`   ${shut}/${lanes.length} fleet venues closed`);
+  for (const r of closed)
+    if (r.status === "rejected")
+      console.log(`   ! a venue stayed open: ${r.reason?.message ?? r.reason}`);
+
   // ── the report ──
   const closing = await eth.getBalance(deployer.address);
   const ok = results.filter((r) => r.ok).length;

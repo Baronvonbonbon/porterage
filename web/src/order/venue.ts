@@ -37,13 +37,38 @@ export async function venueOf(id: bigint): Promise<Venue> {
   };
 }
 
-/** Venues registered so far, newest first. Read by id, so no event log is needed. */
-export async function allVenues(limit = 20): Promise<Venue[]> {
+/**
+ * Venues registered so far, newest first. Read by id, so no event log is
+ * needed — and the log is not trustworthy here anyway: venue #6 is live on
+ * chain with its `VenueRegistered` missing from the RPC's index.
+ *
+ * `limit` counts venues KEPT, not ids looked at, and closed ones are skipped
+ * rather than counted. It used to cap the ids visited instead, which meant a
+ * venue could be pushed out of existence by newer ones: twenty test venues
+ * from the fleet harness took ids 16–35, and the only real venue on the chain,
+ * #6, stopped appearing for anybody. A shop that cannot be found by its
+ * customers is indistinguishable from a shop that is gone.
+ *
+ * This walks every id until it has enough, which is honest at a few hundred
+ * venues and wrong at a few thousand — at that point the answer is an index
+ * (by area, on chain or beside it), not a bigger number here.
+ */
+export async function allVenues(
+  limit = 20,
+  { closed = false }: { closed?: boolean } = {}
+): Promise<Venue[]> {
   const next = Number(await read("venues").nextVenueId());
-  const ids: bigint[] = [];
-  for (let id = next - 1; id >= 1 && ids.length < limit; id--)
-    ids.push(BigInt(id));
-  return Promise.all(ids.map(venueOf));
+  const out: Venue[] = [];
+  // A page at a time, read together: one round trip per id in sequence is
+  // half a minute of staring at an empty grid on a phone.
+  const PAGE = 12;
+  for (let top = next - 1; top >= 1 && out.length < limit; top -= PAGE) {
+    const ids: bigint[] = [];
+    for (let id = top; id > top - PAGE && id >= 1; id--) ids.push(BigInt(id));
+    for (const v of await Promise.all(ids.map(venueOf)))
+      if ((v.active || closed) && out.length < limit) out.push(v);
+  }
+  return out;
 }
 
 /** The venue ids this account operates. */
