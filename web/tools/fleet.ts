@@ -1072,7 +1072,19 @@ async function main() {
   if (failed.length) process.exitCode = 1;
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exitCode = 1;
-});
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    // Let go of the provider, or this never exits.
+    //
+    // A JsonRpcProvider keeps a polling timer alive, so node's event loop
+    // stays open after main() has resolved and the report has been written.
+    // Four finished runs were found still resident an hour later, each still
+    // polling the same public endpoint — which is very likely part of why the
+    // first hundred-order attempt was thrown a 502. A test harness that never
+    // exits also cannot be put in CI.
+    eth.destroy();
+  });
