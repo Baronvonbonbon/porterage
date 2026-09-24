@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" width="240" height="160" role="img" aria-label="Pellet &amp; Pine">
+  <rect width="240" height="160" fill="#eee7dd"/>
+  <rect x="20" y="80" width="200" height="66" fill="#fff" opacity="0.55"/>
+  <rect x="34" y="96" width="74" height="50" rx="3" fill="#9c6b1f" opacity="0.14"/>
+  <rect x="132" y="96" width="74" height="50" rx="3" fill="#9c6b1f" opacity="0.14"/>
+  <rect x="104" y="104" width="32" height="42" rx="2" fill="#9c6b1f" opacity="0.3"/>
+  <rect x="20" y="54" width="200" height="26" fill="#9c6b1f" opacity="0.35"/>
+  <rect x="48.57142857142857" y="54" width="28.571428571428573" height="26" fill="#9c6b1f" opacity="0.85"/><rect x="105.71428571428572" y="54" width="28.571428571428573" height="26" fill="#9c6b1f" opacity="0.85"/><rect x="162.85714285714286" y="54" width="28.571428571428573" height="26" fill="#9c6b1f" opacity="0.85"/><path d="M20 80a14.285714285714286 10.989010989010989 0 0 0 28.571428571428573 0" fill="#9c6b1f" opacity="0.85"/><path d="M48.57142857142857 80a14.285714285714286 10.989010989010989 0 0 0 28.571428571428573 0" fill="#9c6b1f" opacity="0.85"/><path d="M77.14285714285714 80a14.285714285714286 10.989010989010989 0 0 0 28.571428571428573 0" fill="#9c6b1f" opacity="0.85"/><path d="M105.71428571428572 80a14.285714285714286 10.989010989010989 0 0 0 28.571428571428573 0" fill="#9c6b1f" opacity="0.85"/><path d="M134.28571428571428 80a14.285714285714286 10.989010989010989 0 0 0 28.571428571428573 0" fill="#9c6b1f" opacity="0.85"/><path d="M162.85714285714286 80a14.285714285714286 10.989010989010989 0 0 0 28.571428571428573 0" fill="#9c6b1f" opacity="0.85"/><path d="M191.42857142857144 80a14.285714285714286 10.989010989010989 0 0 0 28.571428571428573 0" fill="#9c6b1f" opacity="0.85"/>
+  <text x="120" y="38" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif"
+        font-size="20" font-weight="600" fill="#9c6b1f">PP</text>
+  <text x="120" y="154" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif"
+        font-size="9" fill="#9c6b1f" opacity="0.75">Pellet &amp; Pine</text>
+</svg>

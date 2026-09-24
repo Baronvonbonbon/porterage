@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" width="240" height="160" role="img" aria-label="Ember &amp; Rye">
+  <rect width="240" height="160" fill="#f4ece2"/>
+  <rect x="20" y="80" width="200" height="66" fill="#fff" opacity="0.55"/>
+  <rect x="34" y="96" width="74" height="50" rx="3" fill="#2f6b3a" opacity="0.14"/>
+  <rect x="132" y="96" width="74" height="50" rx="3" fill="#2f6b3a" opacity="0.14"/>
+  <rect x="104" y="104" width="32" height="42" rx="2" fill="#2f6b3a" opacity="0.3"/>
+  <rect x="20" y="54" width="200" height="26" fill="#2f6b3a" opacity="0.35"/>
+  <rect x="45" y="54" width="25" height="26" fill="#2f6b3a" opacity="0.85"/><rect x="95" y="54" width="25" height="26" fill="#2f6b3a" opacity="0.85"/><rect x="145" y="54" width="25" height="26" fill="#2f6b3a" opacity="0.85"/><rect x="195" y="54" width="25" height="26" fill="#2f6b3a" opacity="0.85"/><path d="M20 80a12.5 9.615384615384615 0 0 0 25 0" fill="#2f6b3a" opacity="0.85"/><path d="M45 80a12.5 9.615384615384615 0 0 0 25 0" fill="#2f6b3a" opacity="0.85"/><path d="M70 80a12.5 9.615384615384615 0 0 0 25 0" fill="#2f6b3a" opacity="0.85"/><path d="M95 80a12.5 9.615384615384615 0 0 0 25 0" fill="#2f6b3a" opacity="0.85"/><path d="M120 80a12.5 9.615384615384615 0 0 0 25 0" fill="#2f6b3a" opacity="0.85"/><path d="M145 80a12.5 9.615384615384615 0 0 0 25 0" fill="#2f6b3a" opacity="0.85"/><path d="M170 80a12.5 9.615384615384615 0 0 0 25 0" fill="#2f6b3a" opacity="0.85"/><path d="M195 80a12.5 9.615384615384615 0 0 0 25 0" fill="#2f6b3a" opacity="0.85"/>
+  <text x="120" y="38" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif"
+        font-size="20" font-weight="600" fill="#2f6b3a">ER</text>
+  <text x="120" y="154" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif"
+        font-size="9" fill="#2f6b3a" opacity="0.75">Ember &amp; Rye</text>
+</svg>

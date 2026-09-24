@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" width="240" height="160" role="img" aria-label="Quayside Grocers">
+  <rect width="240" height="160" fill="#f6efe6"/>
+  <rect x="20" y="80" width="200" height="66" fill="#fff" opacity="0.55"/>
+  <rect x="34" y="96" width="74" height="50" rx="3" fill="#41548a" opacity="0.14"/>
+  <rect x="132" y="96" width="74" height="50" rx="3" fill="#41548a" opacity="0.14"/>
+  <rect x="104" y="104" width="32" height="42" rx="2" fill="#41548a" opacity="0.3"/>
+  <rect x="20" y="54" width="200" height="26" fill="#41548a" opacity="0.35"/>
+  <rect x="42.22222222222222" y="54" width="22.22222222222222" height="26" fill="#41548a" opacity="0.85"/><rect x="86.66666666666666" y="54" width="22.22222222222222" height="26" fill="#41548a" opacity="0.85"/><rect x="131.11111111111111" y="54" width="22.22222222222222" height="26" fill="#41548a" opacity="0.85"/><rect x="175.55555555555554" y="54" width="22.22222222222222" height="26" fill="#41548a" opacity="0.85"/><path d="M20 80a11.11111111111111 8.547008547008547 0 0 0 22.22222222222222 0" fill="#41548a" opacity="0.85"/><path d="M42.22222222222222 80a11.11111111111111 8.547008547008547 0 0 0 22.22222222222222 0" fill="#41548a" opacity="0.85"/><path d="M64.44444444444444 80a11.11111111111111 8.547008547008547 0 0 0 22.22222222222222 0" fill="#41548a" opacity="0.85"/><path d="M86.66666666666666 80a11.11111111111111 8.547008547008547 0 0 0 22.22222222222222 0" fill="#41548a" opacity="0.85"/><path d="M108.88888888888889 80a11.11111111111111 8.547008547008547 0 0 0 22.22222222222222 0" fill="#41548a" opacity="0.85"/><path d="M131.11111111111111 80a11.11111111111111 8.547008547008547 0 0 0 22.22222222222222 0" fill="#41548a" opacity="0.85"/><path d="M153.33333333333331 80a11.11111111111111 8.547008547008547 0 0 0 22.22222222222222 0" fill="#41548a" opacity="0.85"/><path d="M175.55555555555554 80a11.11111111111111 8.547008547008547 0 0 0 22.22222222222222 0" fill="#41548a" opacity="0.85"/><path d="M197.77777777777777 80a11.11111111111111 8.547008547008547 0 0 0 22.22222222222222 0" fill="#41548a" opacity="0.85"/>
+  <text x="120" y="38" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif"
+        font-size="20" font-weight="600" fill="#41548a">QG</text>
+  <text x="120" y="154" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif"
+        font-size="9" fill="#41548a" opacity="0.75">Quayside Grocers</text>
+</svg>
