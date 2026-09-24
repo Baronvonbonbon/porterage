@@ -327,6 +327,17 @@ code {
   color: var(--accent);
   overflow-wrap: anywhere;
 }
+/* A part of the screen that failed, boxed so it reads as one thing having
+   gone wrong rather than the page being broken (views/Boundary.tsx). */
+.error-panel {
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  margin: var(--space-3) 0;
+}
+.error-panel h3 {
+  margin-top: 0;
+}
 .ok {
   color: var(--ok);
 }

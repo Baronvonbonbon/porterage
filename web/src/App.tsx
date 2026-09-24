@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useState } from "react";
+import { Boundary } from "./views/Boundary";
 import { inHost } from "./host";
 import { followHostTheme } from "./theme";
 import { deployed } from "./contracts";
@@ -104,12 +105,14 @@ export function App() {
              device that already knows its role the splash has usually
              finished fetching it before React gets here, so this fallback is
              mostly for a role chosen by hand, a few hundred milliseconds. */
-          <Suspense fallback={<p className="muted">Opening…</p>}>
-            {(() => {
-              const Role = Screen[role];
-              return <Role />;
-            })()}
-          </Suspense>
+          <Boundary label="This screen">
+            <Suspense fallback={<p className="muted">Opening…</p>}>
+              {(() => {
+                const Role = Screen[role];
+                return <Role />;
+              })()}
+            </Suspense>
+          </Boundary>
         )}
       </main>
     </TrayProvider>

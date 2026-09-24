@@ -16,6 +16,7 @@ import {
 import { sessionKey, keySource, type KeySource } from "../keys";
 import { addressOf, deployed, encode, ethProvider, read } from "../contracts";
 import { errorText, pas, pasWei, short } from "../format";
+import { Boundary } from "./Boundary";
 import { Earnings } from "./Earnings";
 import { Funds } from "./Funds";
 import { Books } from "./Books";
@@ -239,9 +240,15 @@ export function Driver() {
           )}
           {step === "earnings" && (
             <>
-              <Earnings account={me.evm} />
-              <Books kind="earning" backup />
-              <Funds />
+              <Boundary label="Earnings">
+                <Earnings account={me.evm} />
+              </Boundary>
+              <Boundary label="The books">
+                <Books kind="earning" backup />
+              </Boundary>
+              <Boundary label="Money in and out">
+                <Funds />
+              </Boundary>
             </>
           )}
           {step === "setup" && (

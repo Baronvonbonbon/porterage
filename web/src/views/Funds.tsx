@@ -41,6 +41,7 @@ import { pasOrNull } from "../money/amount";
 import { Amount } from "./pickers/Amount";
 
 import { lazy, Suspense } from "react";
+import { Boundary } from "./Boundary";
 
 // The note-book backup panel is 177 kB of statement and Bulletin machinery for
 // a control that sits at the bottom of a screen nobody scrolls to until they
@@ -244,9 +245,11 @@ export function Funds() {
         </>
       )}
 
-      <Suspense fallback={null}>
-        <NoteBackup />
-      </Suspense>
+      <Boundary label="The backup panel">
+        <Suspense fallback={null}>
+          <NoteBackup />
+        </Suspense>
+      </Boundary>
 
       {busy && <p className="muted">{busy}…</p>}
       {done && <p className="ok">{done}</p>}

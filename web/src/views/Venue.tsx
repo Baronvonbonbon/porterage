@@ -36,6 +36,7 @@ import { Offer } from "./Tray";
 import { errorText, pasWei, short } from "../format";
 import { MENU_PUBLIC, VENUE_SEES } from "../copy/privacy";
 import { read } from "../contracts";
+import { Boundary } from "./Boundary";
 import { Earnings } from "./Earnings";
 import { Funds } from "./Funds";
 import { Books } from "./Books";
@@ -324,9 +325,15 @@ export function Venue() {
                 : "…"}
             </p>
           ))}
-          <Earnings account={mine[0].payout} />
-          <Books kind="sale" backup />
-          <Funds />
+          <Boundary label="Takings">
+            <Earnings account={mine[0].payout} />
+          </Boundary>
+          <Boundary label="The books">
+            <Books kind="sale" backup />
+          </Boundary>
+          <Boundary label="Money in and out">
+            <Funds />
+          </Boundary>
         </>
       )}
 
