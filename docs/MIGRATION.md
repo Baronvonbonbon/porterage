@@ -173,7 +173,32 @@ exists to catch — the half-erased driver whose deliveries survived but whose
 stars did not — is invisible when each import is checked on its own, because
 each one is individually correct.
 
-## Still true
+## What the live run taught
 
-The rehearsal runs against Hardhat. It has **not** been run against Passet Hub,
-and no contract has yet been migrated on a live network.
+Run on Passet Hub 2026-09-24: drivers, venues and ratings upgraded and
+migrated, 14 drivers and 15 venues carried across, verified by read-back
+against a snapshot taken beforehand. It cost 0.32 PAS. Two things only a real
+chain would have shown:
+
+**The event log is not the list.** Venue #6 is live on chain, with a
+`PickupRecorded` event of its own, and its `VenueRegistered` event is simply
+absent from the RPC's log index. An events-based enumeration drops that venue
+and reports success. So venues are now enumerated **from storage** —
+`1..nextVenueId-1` — which cannot miss one. Drivers have no on-chain
+enumeration at all (a mapping keyed by address), so the candidate set is every
+address in *any* event the contract emitted, narrowed by asking the contract
+`registered`; `EXTRA_DRIVERS` adds anyone known to be missing. That is a
+genuinely weaker guarantee than the venue side, and it is the one place this
+migration still trusts the log index.
+
+**Pagination has to be adaptive.** The binding limit is not EVM gas. A batch of
+15 venues estimated at ~220k gas and still failed with PolkaVM's `OutOfGas` —
+the per-transaction *proof size*. `BATCH = 50`, sized for Ethereum, reverted
+outright. `inPages` now estimates each page first and halves it until it fits;
+the live run split 15 into 8 and 7 by itself.
+
+**A migration dies halfway, so it must resume.** This one did, and re-running it
+would have deployed a second set of successors and orphaned the 14 driver
+records already carried. `scripts/upgrade-registries.ts` now reads the router to
+see what has already been promoted, reuses those deployments, and checks every
+wiring step before sending it.

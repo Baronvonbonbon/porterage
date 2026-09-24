@@ -2,6 +2,8 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { loadFixture, time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { assignSealed } from "./helpers/bids";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // The rehearsal from docs/MIGRATION.md.
 //
@@ -164,33 +166,85 @@ describe("Migration rehearsal", () => {
     return { driversV2, venuesV2, ratingsV2 };
   }
 
+  /**
+   * The enumeration exactly as scripts/migrate.ts does it. If this stops
+   * finding everyone, the script has the same blind spot.
+   *
+   * Venues come from storage, not from `VenueRegistered`. That is not
+   * fastidiousness: on Passet Hub venue #6 is live, with a `PickupRecorded`
+   * event of its own, and its registration event is missing from the RPC's log
+   * index. Walking ids cannot miss it.
+   */
+  async function enumerate(f: Awaited<ReturnType<typeof withHistory>>) {
+    const next = await f.venues.nextVenueId();
+    const ids: bigint[] = [];
+    for (let id = 1n; id < next; id++) {
+      if ((await f.venues.venues(id)).operator !== ethers.ZeroAddress) ids.push(id);
+    }
+
+    // Drivers are a mapping keyed by address, so there is no on-chain list.
+    // Cast the widest net events allow, then let the contract decide.
+    const logs = await ethers.provider.getLogs({
+      address: f.drivers.target as string, fromBlock: 0, toBlock: "latest",
+    });
+    const candidates = new Set<string>();
+    for (const l of logs) {
+      const parsed = f.drivers.interface.parseLog({ topics: [...l.topics], data: l.data });
+      for (const arg of parsed?.args ?? []) {
+        if (typeof arg === "string" && /^0x[0-9a-fA-F]{40}$/.test(arg)) {
+          candidates.add(ethers.getAddress(arg));
+        }
+      }
+    }
+    const who: string[] = [];
+    for (const a of candidates) if ((await f.drivers.drivers(a)).registered) who.push(a);
+    return { who, ids };
+  }
+
   /** What the migration script does, minus the RPC. */
   async function carryAcross(
     f: Awaited<ReturnType<typeof withHistory>>,
     v2: Awaited<ReturnType<typeof successors>>
   ) {
-    // The enumeration is the events, exactly as scripts/migrate.ts reads them.
-    // If this ever stops finding everyone, the script has the same blind spot.
-    const dLogs = await f.drivers.queryFilter(f.drivers.filters.DriverRegistered(), 0, "latest");
-    const who = [...new Set(dLogs.map((l) => l.args[0] as string))];
-    const vLogs = await f.venues.queryFilter(f.venues.filters.VenueRegistered(), 0, "latest");
-    const ids = [...new Set(vLogs.map((l) => BigInt(l.args[0])))];
-
+    const { who, ids } = await enumerate(f);
     await v2.driversV2.importRecords(f.drivers.target, who);
     await v2.venuesV2.importVenues(f.venues.target, ids);
     await v2.ratingsV2.importAggregates(f.ratings.target, who, ids);
     return { who, ids };
   }
 
-  it("finds everyone from the events alone", async () => {
-    // The whole migration rests on this: there is no on-chain enumeration, so
-    // if the event log is not the complete list, records are silently left
-    // behind and nothing anywhere reports it.
+  it("finds everyone", async () => {
+    // The whole migration rests on the enumeration. Anyone it misses is
+    // silently left behind, with nothing anywhere reporting it.
     const f = await withHistory();
     const v2 = await successors(f);
     const { who, ids } = await carryAcross(f, v2);
     expect(who).to.have.members([f.driver1.address, f.driver2.address]);
     expect(ids).to.deep.equal([1n]);
+  });
+
+  it("finds a venue whose registration event never made it to the log index", async () => {
+    // Not hypothetical. On Passet Hub venue #6 is live on chain and its
+    // `VenueRegistered` event is absent from the RPC's logs, while a
+    // `PickupRecorded` event for the same venue survives. An events-based
+    // enumeration drops that venue and reports success.
+    //
+    // Hardhat will not lose a log, so this asserts the property that makes the
+    // real case safe: the enumeration agrees with storage, and does not
+    // consult `VenueRegistered` at all.
+    const f = await withHistory();
+    const { ids } = await enumerate(f);
+
+    const next = await f.venues.nextVenueId();
+    const fromStorage: bigint[] = [];
+    for (let id = 1n; id < next; id++) {
+      if ((await f.venues.venues(id)).operator !== ethers.ZeroAddress) fromStorage.push(id);
+    }
+    expect(ids).to.deep.equal(fromStorage);
+
+    const script = readFileSync(join(__dirname, "..", "scripts", "migrate.ts"), "utf-8");
+    const venueFn = script.slice(script.indexOf("async function registeredVenues"));
+    expect(venueFn.slice(0, venueFn.indexOf("\n}"))).to.not.contain("VenueRegistered");
   });
 
   it("carries every registration, count, URI, pin and star across intact", async () => {
