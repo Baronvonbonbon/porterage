@@ -29,7 +29,27 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
 
-const gas = JSON.parse(readFileSync(join(root, "gas-snapshot.json"), "utf8"));
+// Gas measured where it is actually spent, when we have it.
+//
+// `gas-snapshot.json` comes from the Hardhat test suite, which runs on an EVM.
+// These contracts live on Passet Hub, which runs PolkaVM through
+// pallet-revive, and the two charge very different gas for the same work —
+// createOrder is 196,701 on Hardhat and 21,010 on chain. Multiplying the
+// Hardhat figures by Passet Hub's gas price, which is what this tool did,
+// overstated every number here by about ten times.
+//
+// `gas-live.json` is written by `tools/gas-live.mjs` from a real fleet run.
+// The snapshot stays as the fallback, and as the thing the test suite guards
+// against a contract change making something suddenly expensive.
+let gas, gasSource;
+try {
+  const live = JSON.parse(readFileSync(join(root, "gas-live.json"), "utf8"));
+  gas = live.gas;
+  gasSource = `measured on ${live.network} over ${live.orders} orders, ${live.measuredAt?.slice(0, 10)}`;
+} catch {
+  gas = JSON.parse(readFileSync(join(root, "gas-snapshot.json"), "utf8"));
+  gasSource = "Hardhat's EVM — NOT the chain these contracts run on, so read as an upper bound";
+}
 const addresses = JSON.parse(
   readFileSync(join(root, "deployed-addresses.json"), "utf8")
 );
@@ -39,7 +59,11 @@ const GAS_PRICE = 10n ** 12n;
 const PAS = 10n ** 18n;
 
 const pas = (wei) => (Number(wei) / Number(PAS)).toFixed(4);
-const costOf = (name) => BigInt(gas[name] ?? 0) * GAS_PRICE;
+const snapshot = JSON.parse(
+  readFileSync(join(root, "gas-snapshot.json"), "utf8")
+);
+/** Live gas where it was measured, Hardhat's where it was not. */
+const costOf = (name) => BigInt(gas[name] ?? snapshot[name] ?? 0) * GAS_PRICE;
 
 /** Contract defaults, used when the chain can't be reached. */
 const DEFAULTS = {
@@ -127,6 +151,7 @@ function report(p) {
   console.log(`  goods ${pas(GOODS)} PAS, fare ${pas(FARE)} PAS`);
   console.log(`  protocol fee ${p.feeBps} bps of the fare only`);
   console.log(`  gas at ${GAS_PRICE} wei a unit (Paseo)`);
+  console.log(`  gas figures: ${gasSource}`);
 
   const customer = rows(
     "CUSTOMER",

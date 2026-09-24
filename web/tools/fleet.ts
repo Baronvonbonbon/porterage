@@ -34,6 +34,7 @@ import { join } from "node:path";
 import {
   AbiCoder,
   Contract,
+  FetchRequest,
   JsonRpcProvider,
   Wallet,
   formatEther,
@@ -84,8 +85,35 @@ const ESTIMATE_ONLY = has("estimate");
 const RPC = arg("rpc", CHAIN.ethRpc);
 
 // ── accounts ────────────────────────────────────────────────────────────────
-const eth = new JsonRpcProvider(RPC, Number(CHAIN.chainId), {
+// A run makes thousands of requests to a public endpoint over twenty minutes,
+// and that endpoint will have a bad minute somewhere in there. The first
+// hundred-order attempt died on a single 502 at order nine — not a bug in
+// anything being tested, and no reason to throw away the run.
+//
+// So: retry 5xx with a backoff, poll receipts less often (five lanes each
+// polling every 500 ms is most of the request volume and most of the reason
+// for the throttling), and give each request longer than the default.
+const request = new FetchRequest(RPC);
+request.timeout = 60_000;
+request.retryFunc = async (_req, resp, attempt) => {
+  if (attempt >= 6) return false;
+  const retryable = resp.statusCode >= 500 || resp.statusCode === 429;
+  if (!retryable) return false;
+  await new Promise((r) => setTimeout(r, 400 * 2 ** attempt));
+  return true;
+};
+
+const eth = new JsonRpcProvider(request, Number(CHAIN.chainId), {
   staticNetwork: true,
+});
+eth.pollingInterval = 4_000;
+
+// An error inside ethers' own receipt poller surfaces as an unhandled
+// rejection, which ends the process — taking a run that is otherwise fine
+// with it. Log and carry on: every order is already wrapped in its own
+// try/catch, so a genuinely failed order is still counted as failed.
+process.on("unhandledRejection", (why) => {
+  console.log(`  ! unhandled: ${why instanceof Error ? why.message : String(why)}`);
 });
 
 /** Deterministic from the seed, so a re-run finds its own funded accounts. */
@@ -235,11 +263,11 @@ type Kind =
 
 function plan(n: number): Kind[] {
   const mix: [Kind, number][] = [
-    ["delivered", 0.68],
+    ["delivered", 0.70],
     ["cancelled-open", 0.08],
     ["cancelled-assigned", 0.06],
     ["abandoned", 0.06],
-    ["timed-out", 0.04],
+    ["timed-out", 0.02],
     ["disputed-customer", 0.04],
     ["disputed-driver", 0.04],
   ];
@@ -251,10 +279,18 @@ function plan(n: number): Kind[] {
   out.length = n;
   // Interleave, so a lane does not run all of one kind in a row and a failure
   // late in the run is not confined to one scenario.
-  return out
+  const shuffled = out
     .map((k, i) => [k, (i * 7919) % n] as const)
     .sort((a, b) => a[1] - b[1])
     .map(([k]) => k);
+
+  // Except the timeouts, which go first. Each one parks its lane for ten
+  // minutes waiting for a deadline the contract will not let us shorten; at
+  // the front of the queue that wait happens while the other lanes work,
+  // instead of adding ten minutes to the end of the run.
+  const waits = shuffled.filter((k) => k === "timed-out");
+  const rest = shuffled.filter((k) => k !== "timed-out");
+  return [...waits, ...rest];
 }
 
 interface Lane {
@@ -278,6 +314,8 @@ interface Outcome {
 }
 
 const DROP = { lat: 37_784_900, lon: -122_419_400 };
+/** PorterOrders.MIN_WINDOW — ten minutes, and not negotiable from here. */
+const MIN_WINDOW = 600n;
 
 /** The contract's own fee parameters, read once at the start of the run. */
 let params = { feeBps: 0n, assignedCancelBps: 0n, disputeBond: 0n };
@@ -306,10 +344,12 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
   const tip = parseEther("0.05");
   const maxFare = parseEther("0.40");
   const fare = parseEther("0.25");
-  // A short window so `reopenTimedOut` can be reached in a test rather than
-  // in half an hour. The contract takes it per-order, which is what makes
-  // this testable at all.
-  const pickupWindow = kind === "timed-out" ? 60n : 0n;
+  // The contract's own floor is MIN_WINDOW, ten minutes, and it is right to
+  // have one: a window short enough to test with would be a window short
+  // enough to strand a driver in traffic. So a timeout test costs ten real
+  // minutes, and those orders are scheduled first (see `plan`) so the wait
+  // overlaps every other lane's work rather than extending the run.
+  const pickupWindow = kind === "timed-out" ? MIN_WINDOW : 0n;
 
   // The id comes out of the receipt, NOT from reading `nextOrderId` first.
   // Five lanes create orders at once; a counter read a moment before the send
@@ -385,7 +425,7 @@ async function runOrder(lane: Lane, kind: Kind, index: number): Promise<Outcome>
   if (kind === "timed-out") {
     // Wall-clock, because the chain's clock is the chain's. The window was
     // set to 60 s above precisely so this wait is a minute and not an hour.
-    await sleep(66_000);
+    await sleep(Number(MIN_WINDOW + 20n) * 1000);
     await send(
       "customer",
       "reopenTimedOut",
