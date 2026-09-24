@@ -4,9 +4,181 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Porterage</title>
+
+    <!--
+      The splash is inlined — markup, styles and the mark — for one reason: it
+      has to paint from the first bytes of the document, before the stylesheet
+      arrives and long before 2 MB of JavaScript has been fetched over IPFS,
+      parsed and run. Anything it referenced by URL would be another round trip
+      spent looking at nothing.
+
+      What it showed before this existed was a white screen, for several
+      seconds, with no way to tell a slow load from a broken one.
+
+      The bar does not invent progress. `main.tsx` moves it at four real
+      milestones, and the label says which. A load that stalls therefore stalls
+      somewhere legible.
+    -->
+    <style>
+      :root {
+        --splash-bg: #faf8f5;
+        --splash-fg: #1d1b18;
+        --splash-muted: #6b6560;
+        --splash-line: #e4ded6;
+        --splash-accent: #a4452c;
+        color-scheme: light dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --splash-bg: #171513;
+          --splash-fg: #eee9e2;
+          --splash-muted: #a39b92;
+          --splash-line: #332f2a;
+          --splash-accent: #e07a5c;
+        }
+      }
+      :root[data-theme="dark"] {
+        --splash-bg: #171513;
+        --splash-fg: #eee9e2;
+        --splash-muted: #a39b92;
+        --splash-line: #332f2a;
+        --splash-accent: #e07a5c;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--splash-bg);
+        color: var(--splash-fg);
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        padding: 2rem;
+        background: var(--splash-bg);
+        color: var(--splash-fg);
+        font: 1rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+        transition: opacity 0.25s ease;
+        z-index: 10;
+      }
+      #splash.gone {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash .mark {
+        color: var(--splash-accent);
+      }
+      #splash h1 {
+        margin: 0;
+        font-size: 1.35rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+      #splash-track {
+        width: min(16rem, 70vw);
+        height: 4px;
+        border-radius: 999px;
+        background: var(--splash-line);
+        overflow: hidden;
+      }
+      #splash-bar {
+        height: 100%;
+        width: 8%;
+        border-radius: inherit;
+        background: var(--splash-accent);
+        transition: width 0.35s ease;
+      }
+      #splash-step {
+        margin: 0;
+        min-height: 1.5em;
+        font-size: 0.82rem;
+        color: var(--splash-muted);
+      }
+      /* Motion is decoration here; the label carries the meaning. */
+      @media (prefers-reduced-motion: reduce) {
+        #splash,
+        #splash-bar {
+          transition: none;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+
+    <div id="splash">
+      <!-- Kept in step with src/Mark.tsx by splash.test.ts. -->
+      <svg
+        class="mark"
+        viewBox="0 0 32 32"
+        width="56"
+        height="56"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <g transform="rotate(-14 15 7)">
+          <rect x="8.4" y="3" width="13.2" height="7.6" rx="2" />
+        </g>
+        <path d="M15.2 12.6 14.4 19" />
+        <path d="M14.4 19 9 28.6" />
+        <path d="M14.4 19 20.8 28.6" />
+      </svg>
+      <h1>Porterage</h1>
+      <div id="splash-track" role="progressbar" aria-label="Loading Porterage">
+        <div id="splash-bar"></div>
+      </div>
+      <p id="splash-step">Loading…</p>
+    </div>
+
+    <script>
+      // Deliberately tiny and dependency-free: this runs while the bundle is
+      // still in flight, which is the whole point of it.
+      (function () {
+        var bar = document.getElementById("splash-bar");
+        var step = document.getElementById("splash-step");
+        var splash = document.getElementById("splash");
+        var track = document.getElementById("splash-track");
+        var finished = false;
+
+        window.__porterage = {
+          step: function (label, pct) {
+            if (finished) return;
+            if (bar) bar.style.width = pct + "%";
+            if (track) track.setAttribute("aria-valuenow", String(pct));
+            if (step) step.textContent = label;
+          },
+          done: function () {
+            if (finished) return;
+            finished = true;
+            if (bar) bar.style.width = "100%";
+            if (splash) {
+              splash.className = "gone";
+              setTimeout(function () {
+                if (splash && splash.parentNode)
+                  splash.parentNode.removeChild(splash);
+              }, 300);
+            }
+          },
+        };
+
+        // If the bundle never arrives, say so rather than showing a bar that
+        // is going nowhere. A blank wait is indistinguishable from a hang.
+        setTimeout(function () {
+          if (!finished && step)
+            step.textContent =
+              "Still loading. This is a large download over IPFS — if it does not finish, close the app fully and reopen porterage.dot.";
+        }, 20000);
+      })();
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

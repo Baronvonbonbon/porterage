@@ -190,7 +190,7 @@ export function Ops() {
         <button className="link" onClick={() => setOpenOnly(!openOnly)}>
           {openOnly ? "Show settled ones too" : "Only the open ones"}
         </button>
-        <button className="link" disabled={!!busy} onClick={refresh}>
+        <button className="refresh" disabled={!!busy} onClick={refresh}>
           Refresh
         </button>
       </div>

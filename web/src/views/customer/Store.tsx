@@ -40,8 +40,8 @@ export function Store({
   if (!menu)
     return (
       <section>
-        <button className="link" onClick={onBack}>
-          ← back
+        <button className="back" onClick={onBack}>
+          back
         </button>
         <h2>Venue #{venue.id.toString()}</h2>
         <p className="muted">
@@ -60,8 +60,8 @@ export function Store({
 
   return (
     <section className="store">
-      <button className="link" onClick={onBack}>
-        ← back
+      <button className="back" onClick={onBack}>
+        back
       </button>
 
       <Banner menu={menu} />

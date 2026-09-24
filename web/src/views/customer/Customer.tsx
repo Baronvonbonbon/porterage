@@ -172,15 +172,17 @@ export function Customer() {
 
   return (
     <>
-      <nav className="steps">
+      <nav className="tabs" role="tablist">
         <button
-          className={step === "browse" ? "on" : ""}
+          role="tab"
+          aria-selected={step === "browse"}
           onClick={() => setStep("browse")}
         >
           Browse
         </button>
         <button
-          className={step === "orders" ? "on" : ""}
+          role="tab"
+          aria-selected={step === "orders"}
           onClick={() => setStep("orders")}
         >
           Orders
@@ -189,7 +191,8 @@ export function Customer() {
             browsing started below a full page of shielding. It is a thing you
             do occasionally and well before ordering, which makes it a step. */}
         <button
-          className={step === "balance" ? "on" : ""}
+          role="tab"
+          aria-selected={step === "balance"}
           onClick={() => setStep("balance")}
         >
           Balance

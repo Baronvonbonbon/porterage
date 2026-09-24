@@ -168,15 +168,110 @@ button:disabled {
   border-color: transparent;
 }
 /* A quiet button never takes the accent background, wherever it sits. Without
- * this rule a .link inside .actions was accent text on an accent fill. */
+ * this rule a .link inside .actions was accent text on an accent fill.
+ *
+ * `.link` is the third tier — genuinely minor things. It used to be the only
+ * tier below "outlined button", so everything that wasn't the main action
+ * ended up here: going back, refreshing, removing a tax line and opening a
+ * past order all looked like the same piece of small accent text. The tiers
+ * now are: .primary (filled, one per screen) → button (outlined) → .link
+ * (text), with .back, .refresh and .danger for the three patterns that kept
+ * recurring and kept being mistaken for each other. */
 button.link,
 .actions > button.link {
   border: none;
   background: none;
   width: auto;
-  padding: var(--space-1) 0;
+  padding: var(--space-2) 0;
+  /* A text button still has to be hittable with a thumb. */
+  min-height: 2.75rem;
   color: var(--accent);
   text-align: left;
+}
+button.link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* Going back. Always the same shape, always in the same place, so it stops
+ * being read as one more thing to choose from. */
+button.back,
+.actions > button.back {
+  border: none;
+  background: none;
+  width: auto;
+  min-height: 2.75rem;
+  padding: var(--space-2) 0;
+  color: var(--muted);
+  font-size: var(--step--1);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+button.back::before {
+  content: "\2039";
+  font-size: var(--step-1);
+  line-height: 1;
+}
+button.back:hover {
+  color: var(--fg);
+}
+
+/* Refreshing is a secondary action that appears on five screens; it reads as
+ * the same control on each. */
+button.refresh {
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--step--1);
+  padding: var(--space-2) var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+button.refresh::before {
+  content: "\21bb";
+  font-size: var(--step-0);
+  line-height: 1;
+}
+button.refresh:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--muted);
+}
+
+/* Removing, clearing, cancelling.
+ *
+ * Marked by SHAPE, not by colour. The accent is already this palette's only
+ * alarm colour — `.error` is accent text — so a red "Remove" would sit in a
+ * screen where every interactive thing is that same red and distinguish
+ * nothing. A leading × and a muted weight say "this takes something away"
+ * without competing with the actions that go forward, and it still reads in
+ * the dark theme and without colour vision. */
+button.danger,
+.actions > button.danger {
+  /* Quiet like .link, which means resetting the same things it does —
+     otherwise a destructive action inside .actions inherits the outlined,
+     full-width treatment and ends up looking like the thing to press. */
+  border: none;
+  background: none;
+  width: auto;
+  min-height: 2.75rem;
+  padding: var(--space-2) 0;
+  color: var(--muted);
+  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+button.danger::before {
+  content: "\00d7";
+  font-size: var(--step-1);
+  line-height: 1;
+}
+button.danger:hover {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
 .roles {
@@ -493,21 +588,47 @@ code {
 
 /* Two places to be, always visible, never more than two: a tab bar that grows
    is a menu, and a menu is the thing this rework is removing. */
-.steps {
+/* Tabs.
+ *
+ * These were outlined buttons in a row, one of them filled with the accent —
+ * which made the selected tab look like the screen's primary action rather
+ * than like where you are. Now the row reads as a single control: one shared
+ * baseline, the current tab marked by weight and an underline in the accent,
+ * and no fill competing with the real primary button below it. */
+.tabs {
   display: flex;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.steps button {
-  flex: 1;
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+.tabs button {
+  flex: 1 0 auto;
+  min-width: 0;
   background: none;
-  border: 1px solid var(--line);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--muted);
+  padding: var(--space-3) var(--space-3);
+  white-space: nowrap;
+  /* Reserve the selected weight so the row does not reflow on every tap. */
+  font-weight: 500;
+}
+.tabs button:hover {
   color: var(--fg);
 }
-.steps button.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
+.tabs button[aria-selected="true"] {
+  color: var(--fg);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+.tabs button:focus-visible {
+  outline-offset: -2px;
 }
 
 .where-bar {
@@ -640,4 +761,95 @@ code {
   border-radius: var(--radius-pill);
   object-fit: cover;
   background: var(--line);
+}
+
+/* The message tray (views/Tray.tsx).
+ *
+ * Docked at the bottom of every screen, over the top of whatever is there.
+ * Fixed rather than in the flow so it survives navigation between screens —
+ * the whole reason it exists is that a conversation should outlive the screen
+ * that started it. `.tray-spacer` gives the page somewhere to end so the last
+ * control is not permanently under the bar.
+ */
+.tray-spacer {
+  height: 4.5rem;
+}
+.tray {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  /* Lifts the sheet off the page without a heavy shadow in dark mode. */
+  box-shadow: 0 -2px 12px rgb(0 0 0 / 8%);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.tray-handle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  background: none;
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+}
+.tray-title {
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+/* The hint takes the slack, so the chevron stays pinned right and the count
+ * stays pinned left however long a venue's name turns out to be. */
+.tray-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--step--1);
+}
+.tray-chevron {
+  color: var(--muted);
+}
+.tray-body {
+  overflow-y: auto;
+  padding: 0 var(--space-4) var(--space-4);
+}
+/* Unread. Reads as a count, not as a decoration, so a badge of 1 is still
+ * worth glancing at. */
+.badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--step--1);
+  font-weight: 600;
+  line-height: 1;
+}
+.tabs button .badge {
+  margin-left: var(--space-2);
+}
+
+/* The mark sits on the app's own name, at text size, sharing its colour. */
+header h1 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+header h1 .mark {
+  color: var(--accent);
+  flex: none;
 }

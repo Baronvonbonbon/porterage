@@ -332,7 +332,7 @@ export function Wallet() {
       {busy && <p className="muted">{busy}… approve it in the Polkadot app.</p>}
       {done && <p className="ok">{done}</p>}
       {error && <p className="error">{error}</p>}
-      <button className="link" onClick={refresh} disabled={!!busy}>
+      <button className="refresh" onClick={refresh} disabled={!!busy}>
         Refresh
       </button>
     </section>

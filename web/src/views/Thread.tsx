@@ -24,11 +24,18 @@ export function Thread({
   theirs,
   orderId,
   title,
+  onCount,
 }: {
   mine: Reader;
   theirs: string;
   orderId: bigint;
   title: string;
+  /**
+   * How many messages this thread is holding, whenever that changes. The tray
+   * counts what arrived while it was shut; it cannot do that from outside
+   * without opening a second subscription to the same conversation.
+   */
+  onCount?: (n: number) => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
@@ -83,6 +90,11 @@ export function Thread({
 
   useEffect(() => {
     foot.current?.scrollIntoView({ block: "nearest" });
+    onCount?.(messages.length);
+    // `onCount` is deliberately not a dependency: callers pass a fresh closure
+    // each render, and depending on it would report on every render rather
+    // than when the thread actually changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
 
   async function send() {

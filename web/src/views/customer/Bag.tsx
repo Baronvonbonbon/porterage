@@ -54,8 +54,8 @@ export function Bag({
   if (!bill.items.length)
     return (
       <section>
-        <button className="link" onClick={onBack}>
-          ← back
+        <button className="back" onClick={onBack}>
+          back
         </button>
         <h2>Your bag</h2>
         <p className="muted">Nothing in it yet.</p>
@@ -64,8 +64,8 @@ export function Bag({
 
   return (
     <section>
-      <button className="link" onClick={onBack}>
-        ← back to {menu.name || "the menu"}
+      <button className="back" onClick={onBack}>
+        back to {menu.name || "the menu"}
       </button>
       <h2>Your bag</h2>
 

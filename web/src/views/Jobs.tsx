@@ -19,7 +19,7 @@ import {
   signDropCommit,
 } from "../order/handoff";
 import { QrScan, QrShow } from "./Qr";
-import { Thread } from "./Thread";
+import { Offer } from "./Tray";
 import { Amount } from "./pickers";
 import { pasOrNull } from "../money/amount";
 import { progressOf } from "../order/progress";
@@ -85,7 +85,6 @@ export function Jobs({
   } | null>(null);
   /** Order id to the customer's key, once we've said hello on that order. */
   const [talking, setTalking] = useState<Map<string, string>>(new Map());
-  const [talkTo, setTalkTo] = useState<Order | null>(null);
   const greeted = useRef(new Set<string>());
   const [rating, setRating] = useState<string>("…");
   const [complaint, setComplaint] = useState<{
@@ -512,7 +511,7 @@ export function Jobs({
                 : `${lost
                     .map((i) => `#${i}`)
                     .join(", ")} went to other drivers.`}{" "}
-              <button className="link" onClick={() => setLost([])}>
+              <button className="danger" onClick={() => setLost([])}>
                 dismiss
               </button>
             </p>
@@ -674,19 +673,21 @@ export function Jobs({
                     )}
                   </>
                 )}
+                {/* The conversation goes to the tray, which is docked at the
+                    bottom of every screen — so a customer's reply arrives
+                    while this driver is looking at the map, not only while
+                    this card happens to be expanded. */}
                 {talking.get(o.id.toString()) &&
                   o.status < Status.Delivered && (
-                    <>
-                      {" "}
-                      <button
-                        className="link"
-                        onClick={() =>
-                          setTalkTo(talkTo?.id === o.id ? null : o)
-                        }
-                      >
-                        {talkTo?.id === o.id ? "hide messages" : "messages"}
-                      </button>
-                    </>
+                    <Offer
+                      conv={{
+                        id: `job:${o.id}`,
+                        mine: sessionKey,
+                        theirs: talking.get(o.id.toString())!,
+                        orderId: o.id,
+                        title: `Customer of #${o.id}`,
+                      }}
+                    />
                   )}
                 {o.status < Status.Delivered && (
                   <>
@@ -736,14 +737,7 @@ export function Jobs({
                     </button>
                   </div>
                 )}
-                {talkTo?.id === o.id && talking.get(o.id.toString()) && (
-                  <Thread
-                    mine={sessionKey}
-                    theirs={talking.get(o.id.toString())!}
-                    orderId={o.id}
-                    title={`You and the customer of #${o.id}`}
-                  />
-                )}
+
               </li>
             ))}
           </ul>
@@ -753,7 +747,7 @@ export function Jobs({
       {busy && <p className="muted">{busy}…</p>}
       {note && <p className="ok">{note}</p>}
       {error && <p className="error">{error}</p>}
-      <button className="link" onClick={refresh} disabled={!!busy}>
+      <button className="refresh" onClick={refresh} disabled={!!busy}>
         Refresh work
       </button>
     </div>

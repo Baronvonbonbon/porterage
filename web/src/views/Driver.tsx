@@ -117,7 +117,7 @@ export function Driver() {
       <h2>Drive</h2>
 
       {ready && (
-        <nav className="steps">
+        <nav className="tabs" role="tablist">
           {(
             [
               ["work", "Work"],
@@ -128,7 +128,8 @@ export function Driver() {
           ).map(([id, label]) => (
             <button
               key={id}
-              className={step === id ? "on" : ""}
+              role="tab"
+              aria-selected={step === id}
               onClick={() => setStep(id)}
             >
               {label}
@@ -254,7 +255,7 @@ export function Driver() {
 
       {busy && <p className="muted">{busy}… approve it in the Polkadot app.</p>}
       {error && <p className="error">{error}</p>}
-      <button className="link" onClick={refresh} disabled={!!busy}>
+      <button className="refresh" onClick={refresh} disabled={!!busy}>
         Refresh
       </button>
     </section>

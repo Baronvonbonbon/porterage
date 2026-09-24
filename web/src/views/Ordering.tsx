@@ -32,7 +32,7 @@ import { QrScan, QrShow } from "./Qr";
 import { settleDebts } from "../order/flow";
 import { progressOf } from "../order/progress";
 import { Waiting } from "./State";
-import { Thread } from "./Thread";
+import { useConversation } from "./Tray";
 
 import {
   committedPhotoKey,
@@ -211,6 +211,32 @@ export function Ordering() {
       stop?.();
     };
   }, [live, driverKey]);
+
+  // The customer's two conversations, handed to the tray for as long as the
+  // order is in flight. Offered rather than rendered: see views/Tray.tsx.
+  const inFlight = !!live && live.order.status >= 1 && live.order.status <= 3;
+  useConversation(
+    inFlight && driverKey
+      ? {
+          id: `${live!.record.id}:driver`,
+          mine: live!.burner,
+          theirs: driverKey,
+          orderId: BigInt(live!.record.id),
+          title: "The driver",
+        }
+      : null
+  );
+  useConversation(
+    inFlight && liveMenu?.counterKey
+      ? {
+          id: `${live!.record.id}:kitchen`,
+          mine: live!.burner,
+          theirs: liveMenu.counterKey,
+          orderId: BigInt(live!.record.id),
+          title: liveMenu.name || "The kitchen",
+        }
+      : null
+  );
 
   const openOrder = useCallback(async (record: OrderRecord) => {
     stop.current?.();
@@ -612,7 +638,7 @@ export function Ordering() {
                 })}
               </div>
               <button
-                className="link"
+                className="danger"
                 disabled={!!busy}
                 onClick={() =>
                   cancelOrder(live.burner, BigInt(live.record.id), live.record.at)
@@ -728,21 +754,15 @@ export function Ordering() {
 
           {live.order.status >= 1 && live.order.status <= 3 && (
             <>
-              {driverKey && (
-                <Thread
-                  mine={live.burner}
-                  theirs={driverKey}
-                  orderId={BigInt(live.record.id)}
-                  title="You and the driver"
-                />
-              )}
-              {liveMenu?.counterKey && (
-                <Thread
-                  mine={live.burner}
-                  theirs={liveMenu.counterKey}
-                  orderId={BigInt(live.record.id)}
-                  title={`You and ${liveMenu.name || "the kitchen"}`}
-                />
+              {/* Both conversations go to the tray at the bottom of the screen
+                  rather than being stacked in the middle of it, where a long
+                  one pushed the order's own controls off the page. */}
+              {(driverKey || liveMenu?.counterKey) && (
+                <p className="muted">
+                  {driverKey && liveMenu?.counterKey
+                    ? "The driver and the kitchen are both in Messages, below."
+                    : "In Messages, below."}
+                </p>
               )}
               {!driverKey && live.order.status >= 2 && (
                 <p className="muted">

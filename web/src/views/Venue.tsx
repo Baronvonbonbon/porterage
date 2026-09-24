@@ -32,7 +32,7 @@ import {
 import { watchIntros, type Intro } from "../order/chat";
 import { ratingText, venueRating } from "../order/ratings";
 import { tell } from "../notify";
-import { Thread } from "./Thread";
+import { Offer } from "./Tray";
 import { errorText, pasWei, short } from "../format";
 import { MENU_PUBLIC, VENUE_SEES } from "../copy/privacy";
 import { read } from "../contracts";
@@ -66,7 +66,6 @@ export function Venue() {
   const [baskets, setBaskets] = useState<Map<string, Basket>>(new Map());
   /** Order id to whoever introduced themselves on it, and with which key. */
   const [callers, setCallers] = useState<Map<string, Intro>>(new Map());
-  const [talkTo, setTalkTo] = useState<string | null>(null);
   const [stars, setStars] = useState<Map<string, string>>(new Map());
   /** What the vault is holding for each venue's payout address. */
   const [takings, setTakings] = useState<Map<string, bigint>>(new Map());
@@ -244,7 +243,7 @@ export function Venue() {
       )}
 
       {mine.length > 0 && (
-        <nav className="steps">
+        <nav className="tabs" role="tablist">
           {(
             [
               ["counter", "Counter"],
@@ -255,7 +254,8 @@ export function Venue() {
           ).map(([id, label]) => (
             <button
               key={id}
-              className={step === id ? "on" : ""}
+              role="tab"
+              aria-selected={step === id}
               onClick={() => setStep(id)}
             >
               {label}
@@ -456,7 +456,7 @@ export function Venue() {
                   }
                 />{" "}
                 %{" "}
-                <button className="link" onClick={() => setTax(i, null)}>
+                <button className="danger" onClick={() => setTax(i, null)}>
                   remove
                 </button>
               </label>
@@ -528,35 +528,22 @@ export function Venue() {
                   )}
                   {o.driver !== "0x0000000000000000000000000000000000000000" &&
                     ` — driver ${short(o.driver)}`}
+                  {/* To the tray, so the counter sees a customer's question
+                      while it is looking at the menu or the takings. */}
                   {callers.has(o.id.toString()) && key && (
-                    <>
-                      {" "}
-                      <button
-                        className="link"
-                        onClick={() =>
-                          setTalkTo(
-                            talkTo === o.id.toString() ? null : o.id.toString()
-                          )
-                        }
-                      >
-                        {talkTo === o.id.toString()
-                          ? "hide messages"
-                          : "messages"}
-                      </button>
-                    </>
-                  )}
-                  {talkTo === o.id.toString() &&
-                    key &&
-                    callers.has(o.id.toString()) && (
-                      <Thread
-                        mine={key}
-                        theirs={callers.get(o.id.toString())!.publicKey}
-                        orderId={o.id}
-                        title={`#${o.id} — the ${
+                    <Offer
+                      conv={{
+                        id: `counter:${o.id}`,
+                        mine: key,
+                        theirs: callers.get(o.id.toString())!.publicKey,
+                        orderId: o.id,
+                        title: `#${o.id} — the ${
                           callers.get(o.id.toString())!.role
-                        }`}
-                      />
-                    )}
+                        }`,
+                      }}
+                    />
+                  )}
+
                   {o.status === Status.Assigned && key && (
                     <>
                       {" "}
@@ -601,9 +588,7 @@ export function Venue() {
                 value={code.text}
                 caption="Let the driver scan this. It's the counter's signature, and it's good for a few minutes."
               />
-              <button className="link" onClick={() => setCode(null)}>
-                Done
-              </button>
+              <button onClick={() => setCode(null)}>Done</button>
             </>
           )}
         </>
@@ -614,7 +599,7 @@ export function Venue() {
       )}
       {busy && <p className="muted">{busy}… approve it in the Polkadot app.</p>}
       {error && <p className="error">{error}</p>}
-      <button className="link" onClick={refresh} disabled={!!busy}>
+      <button className="refresh" onClick={refresh} disabled={!!busy}>
         Refresh
       </button>
     </section>
