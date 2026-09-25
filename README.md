@@ -19,8 +19,15 @@ a Product, measured on a phone:
 - **No GPS needed.** Handoffs settle by QR and two signatures; GPS is added as evidence when the app
   allows it.
 
-**Status:** planning. [docs/PLAN.md](docs/PLAN.md) is the plan of record. What the platform can and
+**How it works:** [docs/OVERVIEW.md](docs/OVERVIEW.md) — the whole system in one pass,
+written for a person or a model coming to it cold.
+
+**Status:** running on testnet. All eleven contracts are deployed to Paseo Asset Hub and the
+app is published; a hundred live orders ran end to end across every way an order can finish.
+[docs/PLAN.md](docs/PLAN.md) is the plan of record and [docs/DEPLOY.md](docs/DEPLOY.md) is the
+log of what has actually shipped. What the platform can and
 can't do is measured with [sonde](https://github.com/Baronvonbonbon/sonde) and recorded in
 [polkadot-host-capabilities](https://github.com/Baronvonbonbon/polkadot-host-capabilities).
 
-Testnet only (Paseo Asset Hub). MIT licensed.
+Testnet only (Paseo Asset Hub). [AGPL-3.0-or-later](LICENSE) — if you run a modified
+Porterage as a service, its users are entitled to your source.

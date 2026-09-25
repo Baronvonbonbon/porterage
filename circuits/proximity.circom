@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 pragma circom 2.0.0;
 
 include "circomlib/circuits/poseidon.circom";

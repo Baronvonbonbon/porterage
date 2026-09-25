@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Peer-to-peer delivery inside the Polkadot app",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "scripts": {
     "build": "hardhat compile",
     "test": "hardhat test",
